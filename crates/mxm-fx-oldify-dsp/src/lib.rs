@@ -13,6 +13,10 @@
 
 use core::fmt;
 
+pub mod biquad;
+pub mod tape;
+pub mod transport;
+
 /// The lowest sample rate [`Oldify::new`] accepts.
 pub const MIN_SAMPLE_RATE: f32 = 1_000.0;
 /// The highest sample rate [`Oldify::new`] accepts.

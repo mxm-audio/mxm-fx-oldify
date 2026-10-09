@@ -4,8 +4,10 @@ Parent: [`../../AGENTS.md`](../../AGENTS.md)
 
 # Purpose
 
-Framework-free DSP for `mxm-fx-oldify`. **Today it is a placeholder chain**: the frame the cassette
-and record engines will fill, and nothing of either engine yet. The design and measurements the
+Framework-free DSP for `mxm-fx-oldify`. **The chain is still a placeholder**: the frame the cassette
+and record engines will fill. The first building blocks are written and tested but not yet in the
+chain: `biquad` (filter sections), `tape` (the twelve tape responses) and `transport` (wow and
+flutter). The design and measurements the
 engines will be built from are private, `ops:notes/oldify/` (root *The design and its measurements
 are private*).
 
@@ -48,10 +50,30 @@ at its target; `new` starts settled at `Controls::IDENTITY`.
 - **The identity settled is the input to the bit**, and costs the scan only; `frame` at the identity
   is exact too (Width skipped at exactly 1, both ends of the crossfade taken exactly).
 
+## Building blocks (not yet in the chain)
+
+- **`biquad`**: Bristow-Johnson's cookbook sections, kept as what they mean (kind, frequency, gain,
+  Q) and built for any sample rate, frequencies held below `NYQUIST_FRACTION` of it; transposed
+  direct form II, `f64` state. `Biquad::set` keeps the state, so a slow change does not click.
+- **`tape`**: the twelve tape responses (`Tape` I, II, IV × `Grade`), five sections each, fitted to
+  our measurement of the reference's profiles. The table is data from that fit
+  (`ops:oldify/measure/fit_profiles.py`); regenerate it from there, never hand-edit a number.
+  `the_fits_hold_what_was_measured` holds spot values from the measurement.
+- **`transport`**: a stereo delay line read at a moving position. **Speed in, delay out**: a wobble's
+  depth is its peak speed error and the read moves by its integral. A sine or saw is its exact
+  centred integral; a change of depth, rate or shape goes into a drift term that leaks away at an
+  eighth of the wobble's rate, so the read never jumps; the random shape (Ornstein–Uhlenbeck) lives
+  in that drift. **The base delay is twice the reach** (`Wobble::reach_seconds`, summed at the most
+  the parameters allow), because an unsettled change can swing the read that far one way; it is the
+  latency the plugin will report (`Transport::latency`). Wow and flutter are the same in both
+  channels, as measured. Every draw comes from the transport's own seeded `Rng`, one per sample, and
+  `reset` returns to the seed's start.
+
 ## Realtime and numeric rules
 
 - Rust MSRV is 1.87; there are no dependencies, normal, build or dev.
-- Nothing allocates, ever; every method is allocation-, lock-, log- and I/O-free.
+- Nothing allocates on the audio thread; every method is allocation-, lock-, log- and I/O-free,
+  except `Transport::new`, which sizes its line and is called outside it.
 - Accepted sample rates are `MIN_SAMPLE_RATE`–`MAX_SAMPLE_RATE`, mxm-fx-delay's range; others,
   and non-numbers, are refused with `UnsupportedRate`.
 - Non-finite input samples are taken as silence. Controls are bounded at the public seam
@@ -63,8 +85,9 @@ at its target; `new` starts settled at `Controls::IDENTITY`.
 
 ## Chosen constants
 
-`SMOOTHING_S`, the gain and width bounds and the accepted-rate range are chosen for this
-implementation, not measured. The engines' constants will come from the measurements and say so.
+`SMOOTHING_S`, the gain and width bounds, the accepted-rate range and the transport's leak
+(`LEAK`) are chosen for this implementation, not measured. The tape table is measured and fitted and
+says so; the engines' other constants will come from the measurements and say so.
 
 # Work Guidance
 
@@ -86,7 +109,11 @@ The tests hold silence → exact zero at every setting, Mix zero → the dry inp
 and after a ramp), the identity → the input to the bit (both paths, and after a ramp back), blocks
 of 1, 37 and 512 bit-identical across a silent stretch mid-ramp and a retarget, finite bounded
 output at every extreme and for non-finite controls and input, Width's mid and mono, the ramp's
-length and exact landing, and the refused rates.
+length and exact landing, and the refused rates. The building blocks' tests hold each section's
+gain where the cookbook puts it, the tape table against the measurement and at every common rate,
+and the transport's speed against each shape's depth (by the zero crossings of a 3150 Hz tone),
+its read within its reach, a change of rate without a jump, a plain delay of its latency with no
+wobble, and the same render from the same seed and after `reset`.
 
 # Child DOX Index
 
