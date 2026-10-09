@@ -34,15 +34,15 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 
 | Card | Id | Name | Range, law and option ids |
 |---|---|---|---|
-| Record | `record_on` | Record | Off / On: the record in the chain; on with Tape, a record taped to cassette |
+| Vinyl | `record_on` | Vinyl | Off / On: the record (vinyl or shellac) in the chain; on with Tape, a record taped to cassette |
 | | `disc` | Disc | LP 33⅓ / Single 45 / Shellac 78 (`lp-33`, `single-45`, `shellac-78`) |
 | | `era` | Era | Acoustic / Early electrical / US 78, 1940s / UK 78, 1940s / Late 78 / Early single / Early LP / Mono LP / Modern (`acoustic`, `early-electrical`, `us-78`, `uk-78`, `late-78`, `early-single`, `early-lp`, `mono-lp`, `modern`) |
 | | `player` | Player | Wind-up gramophone / Radiogram / Jukebox / Portable / Mono hi-fi / On the radio / Modern deck (`wind-up`, `radiogram`, `jukebox`, `portable`, `mono-hi-fi`, `on-the-radio`, `modern-deck`) |
 | | `cut_curve`, `replay_curve` | Cut curve, Replay curve | Follow era (`follow-era`) or Follow player (`follow-player`), then Flat / UK 78 / UK 78 with treble lift / US 78 / Early LP / Early 45 / Transcription / West Coast LP / Standard (`flat`, `uk-78`, `uk-78-with-treble-lift`, `us-78`, `early-lp`, `early-45`, `transcription`, `west-coast-lp`, `standard`) |
-| Record groove | `wear`, `side` | Wear, Side position | 0–100 %, linear; side runs from the outer groove to the inner |
+| Vinyl groove | `wear`, `side` | Wear, Side position | 0–100 %, linear; side runs from the outer groove to the inner |
 | | `groove_distortion` | Groove distortion | 0–200 %, linear; 100 % is the groove's own |
 | | `eccentricity` | Eccentricity | 0…`record::MAX_ECCENTRICITY_MM` mm, skewed so the everyday tenths get the first half |
-| Record surface | `crackle`, `clicks` | Crackle, Clicks | 0…`disc::MAX_CRACKLE_HZ` / `MAX_CLICKS_HZ` a second, read `60/s`, skewed so the low counts get the travel |
+| Vinyl surface | `crackle`, `clicks` | Crackle, Clicks | 0…`disc::MAX_CRACKLE_HZ` / `MAX_CLICKS_HZ` a second, read `60/s`, skewed so the low counts get the travel |
 | | `surface_noise`, `rumble` | Surface noise, Rumble | `disc::NOISE_OFF_DB` (Off)…`MAX_SURFACE_DB` / `MAX_RUMBLE_DB`, as Hiss |
 | | `scratches`, `cracks` | Scratches, Cracks | Integers 0…`disc::MAX_SCRATCHES` / `MAX_CRACKS`; Cracks drawn as buttons |
 | | `hum`, `hum_level` | Hum, Hum level | Off / 50 Hz / 60 Hz (`off`, `50-hz`, `60-hz`); the level `NOISE_OFF_DB` (Off)…`params::MAX_HUM_DB`, as Hiss |
@@ -149,7 +149,7 @@ control map claims no role](NOTES.md#why-the-control-map-claims-no-role)). Held 
 ## Editor and telemetry
 
 Eight Effects cards in signal order, each **under the brief's stable key** (`sections::KEYS`), what
-each holds in `sections::card` ([NOTES.md § The cards](NOTES.md#the-cards)). **The Record and Tape
+each holds in `sections::card` ([NOTES.md § The cards](NOTES.md#the-cards)). **The Vinyl and Tape
 switches head their groups' first cards; a group switched off is dimmed (`sections::DIMMED`, the
 shared disabled module's) but stays editable and reachable** (the owner, 2026-10-09: "There is not
 way to know what cards control the tape, and what controls the vinyl. So the tape/vinyl/tape+vinyl

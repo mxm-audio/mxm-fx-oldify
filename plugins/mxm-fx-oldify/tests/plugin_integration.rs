@@ -190,7 +190,7 @@ fn every_cassette_control_changes_the_sound() {
     // The record's controls, heard on the record alone.
     let record = [("record_on", 1.0), ("tape_on", 0.0)];
     let record_reference = render_moved(&record, LOUD);
-    let on_record: [Move<'_>; 16] = [
+    let on_record: [Move<'_>; 15] = [
         ("disc", 1.0),
         ("era", 0.0),
         ("player", 0.0),
@@ -203,7 +203,6 @@ fn every_cassette_control_changes_the_sound() {
         ("crackle", 1.0),
         ("clicks", 1.0),
         ("surface_noise", 1.0),
-        ("cracks", 1.0),
         ("rumble", 1.0),
         ("hum", 0.5),
         ("variation", 0.5),
@@ -219,17 +218,17 @@ fn every_cassette_control_changes_the_sound() {
             moved.0
         );
     }
-    // A scratch ticks once a turn at its own angle: on a 78, half a second is more than half a
-    // turn, where on an LP it is a quarter and a seed may put every scratch past it.
+    // A scratch ticks and a crack thumps once a turn at its own angle: on a 78, half a second is
+    // more than half a turn, where on an LP it is a quarter and a seed may put every one past it.
     let shellac = [record[0], record[1], ("disc", 1.0)];
-    let scratched = difference(
-        &render_moved(
-            &[shellac[0], shellac[1], shellac[2], ("scratches", 1.0)],
-            LOUD,
-        ),
-        &render_moved(&shellac, LOUD),
-    );
-    assert!(scratched > 1e-3, "scratches changed nothing: {scratched}");
+    let shellac_reference = render_moved(&shellac, LOUD);
+    for moved in [("scratches", 1.0), ("cracks", 1.0)] {
+        let heard = difference(
+            &render_moved(&[shellac[0], shellac[1], shellac[2], moved], LOUD),
+            &shellac_reference,
+        );
+        assert!(heard > 1e-3, "{} changed nothing: {heard}", moved.0);
+    }
     let hum = [record[0], record[1], ("hum", 0.5)];
     let hum_reference = render_moved(&hum, LOUD);
     let louder = difference(

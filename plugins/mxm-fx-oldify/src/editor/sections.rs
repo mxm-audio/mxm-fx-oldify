@@ -1,7 +1,7 @@
-//! Eight Effects cards in signal order, in two groups and the output: Record, Record groove,
-//! Record surface; Tape, Tape transport, Tape noise, Tape deck; Output.
+//! Eight Effects cards in signal order, in two groups and the output: Vinyl, Vinyl groove,
+//! Vinyl surface; Tape, Tape transport, Tape noise, Tape deck; Output.
 //!
-//! **A group is switched on its first card**: the Record switch heads Record, the Tape switch heads
+//! **A group is switched on its first card**: the Vinyl switch heads Vinyl, the Tape switch heads
 //! Tape, and a group switched off is drawn dimmed but stays editable and reachable (the owner,
 //! 2026-10-09). Each card keeps the key the brief gives it (`docs/briefs/mxm-fx-oldify.md` §4).
 //! Each card body is a `mxm_ui::tree`: [`card`] describes it once, the paging renderer measures that
@@ -24,9 +24,9 @@ use crate::params::MxmFxOldifyParams;
 const KNOB: Size = Size::Standard;
 /// The cards' titles, in paging order.
 pub const TITLES: [&str; 8] = [
-    "Record",
-    "Record groove",
-    "Record surface",
+    "Vinyl",
+    "Vinyl groove",
+    "Vinyl surface",
     "Tape",
     "Tape transport",
     "Tape noise",
@@ -115,7 +115,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "record_on",
             &params.record_on,
-            "Plays the sound as an old record; with Tape on too, the record is taped onto a cassette.",
+            "Plays the sound as an old record, vinyl or shellac; with Tape on too, the record is taped onto a cassette.",
         ),
         Bound::new(
             "disc",
@@ -205,7 +205,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "tape_on",
             &params.tape_on,
-            "Plays the sound through a cassette tape; with Record on too, the record is taped onto it.",
+            "Plays the sound through a cassette tape; with Vinyl on too, the record is taped onto it.",
         ),
         Bound::new(
             "tape",

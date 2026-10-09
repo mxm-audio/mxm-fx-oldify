@@ -106,7 +106,7 @@ and Mix against the dry input delayed by the chain's fixed latency — and both 
 record (era, player, cutting and replay curves, groove, the disc's surface, hum) and the cassette
 (noise reduction, saturation, the measured tape responses, generations, wow and flutter with
 Flange, hiss that follows or stops with the input, dropouts, the deck's faults and the age's
-spacing loss); a Record and a Tape switch put each in the chain, and both on tape the record. The plugin syncs the wobble rates to
+spacing loss); a Vinyl and a Tape switch put each in the chain, and both on tape the record. The plugin syncs the wobble rates to
 the host's tempo and reports the latency and the chain's tail to the host, and the plugin ships a
 factory bank of twenty-one sounds across both media. Still to come: the record's warp, groove echo
 and skips, and the cassette's print-through, tape stop and High quality. The §14 brief is [`docs/briefs/mxm-fx-oldify.md`](docs/briefs/mxm-fx-oldify.md).

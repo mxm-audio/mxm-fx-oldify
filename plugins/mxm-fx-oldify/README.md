@@ -3,17 +3,17 @@
 A stereo effect that makes sound old: a cassette, an old record, or an old record taped onto a
 cassette.
 
-Two groups, each with its own switch heading its first card, and the output. Record on alone plays
+Two groups, each with its own switch heading its first card, and the output. Vinyl on alone plays
 an old record; Tape on alone, a cassette; both on, a record taped to cassette. A group switched
 off is dimmed but can still be set up.
 
-- **Record** — the Record switch; the disc (LP, single or shellac 78), when it was cut (nine eras,
+- **Vinyl** — the Vinyl switch; the disc (LP, single or shellac 78), when it was cut (nine eras,
   from acoustic horns to modern), what it is played on (seven players, from a wind-up gramophone to
   a modern deck), and the cutting and replay curves, which follow the era and the player unless you
   pick others.
-- **Record groove** — wear, where on the side the needle is, groove distortion and an off-centre
+- **Vinyl groove** — wear, where on the side the needle is, groove distortion and an off-centre
   hole.
-- **Record surface** — crackle, clicks, surface noise, scratches and cracks that come round once a
+- **Vinyl surface** — crackle, clicks, surface noise, scratches and cracks that come round once a
   turn, rumble, and mains hum.
 - **Tape** — the Tape switch; Type I, II or IV at four grades (twelve measured responses) and how
   much of it is heard; saturation, Soft or Hard; up to four generations of copies, each adding its

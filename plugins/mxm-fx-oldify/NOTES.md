@@ -39,9 +39,9 @@ sound's sentence lives in the design table.
 
 ## The cards
 
-Eight Effects cards in signal order: **Record** (the Record switch; Disc; Era, Player, Cut curve
-and Replay curve as lists), **Record groove** (Wear, Side position; Groove distortion,
-Eccentricity), **Record surface** (Crackle, Clicks, Surface noise; Scratches, Rumble; Cracks; Hum;
+Eight Effects cards in signal order: **Vinyl** (the Vinyl switch; Disc; Era, Player, Cut curve
+and Replay curve as lists), **Vinyl groove** (Wear, Side position; Groove distortion,
+Eccentricity), **Vinyl surface** (Crackle, Clicks, Surface noise; Scratches, Rumble; Cracks; Hum;
 Hum level), **Tape** (the Tape switch; Tape type; Grade; Tape tone, Saturation; Character;
 Generations; Age), **Tape transport** (Wow, Wow rate and its sync; Wow shape; Flutter, Flutter rate
 and its sync; Flutter shape; Flutter follows wow; Flange), **Tape noise** (Hiss; Noise reduction;
@@ -49,6 +49,10 @@ Decode; NR amount, NR brightness, NR level error; Dropouts, Dropout intensity, D
 **Tape deck** (Azimuth, Crosstalk; Wrong EQ) and **Output** (the In and Out levels; Drive, Width,
 Mix; Noise follows, Variation; Noise stops in silence). Noise follows and Variation share a knob row
 so Output fits beside the seven group cards on one page at the budget.
+
+**Vinyl, not Record** (the owner, 2026-10-09: "'Record' should be 'Vinyl'"): the switch and
+its three cards read Vinyl, shellac 78s included, the word people reach for; the permanent id
+stays `record_on`, and the DSP keeps calling it the record.
 
 **No output level** (the owner, 2026-10-09: "it still has both output and mix"; earlier, "our
 effects only have 'mix'"): the collection's effects end in Mix, so the `output` id is retired.

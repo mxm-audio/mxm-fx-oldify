@@ -8,13 +8,13 @@ text); this answers design-system §14 and does not reopen their DSP decisions.
 
 Make a sound old in one of two ways, or both: as **cassette tape** (from a good deck to a worn
 pocket player, dubbed and redubbed) and as a **record** (from a new LP to a battered 78 on a
-radiogram), and as a record taped to cassette. The everyday path is the Record or Tape switch → the
+radiogram), and as a record taped to cassette. The everyday path is the Vinyl or Tape switch → the
 medium's few character controls → Mix; the deep path opens one medium's whole chain, block by
 block, in signal order.
 
 ## 2. Controls reached for first
 
-**Record, Tape, Mix**, then per medium: for cassette **Tape type** and grade, **Saturation**,
+**Vinyl, Tape, Mix**, then per medium: for cassette **Tape type** and grade, **Saturation**,
 **Wow**, **Hiss**, **Age**; for a record **Disc**, **Era** (the cut and the player), **Wear**,
 **Crackle**. These are the first adjustments people make in every product the research surveyed.
 
@@ -35,9 +35,9 @@ control the tape, and what controls the vinyl"). Key 0, the Medium card, is reti
 
 | Key | Card | Controls (first-reach in bold; to come in italics) |
 |---:|---|---|
-| 1 | Record | **Record**, **Disc**, **Era** (cut), Player, Cut curve, Replay curve |
-| 2 | Record groove | **Wear**, Side position, Groove distortion, Eccentricity, *Warp* |
-| 3 | Record surface | **Crackle**, Clicks, Surface noise, Scratches, Cracks, Rumble, Hum, *Groove echo* |
+| 1 | Vinyl | **Vinyl**, **Disc**, **Era** (cut), Player, Cut curve, Replay curve |
+| 2 | Vinyl groove | **Wear**, Side position, Groove distortion, Eccentricity, *Warp* |
+| 3 | Vinyl surface | **Crackle**, Clicks, Surface noise, Scratches, Cracks, Rumble, Hum, *Groove echo* |
 | 4 | Tape | **Tape**, **Tape type**, Grade, Tape tone, **Saturation**, Character, Generations, **Age** |
 | 5 | Tape transport | **Wow** depth, rate (sync), shape; Flutter depth, rate (sync), shape; follows wow; Flange; *Tape stop* |
 | 6 | Tape noise | **Hiss**, Noise reduction, Decode, its Amount, Brightness and Level error, Dropouts, *Print-through* |

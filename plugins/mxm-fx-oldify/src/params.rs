@@ -826,7 +826,7 @@ impl Default for MxmFxOldifyParams {
         let cassette = init.cassette;
         let record = init.record;
         Self {
-            record_on: BoolParam::new("Record", init.record_on),
+            record_on: BoolParam::new("Vinyl", init.record_on),
             disc: EnumParam::new("Disc", DiscChoice::Lp33),
             era: EnumParam::new("Era", EraChoice::Modern),
             player: EnumParam::new("Player", PlayerChoice::ModernDeck),

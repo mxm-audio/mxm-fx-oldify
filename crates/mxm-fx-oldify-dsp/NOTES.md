@@ -18,7 +18,8 @@ jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch
 skew's exact split, and the noise reduction's lift, two-band's reach, exact decode, undecoded and
 off paths, mistracking and hiss reduction, the curves' shapes, exact cut-and-replay and the UK 78
 error, the disc's rate, heavy tail, turn-locked renewal, clicks that are noise and not a tone,
-scratches the same tick every turn, cracks and levels, the groove's cited
+scratches the same tick every turn, clicks and scratches with no net push, a crack's tail at
+the arm's tens of hertz, cracks and levels, the groove's cited
 distortion and treble loss, the players' bands, crystal, radio and mono, and the record side's
 brick wall, acoustic band, wrong-curve dullness, eccentricity and gated noise).
 
@@ -29,7 +30,9 @@ reach and `FOLLOW_DEPTH`, the Age law, `EMPHASIS_DB`, `FADE_IN`, `MAX_DRIVE`, th
 the hiss's top and its 70 µs offset, the silence thresholds and times, the noise follower's,
 `GENERATION_UM`, the dropout laws, `WRONG_EQ_DB`, the noise reduction's thresholds, corners, skew
 and detector, the record's era Qs, limiter times, players, `TURNOVER`, the crackle, click, scratch
-and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S` and
-the groove's corners are chosen here, not measured. The tape table, the spacing law, the dropout
+and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S`,
+`BLOCK_BELOW`, the crack's tail (`CRACK_TAIL`, `TAIL_TOP_HZ`, `TAIL_FALL_S`, `TAIL_DECAY_S`; the
+arm's resonance `ARM_HZ` is the plan's 8–15 Hz, itself a design guess) and the groove's corners are
+chosen here, not measured. The tape table, the spacing law, the dropout
 statistics and lift, azimuth's geometry, the wow and flutter laws (linear, as the reference's) and
 the wow, flutter and saturation extremes come from measurement or physics and say so.
