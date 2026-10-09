@@ -28,8 +28,9 @@ Nine cards, in signal order:
 
 **Record then cassette** plays the record and tapes it. The chain has one fixed latency (about
 70 ms), reported to the host,
-and a tail after which silence in is exact silence out, unless the noise is set to play on. There
-are no factory presets yet.
+and a tail after which silence in is exact silence out, unless the noise is set to play on.
+Twenty-one factory sounds cover cassettes, records and records taped to cassette, from a home deck
+to an acoustic 78 on a wind-up gramophone.
 
 ```bash
 cargo xtask bundle mxm-fx-oldify --release

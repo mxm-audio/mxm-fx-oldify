@@ -8,8 +8,8 @@ wind-up gramophone to a modern deck), the cutting and replay curves, the groove'
 distortion, an off-centre hole, crackle, clicks, scratches, cracks, surface noise, rumble and hum.
 The cassette: tape type and grade, saturation, generations of copies, wow and flutter
 (tempo-synced if you like, with flange), hiss and noise reduction, dropouts, a misaligned deck and
-age. Drive, width, output and mix sit around them. Still to come: warp, groove echo and skips,
-print-through, tape stop and factory presets. The effect has a fixed latency of about 70 ms,
+age. Drive, width, output and mix sit around them, and twenty-one factory sounds start from
+both media. Still to come: warp, groove echo and skips, print-through and tape stop. The effect has a fixed latency of about 70 ms,
 which it reports to the host.
 
 Part of the MXM collection: every instrument, effect and tool lives in its own repository under

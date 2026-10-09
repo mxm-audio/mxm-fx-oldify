@@ -107,9 +107,9 @@ record (era, player, cutting and replay curves, groove, the disc's surface, hum)
 (noise reduction, saturation, the measured tape responses, generations, wow and flutter with
 Flange, hiss that follows or stops with the input, dropouts, the deck's faults and the age's
 spacing loss); Record then cassette plays one into the other. The plugin syncs the wobble rates to
-the host's tempo and reports the latency and the chain's tail to the host. Still to come: the
-record's warp, groove echo and skips, the cassette's print-through, tape stop and High quality, and
-the factory presets. The §14 brief is [`docs/briefs/mxm-fx-oldify.md`](docs/briefs/mxm-fx-oldify.md).
+the host's tempo and reports the latency and the chain's tail to the host, and the plugin ships a
+factory bank of twenty-one sounds across both media. Still to come: the record's warp, groove echo
+and skips, and the cassette's print-through, tape stop and High quality. The §14 brief is [`docs/briefs/mxm-fx-oldify.md`](docs/briefs/mxm-fx-oldify.md).
 
 It is one of the MXM products, each in its own repository under
 [github.com/mxm-audio](https://github.com/mxm-audio), built on the MIT-licensed
@@ -201,4 +201,4 @@ only CI reaches macOS.
 |---|---|
 | [`crates/mxm-fx-oldify-dsp/AGENTS.md`](crates/mxm-fx-oldify-dsp/AGENTS.md) | The chain and the cassette engine: order, latency, tail, smoothing, exact paths, the building blocks (filter sections, tape responses, transport, saturation, spacing), sample rates and numeric contracts |
 | [`plugins/AGENTS.md`](plugins/AGENTS.md) | Shared plugin conventions: nice-plug, the init patch, presets, `process()` rules, the editor contract, and installing a bundle in a DAW |
-| [`plugins/mxm-fx-oldify/AGENTS.md`](plugins/mxm-fx-oldify/AGENTS.md) | Identity, the fifty-four permanent parameters, Init as the DSP's init patch, tempo sync, latency and the endless tail, what is still to come, the empty bank, the empty control map, telemetry and the nine-card editor |
+| [`plugins/mxm-fx-oldify/AGENTS.md`](plugins/mxm-fx-oldify/AGENTS.md) | Identity, the fifty-four permanent parameters, Init as the DSP's init patch, tempo sync, latency and the endless tail, what is still to come, the factory bank, the empty control map, telemetry and the nine-card editor |

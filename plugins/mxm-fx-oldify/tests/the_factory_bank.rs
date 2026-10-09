@@ -1,8 +1,5 @@
-//! The factory bank, and the Init every bank starts from.
-//!
-//! **The bank is empty until its sounds are designed by ear** (`plugins/mxm-fx-oldify/AGENTS.md`,
-//! *Presets*). The recipe check below runs over whatever ships, so the first sound added is held by
-//! it at once.
+//! The factory bank rendered against declared programme material, and the Init every bank starts
+//! from.
 
 use mxm_fx_oldify::params::MxmFxOldifyParams;
 use mxm_fx_oldify::{MxmFxOldify, preset};
@@ -86,16 +83,7 @@ fn render(plugin: &mut MxmFxOldify, input: &[f32]) -> Vec<f32> {
 }
 
 #[test]
-fn the_bank_is_empty_until_its_sounds_are_designed() {
-    assert!(
-        preset::FACTORY_FILES.is_empty(),
-        "a factory sound shipped: record the bank in plugins/mxm-fx-oldify/AGENTS.md and give it \
-         a design table and a render audit, as mxm-fx-delay's has"
-    );
-}
-
-#[test]
-fn every_shipped_recipe_loads_completely_and_renders_finite_without_clipping() {
+fn every_shipped_recipe_loads_renders_finite_without_clipping_and_is_heard() {
     let input = programme();
     for (slug, text) in preset::FACTORY_FILES {
         let parsed = preset::Preset::parse(text, mxm_fx_oldify::CLAP_ID)
@@ -109,6 +97,43 @@ fn every_shipped_recipe_loads_completely_and_renders_finite_without_clipping() {
             .iter()
             .fold(0.0f32, |peak, sample| peak.max(sample.abs()));
         assert!(peak < 1.0, "{slug} clips the declared programme at {peak}");
+        // Every sound is heard: it changes the programme, delayed by the latency.
+        let latency = plugin.latency() as usize;
+        let changed = (latency..input.len())
+            .map(|n| (wet[2 * n] - input[n - latency]).abs())
+            .fold(0.0f32, f32::max);
+        assert!(changed > 0.005, "{slug} is inaudible: {changed}");
+    }
+}
+
+/// **Loading a factory sound keeps the player's Mix**, and the loaded sound's baseline holds that
+/// Mix, so it reads unmodified until Mix itself moves.
+#[test]
+fn loading_a_factory_sound_keeps_the_players_mix() {
+    for (slug, text) in preset::FACTORY_FILES {
+        let plugin = MxmFxOldify::default();
+        unsafe {
+            let _ = plugin
+                .params
+                .mix
+                ._internal_set_normalized_value(plugin.params.mix.preview_normalized(0.63));
+        }
+        let parsed = preset::Preset::parse(text, mxm_fx_oldify::CLAP_ID).unwrap();
+        apply(&plugin, &parsed, preset::Origin::Factory);
+        assert!(
+            (plugin.params.mix.value() - 0.63).abs() < 1e-6,
+            "{slug} moved Mix to {}",
+            plugin.params.mix.value()
+        );
+        preset::mark_loaded(&*plugin.params, &parsed.name, preset::Origin::Factory);
+        assert!(!preset::loaded(&*plugin.params).is_modified(), "{slug}");
+        unsafe {
+            let _ = plugin
+                .params
+                .mix
+                ._internal_set_normalized_value(plugin.params.mix.preview_normalized(0.2));
+        }
+        assert!(preset::loaded(&*plugin.params).is_modified(), "{slug}");
     }
 }
 

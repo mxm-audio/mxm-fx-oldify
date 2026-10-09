@@ -16,6 +16,7 @@ pub const CLAP_ID: &str = concat!("dk.mxm.", plugin_name!());
 pub mod editor;
 pub mod params;
 pub mod preset;
+pub mod preset_designs;
 pub mod telemetry;
 
 use std::sync::Arc;
