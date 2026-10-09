@@ -113,10 +113,6 @@
       "v": 0.5,
       "text": "-50.0 dB"
     },
-    "medium": {
-      "v": 0.5,
-      "text": "Record"
-    },
     "noise_follows": {
       "v": 0.3,
       "text": "30 %"
@@ -153,6 +149,10 @@
       "v": 0.5,
       "text": "Portable"
     },
+    "record_on": {
+      "v": 1.0,
+      "text": "On"
+    },
     "replay_curve": {
       "v": 0.0,
       "text": "Follow player"
@@ -180,6 +180,10 @@
     "tape": {
       "v": 0.0,
       "text": "Type I"
+    },
+    "tape_on": {
+      "v": 0.0,
+      "text": "Off"
     },
     "tape_tone": {
       "v": 1.0,

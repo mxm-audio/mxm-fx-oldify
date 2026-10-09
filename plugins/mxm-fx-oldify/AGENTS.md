@@ -5,10 +5,9 @@ Parent: [`../AGENTS.md`](../AGENTS.md)
 # Purpose
 
 The `mxm-fx-oldify` CLAP effect: permanent parameters and identity, tempo sync, latency and tail
-reporting, the preset seam, control map, telemetry and nine-card editor around
-[`crates/mxm-fx-oldify-dsp`](../../crates/mxm-fx-oldify-dsp/AGENTS.md). **Both engines are in**: the
-record (era, player, curves, groove, surface) and the cassette (tape, transport, noise reduction,
-noise, dropouts, deck faults). What is still to come is under *Still to come*.
+reporting, the preset seam, control map, telemetry and eight-card editor around
+[`crates/mxm-fx-oldify-dsp`](../../crates/mxm-fx-oldify-dsp/AGENTS.md), with both engines in: the
+record and the cassette, each switched on its own group of cards.
 
 UI brief: [`../../docs/briefs/mxm-fx-oldify.md`](../../docs/briefs/mxm-fx-oldify.md). The design and
 measurements are private: `ops:notes/oldify/` (root *The design and its measurements are private*).
@@ -27,27 +26,27 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 - The sole crate-local name literal is `plugin_name!` in `src/lib.rs`; `bundler.toml` is the only
   external duplicate.
 - The parameter ids and every option id below are permanent: a stored enum is its id. Never rename
-  or recycle one. Declaration order is signal order, the cards'.
+  or recycle one; the retired ones are `params::RETIRED_IDS` (`medium`, `no_retired_id_is_back`).
+  Declaration order is signal order, the cards'.
 - CLAP features: audio-effect, distortion, stereo. Layouts: mono → stereo and stereo → stereo; a
   mono input feeds both sides. There is no note port and no developer MIDI channel.
 
 | Card | Id | Name | Range, law and option ids |
 |---|---|---|---|
-| Medium | `medium` | Medium | Cassette / Record / Record then cassette (`cassette`, `record`, `record-then-cassette`) |
-| | `age` | Age | 0–100 %, linear |
-| | `variation` | Variation | Integer 0…`MAX_VARIATION`: the seed every random source starts from |
-| Era | `disc` | Disc | LP 33⅓ / Single 45 / Shellac 78 (`lp-33`, `single-45`, `shellac-78`) |
+| Record | `record_on` | Record | Off / On: the record in the chain; on with Tape, a record taped to cassette |
+| | `disc` | Disc | LP 33⅓ / Single 45 / Shellac 78 (`lp-33`, `single-45`, `shellac-78`) |
 | | `era` | Era | Acoustic / Early electrical / US 78, 1940s / UK 78, 1940s / Late 78 / Early single / Early LP / Mono LP / Modern (`acoustic`, `early-electrical`, `us-78`, `uk-78`, `late-78`, `early-single`, `early-lp`, `mono-lp`, `modern`) |
 | | `player` | Player | Wind-up gramophone / Radiogram / Jukebox / Portable / Mono hi-fi / On the radio / Modern deck (`wind-up`, `radiogram`, `jukebox`, `portable`, `mono-hi-fi`, `on-the-radio`, `modern-deck`) |
 | | `cut_curve`, `replay_curve` | Cut curve, Replay curve | Follow era (`follow-era`) or Follow player (`follow-player`), then Flat / UK 78 / UK 78 with treble lift / US 78 / Early LP / Early 45 / Transcription / West Coast LP / Standard (`flat`, `uk-78`, `uk-78-with-treble-lift`, `us-78`, `early-lp`, `early-45`, `transcription`, `west-coast-lp`, `standard`) |
-| Groove | `wear`, `side` | Wear, Side position | 0–100 %, linear; side runs from the outer groove to the inner |
+| Record groove | `wear`, `side` | Wear, Side position | 0–100 %, linear; side runs from the outer groove to the inner |
 | | `groove_distortion` | Groove distortion | 0–200 %, linear; 100 % is the groove's own |
 | | `eccentricity` | Eccentricity | 0…`record::MAX_ECCENTRICITY_MM` mm, skewed so the everyday tenths get the first half |
-| Surface | `crackle`, `clicks` | Crackle, Clicks | 0…`disc::MAX_CRACKLE_HZ` / `MAX_CLICKS_HZ` a second, read `60/s`, skewed so the low counts get the travel |
+| Record surface | `crackle`, `clicks` | Crackle, Clicks | 0…`disc::MAX_CRACKLE_HZ` / `MAX_CLICKS_HZ` a second, read `60/s`, skewed so the low counts get the travel |
 | | `surface_noise`, `rumble` | Surface noise, Rumble | `disc::NOISE_OFF_DB` (Off)…`MAX_SURFACE_DB` / `MAX_RUMBLE_DB`, as Hiss |
 | | `scratches`, `cracks` | Scratches, Cracks | Integers 0…`disc::MAX_SCRATCHES` / `MAX_CRACKS`; Cracks drawn as buttons |
 | | `hum`, `hum_level` | Hum, Hum level | Off / 50 Hz / 60 Hz (`off`, `50-hz`, `60-hz`); the level `NOISE_OFF_DB` (Off)…`params::MAX_HUM_DB`, as Hiss |
-| Tape | `tape` | Tape | Type I / Type II / Type IV (`type-1`, `type-2`, `type-4`) |
+| Tape | `tape_on` | Tape | Off / On: the tape in the chain |
+| | `tape` | Tape type | Type I / Type II / Type IV (`type-1`, `type-2`, `type-4`) |
 | | `grade` | Grade | Economy / Standard / High / Reference (`economy`, `standard`, `high`, `reference`) |
 | | `tape_tone`, `saturation` | Tape tone, Saturation | 0–100 %, linear; zero Saturation is linear |
 | | `character` | Character | Soft / Hard (`soft`, `hard`) |
@@ -72,6 +71,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `mix` | Mix | 0–100 %, linear, against the dry input delayed by the latency |
 | | `noise_follows` | Noise follows | 0–100 %, linear |
 | | `noise_stops` | Noise stops in silence | Off / On |
+| | `variation` | Variation | Integer 0…`MAX_VARIATION`: the seed every random source starts from |
 
 The bounds are the DSP crate's constants, so the plugin's ranges and the DSP's clamps are one set of
 numbers. **A level stores linear gain**; one with an Off reads Off exactly where the DSP gets its
@@ -101,7 +101,7 @@ them Off (`preset::TEMPO_SYNC_IDS`, `mxm_preset::add_switches_off` in `filter_st
 ## Latency and tail
 
 - **The chain has one fixed latency**, `Oldify::latency()`, set by the sample rate alone: the
-  record's reach added to the cassette's, whatever the Medium. `activate` builds the engine (it
+  record's reach added to the cassette's, whatever is switched on. `activate` builds the engine (it
   allocates its delay lines there, never on the audio thread) and reports it with
   `ActivateContext::set_latency_samples`, once; it never changes while processing
   (`activation_reports_the_chains_latency_at_the_hosts_rate`). Mix zero is the dry input delayed by
@@ -130,7 +130,7 @@ takes a switch or a count as it comes ([NOTES.md § Smoothing](NOTES.md#smoothin
 Through `mxm-preset` (`src/preset.rs`). **Twenty-one factory sounds**, category Fx, designed in
 `src/preset_designs.rs` as overrides on Init and written to `presets/` by
 `examples/fx_oldify_build_presets.rs`. **A recipe leaves out Mix** (`is_factory_preserved`), as
-mxm-fx-delay's do, so loading a sound keeps the player's dry/wet balance
+mxm-fx-delay's do, so loading a sound keeps the player's Mix
 (`loading_a_factory_sound_keeps_the_players_mix`). Held by
 `every_shipped_recipe_is_what_the_generator_emits_today`,
 `the_factory_bank_is_complete_and_every_sound_its_own` and
@@ -147,13 +147,15 @@ control map claims no role](NOTES.md#why-the-control-map-claims-no-role)). Held 
 
 ## Editor and telemetry
 
-Nine Effects cards in signal order, each **under the brief's stable key** (`sections::KEYS`), what
-each holds in `sections::card` ([NOTES.md § The cards](NOTES.md#the-cards)). All nine show whatever
-Medium is: whether an absent engine's cards disappear is the brief's open question. Era, Player and
-the curves are caret selectors whose hover adds the chosen option's sentence (`option_sentences`).
-The shapes are drawn, not named; every switch cell carries its own sentence (`details_of`); Drive,
-Width, Output and NR level error are bipolar knobs; the on/off parameters are the collection's
-labelled toggle.
+Eight Effects cards in signal order, each **under the brief's stable key** (`sections::KEYS`), what
+each holds in `sections::card` ([NOTES.md § The cards](NOTES.md#the-cards)). **The Record and Tape
+switches head their groups' first cards; a group switched off is dimmed (`sections::DIMMED`, the
+shared disabled module's) but stays editable and reachable** (the owner, 2026-10-09: "There is not
+way to know what cards control the tape, and what controls the vinyl. So the tape/vinyl/tape+vinyl
+makes no sense."; [NOTES.md § Dimming](NOTES.md#dimming)). Era, Player and the curves are caret
+selectors whose hover adds the chosen option's sentence (`option_sentences`). The shapes are drawn,
+not named; every switch cell carries its own sentence (`details_of`); Drive, Width, Output and NR
+level error are bipolar knobs; the on/off parameters are the collection's labelled toggle.
 
 Every card body is a `mxm_ui::tree` (`editor/sections.rs`), its floor computed by
 `tree::card_floor`; there is no declared usability minimum. The window opens at the quarter-4K
@@ -163,13 +165,11 @@ tallest card's row (`the_window_contract_fits_the_quarter_4k_budget_and_widest_c
 `every_dynamic_page_fits_and_every_card_is_reachable`, `the_app_bar_holds_in_the_minimum_window`).
 The cursor reaches and operates exactly every parameter, the sync switches included
 (`the_keyboard_cursor_reaches_and_operates_every_parameter`), and every card passes the tree checks
-at Init, with every parameter at the bottom of its travel, and at the top with the syncs on at no
-tempo, a slow tempo and 120 bpm.
+in every state ([NOTES.md § The tree checks' states](NOTES.md#the-tree-checks-states)).
 
 `src/telemetry.rs` is the only audio-to-editor channel: the input and output peaks, max-combined
-until read, the output's clip, latched until acknowledged, and the host tempo in force. The app
-bar's meter shows the output; the Output card's display shows both. Telemetry may lose frames and
-never affects sound.
+until read, the output's clip, latched until acknowledged, and the host tempo in force ([NOTES.md §
+The meters](NOTES.md#the-meters)). Telemetry may lose frames and never affects sound.
 
 # Work Guidance
 

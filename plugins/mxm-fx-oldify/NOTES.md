@@ -32,7 +32,7 @@ Twenty-one sounds: nine cassettes, ten records, two records taped to cassette. T
 (`src/preset_designs.rs`) is the bank's one readable statement, each sound as overrides on Init in
 panel units with a sentence saying what it is; a control a design does not name stays at Init. Its
 `generate` writes every parameter but Mix: Mix is factory-preserved, as in mxm-fx-delay, so
-browsing keeps the player's dry/wet balance (the coordinator, 2026-10-09: the collection's
+browsing keeps the player's Mix (the coordinator, 2026-10-09: the collection's
 convention wins; "unlisted controls stay at Init" meant the sound controls, not Mix). The example only writes what `generate`
 returns, so the stale-file test can hold the committed files to a fresh generation. The values are
 first estimates, to be tuned by ear (2026-10-09). The shared browser shows no text per preset, so a
@@ -40,14 +40,21 @@ sound's sentence lives in the design table.
 
 ## The cards
 
-Nine Effects cards in signal order: **Medium** (Medium; Age, Variation), **Era** (Disc; Era, Player,
-Cut curve and Replay curve as lists), **Groove** (Wear, Side position; Groove distortion,
-Eccentricity), **Surface** (Crackle, Clicks, Surface noise; Scratches, Rumble; Cracks; Hum; Hum
-level), **Tape** (Tape; Grade; Tape tone, Saturation; Character; Generations), **Transport** (Wow,
-Wow rate and its sync; Wow shape; Flutter, Flutter rate and its sync; Flutter shape; Flutter follows
-wow; Flange), **Noise** (Hiss; Noise reduction; Decode; NR amount, NR brightness, NR level error;
-Dropouts, Dropout intensity, Dropout width), **Deck** (Azimuth, Crosstalk; Wrong EQ) and **Output**
-(the In and Out levels; Drive, Width, Output, Mix; Noise follows; Noise stops in silence).
+Eight Effects cards in signal order: **Record** (the Record switch; Disc; Era, Player, Cut curve
+and Replay curve as lists), **Record groove** (Wear, Side position; Groove distortion,
+Eccentricity), **Record surface** (Crackle, Clicks, Surface noise; Scratches, Rumble; Cracks; Hum;
+Hum level), **Tape** (the Tape switch; Tape type; Grade; Tape tone, Saturation; Character;
+Generations; Age), **Tape transport** (Wow, Wow rate and its sync; Wow shape; Flutter, Flutter rate
+and its sync; Flutter shape; Flutter follows wow; Flange), **Tape noise** (Hiss; Noise reduction;
+Decode; NR amount, NR brightness, NR level error; Dropouts, Dropout intensity, Dropout width),
+**Tape deck** (Azimuth, Crosstalk; Wrong EQ) and **Output** (the In and Out levels; Drive, Width,
+Output, Mix; Noise follows, Variation; Noise stops in silence). Noise follows and Variation share a
+knob row so Output fits beside the seven group cards on one page at the budget.
+
+**Why a switch on each group** (the owner, 2026-10-09): each group's switch heads its first card and
+each card is named for its group, so which cards shape the record and which the tape is plain; a
+switched-off group is dimmed, not hidden, so it can be set up before it is switched on. Age belongs
+to the tape (the record has Wear) and Variation to Output (it seeds both groups).
 
 **A list too long for a row of buttons** (Era, Player, the curves) is the collection's caret
 selector (§7.4), and since a list has one hover sentence, the option chosen appends its own
@@ -86,3 +93,16 @@ without a tempo; the DSP ramps the result like any turned knob.
 
 The init patch is an audible cassette, so *an effect starts engaged* is met
 (`the_defaults_are_audible_and_a_mono_input_feeds_both_sides`).
+
+## Dimming
+
+Only the card's controls dim: mxm-ui draws the title row.
+
+## The tree checks' states
+
+every card passes the tree checks at Init, with every parameter at the bottom of its travel, and at
+the top with the syncs on at no tempo, a slow tempo and 120 bpm.
+
+## The meters
+
+The app bar's meter shows the output; the Output card's display shows both.

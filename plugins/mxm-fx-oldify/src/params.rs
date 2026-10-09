@@ -30,7 +30,7 @@ use mxm_fx_oldify_dsp::record::{Era, MAX_ECCENTRICITY_MM, Mains, RecordControls}
 use mxm_fx_oldify_dsp::saturate::Character;
 use mxm_fx_oldify_dsp::tape::{Grade, Tape};
 use mxm_fx_oldify_dsp::transport::Shape;
-use mxm_fx_oldify_dsp::{Controls, MAX_GAIN_DB, MAX_WIDTH, MIN_GAIN_DB, Medium, db_to_gain};
+use mxm_fx_oldify_dsp::{Controls, MAX_GAIN_DB, MAX_WIDTH, MIN_GAIN_DB, db_to_gain};
 use mxm_preset::PresetIdentity;
 use mxm_tempo::{Direction, Division, Ladder, Span};
 use nice_plug::prelude::*;
@@ -49,28 +49,14 @@ pub const FLUTTER_SYNC: Ladder = Ladder::new(
     Direction::Rate,
 );
 
-#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MediumChoice {
-    #[id = "cassette"]
-    #[name = "Cassette"]
-    Cassette,
-    #[id = "record"]
-    #[name = "Record"]
-    Record,
-    #[id = "record-then-cassette"]
-    #[name = "Record then cassette"]
-    RecordThenCassette,
-}
-
-impl MediumChoice {
-    pub const fn dsp(self) -> Medium {
-        match self {
-            Self::Cassette => Medium::Cassette,
-            Self::Record => Medium::Record,
-            Self::RecordThenCassette => Medium::RecordThenCassette,
-        }
-    }
-}
+/// Every permanent id this plugin has retired. **None may ever be re-used**: a saved project or
+/// preset naming one is skipped for it, and a new parameter under an old name would be handed a value
+/// that meant something else.
+///
+/// `medium`, the Cassette / Record / Record then cassette selector, gave way to the Record and Tape
+/// switches (the owner, 2026-10-09: "There is not way to know what cards control the tape, and what
+/// controls the vinyl. So the tape/vinyl/tape+vinyl makes no sense.").
+pub const RETIRED_IDS: [&str; 1] = ["medium"];
 
 /// The disc's speed, and so its size and its noise's pace.
 #[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -691,15 +677,10 @@ fn sync(name: &'static str) -> BoolParam {
 
 #[derive(Params)]
 pub struct MxmFxOldifyParams {
-    // ---- Medium ----
-    #[id = "medium"]
-    pub medium: EnumParam<MediumChoice>,
-    #[id = "age"]
-    pub age: FloatParam,
-    #[id = "variation"]
-    pub variation: IntParam,
-
-    // ---- Era ----
+    // ---- Record ----
+    /// The record's switch: off, its cards are dimmed and it is out of the chain.
+    #[id = "record_on"]
+    pub record_on: BoolParam,
     #[id = "disc"]
     pub disc: EnumParam<DiscChoice>,
     #[id = "era"]
@@ -743,6 +724,9 @@ pub struct MxmFxOldifyParams {
     pub hum_level: FloatParam,
 
     // ---- Tape ----
+    /// The tape's switch: off, its cards are dimmed and it is out of the chain.
+    #[id = "tape_on"]
+    pub tape_on: BoolParam,
     #[id = "tape"]
     pub tape: EnumParam<TapeChoice>,
     #[id = "grade"]
@@ -755,6 +739,8 @@ pub struct MxmFxOldifyParams {
     pub character: EnumParam<CharacterChoice>,
     #[id = "generations"]
     pub generations: IntParam,
+    #[id = "age"]
+    pub age: FloatParam,
 
     // ---- Transport ----
     #[id = "wow"]
@@ -824,6 +810,8 @@ pub struct MxmFxOldifyParams {
     pub noise_follows: FloatParam,
     #[id = "noise_stops"]
     pub noise_stops: BoolParam,
+    #[id = "variation"]
+    pub variation: IntParam,
 
     #[persist = "preset"]
     pub preset: RwLock<PresetIdentity>,
@@ -838,17 +826,7 @@ impl Default for MxmFxOldifyParams {
         let cassette = init.cassette;
         let record = init.record;
         Self {
-            medium: EnumParam::new("Medium", MediumChoice::Cassette),
-            age: percent("Age", cassette.age, 1.0),
-            variation: IntParam::new(
-                "Variation",
-                cassette.variation as i32,
-                IntRange::Linear {
-                    min: 0,
-                    max: MAX_VARIATION as i32,
-                },
-            ),
-
+            record_on: BoolParam::new("Record", init.record_on),
             disc: EnumParam::new("Disc", DiscChoice::Lp33),
             era: EnumParam::new("Era", EraChoice::Modern),
             player: EnumParam::new("Player", PlayerChoice::ModernDeck),
@@ -907,7 +885,8 @@ impl Default for MxmFxOldifyParams {
             hum: EnumParam::new("Hum", HumChoice::Off),
             hum_level: off_level("Hum level", record.hum_db, NOISE_OFF_DB, MAX_HUM_DB),
 
-            tape: EnumParam::new("Tape", TapeChoice::TypeI),
+            tape_on: BoolParam::new("Tape", init.tape_on),
+            tape: EnumParam::new("Tape type", TapeChoice::TypeI),
             grade: EnumParam::new("Grade", GradeChoice::Standard),
             tape_tone: percent("Tape tone", cassette.tone, 1.0),
             saturation: percent("Saturation", cassette.saturation, 1.0),
@@ -920,6 +899,7 @@ impl Default for MxmFxOldifyParams {
                     max: i32::from(MAX_GENERATIONS),
                 },
             ),
+            age: percent("Age", cassette.age, 1.0),
 
             wow: percent("Wow", cassette.wow.depth, 1.0),
             wow_rate: rate("Wow rate", cassette.wow.hz, WOW_HZ),
@@ -974,6 +954,14 @@ impl Default for MxmFxOldifyParams {
             mix: percent("Mix", init.mix, 1.0),
             noise_follows: percent("Noise follows", init.noise_follows, 1.0),
             noise_stops: BoolParam::new("Noise stops in silence", init.noise_stops),
+            variation: IntParam::new(
+                "Variation",
+                cassette.variation as i32,
+                IntRange::Linear {
+                    min: 0,
+                    max: MAX_VARIATION as i32,
+                },
+            ),
             preset: RwLock::new(PresetIdentity::none()),
         }
     }
@@ -1015,7 +1003,8 @@ impl MxmFxOldifyParams {
     /// synced rates resolved at the host's `tempo`.
     pub fn controls(&self, tempo: Option<f64>) -> Controls {
         Controls {
-            medium: self.medium.value().dsp(),
+            record_on: self.record_on.value(),
+            tape_on: self.tape_on.value(),
             drive: self.drive.value(),
             width: self.width.value(),
             output: self.output.value(),
@@ -1115,6 +1104,21 @@ mod tests {
     #[test]
     fn the_defaults_are_the_dsp_init_patch() {
         assert_eq!(MxmFxOldifyParams::default().controls(None), Controls::INIT);
+    }
+
+    /// **No retired id is back**, under any spelling the derive produces.
+    #[test]
+    fn no_retired_id_is_back() {
+        use nice_plug::prelude::Params;
+        let params = MxmFxOldifyParams::default();
+        let ids: Vec<String> = params
+            .param_map()
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        for retired in RETIRED_IDS {
+            assert!(!ids.iter().any(|id| id == retired), "`{retired}` is back");
+        }
     }
 
     /// **0 dB is the middle of a gain's travel**, so a knob's centre is the level it came in at.

@@ -1,9 +1,11 @@
-//! Nine Effects cards in signal order, the record's then the cassette's: Medium, Era, Groove,
-//! Surface, Tape, Transport, Noise, Deck, Output.
+//! Eight Effects cards in signal order, in two groups and the output: Record, Record groove,
+//! Record surface; Tape, Tape transport, Tape noise, Tape deck; Output.
 //!
-//! Each card keeps the key the brief gives it (`docs/briefs/mxm-fx-oldify.md` §4). Each card
-//! body is a `mxm_ui::tree`: [`card`] describes it once, the paging renderer measures that one
-//! description for the card's floor and height, and [`paint`] draws it leaf by leaf through the
+//! **A group is switched on its first card**: the Record switch heads Record, the Tape switch heads
+//! Tape, and a group switched off is drawn dimmed but stays editable and reachable (the owner,
+//! 2026-10-09). Each card keeps the key the brief gives it (`docs/briefs/mxm-fx-oldify.md` §4).
+//! Each card body is a `mxm_ui::tree`: [`card`] describes it once, the paging renderer measures that
+//! one description for the card's floor and height, and [`paint`] draws it leaf by leaf through the
 //! bindings, so the controls, their gestures and their names are the bindings' own. Nothing is typed
 //! and nothing is drawn to learn a size.
 
@@ -21,19 +23,41 @@ use crate::params::MxmFxOldifyParams;
 
 const KNOB: Size = Size::Standard;
 /// The cards' titles, in paging order.
-pub const TITLES: [&str; 9] = [
-    "Medium",
-    "Era",
-    "Groove",
-    "Surface",
+pub const TITLES: [&str; 8] = [
+    "Record",
+    "Record groove",
+    "Record surface",
     "Tape",
-    "Transport",
-    "Noise",
-    "Deck",
+    "Tape transport",
+    "Tape noise",
+    "Tape deck",
     "Output",
 ];
-/// The cards' stable keys, the brief's: the record engine's cards take 1–3.
-pub const KEYS: [u64; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+/// The cards' stable keys, the brief's; its Medium card's key 0 is retired with the card.
+pub const KEYS: [u64; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+
+/// How much a switched-off group's controls keep of their emphasis: the shared disabled module's
+/// (`mxm_ui::shell`, *a disabled module reads at reduced emphasis but stays operable-looking and
+/// legible*).
+pub const DIMMED: f32 = 0.55;
+
+/// The group a card belongs to, by its index: its switch's id, or `None` for Output.
+fn group_of(index: usize) -> Option<&'static str> {
+    match index {
+        0..=2 => Some("record_on"),
+        3..=6 => Some("tape_on"),
+        _ => None,
+    }
+}
+
+/// Whether card `index` belongs to a group switched off.
+pub fn is_dimmed(params: &MxmFxOldifyParams, index: usize) -> bool {
+    match group_of(index) {
+        Some("record_on") => !params.record_on.value(),
+        Some(_) => !params.tape_on.value(),
+        None => false,
+    }
+}
 
 /// The level display's stated size; it fills its card's width.
 pub const LEVELS_MIN: Vec2 = vec2(160.0, 53.0);
@@ -89,19 +113,9 @@ fn sync_beside(id: &'static str) -> Node<Leaf> {
 pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
     vec![
         Bound::new(
-            "medium",
-            &params.medium,
-            "What the sound has been through: a cassette, a record, or a record taped onto a cassette.",
-        ),
-        Bound::new(
-            "age",
-            &params.age,
-            "How worn the medium is, from new to battered: older loses more of the top.",
-        ),
-        Bound::new(
-            "variation",
-            &params.variation,
-            "Picks another take of the wobble, hiss and dropouts; the same number always sounds the same.",
+            "record_on",
+            &params.record_on,
+            "Plays the sound as an old record; with Tape on too, the record is taped onto a cassette.",
         ),
         Bound::new(
             "disc",
@@ -189,6 +203,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "How loud the hum is, from off to loud.",
         ),
         Bound::new(
+            "tape_on",
+            &params.tape_on,
+            "Plays the sound through a cassette tape; with Record on too, the record is taped onto it.",
+        ),
+        Bound::new(
             "tape",
             &params.tape,
             "The kind of tape, from warm ferric to bright metal.",
@@ -217,6 +236,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "generations",
             &params.generations,
             "How many times the tape has been copied: each copy adds its own hiss, wobble and dullness.",
+        ),
+        Bound::new(
+            "age",
+            &params.age,
+            "How worn the tape is, from new to battered: older loses more of the top.",
         ),
         Bound::new(
             "wow",
@@ -349,6 +373,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             &params.noise_stops,
             "Stops the noise a moment after the sound does; off, it plays on in silence.",
         ),
+        Bound::new(
+            "variation",
+            &params.variation,
+            "Picks another take of the wobble, hiss, dropouts and crackle; the same number always sounds the same.",
+        ),
     ]
 }
 
@@ -384,7 +413,7 @@ pub fn cards(
         &[],
         text_editing,
         &mut |ui, index| card(ui, index, params),
-        &mut |ui, _, leaf, rect| paint(ui, tokens, leaf, rect, &mut live),
+        &mut |ui, index, leaf, rect| paint(ui, tokens, index, leaf, rect, &mut live),
     );
     report
         .visible
@@ -523,11 +552,6 @@ fn details_of(id: &str) -> &'static [&'static str] {
             "No hum from the mains.",
             "The hum of 50 Hz mains, as in Europe.",
             "The hum of 60 Hz mains, as in America.",
-        ],
-        "medium" => &[
-            "The sound of a cassette tape.",
-            "The sound of an old record.",
-            "An old record, taped onto a cassette.",
         ],
         "tape" => &[
             "Ferric tape: warm, with a soft top.",
@@ -686,37 +710,37 @@ fn display(key: Leaf, min: Vec2) -> Node<Leaf> {
 pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
     let gap = ui.spacing().item_spacing.x;
     match index {
+        // Each group's switch heads its first card.
         0 => stack(vec![
-            segmented_leaf(params, "medium"),
-            knobs(ui, params, &["age", "variation"]),
-        ]),
-        1 => stack(vec![
+            toggle_leaf(params, "record_on"),
             segmented_leaf(params, "disc"),
             selector_leaf(params, "era"),
             selector_leaf(params, "player"),
             selector_leaf(params, "cut_curve"),
             selector_leaf(params, "replay_curve"),
         ]),
-        2 => stack(vec![
+        1 => stack(vec![
             knobs(ui, params, &["wear", "side"]),
             knobs(ui, params, &["groove_distortion", "eccentricity"]),
         ]),
-        3 => stack(vec![
+        2 => stack(vec![
             knobs(ui, params, &["crackle", "clicks", "surface_noise"]),
             knobs(ui, params, &["scratches", "rumble"]),
             segmented_leaf(params, "cracks"),
             segmented_leaf(params, "hum"),
             knobs(ui, params, &["hum_level"]),
         ]),
-        4 => stack(vec![
+        3 => stack(vec![
+            toggle_leaf(params, "tape_on"),
             segmented_leaf(params, "tape"),
             segmented_leaf(params, "grade"),
             knobs(ui, params, &["tape_tone", "saturation"]),
             segmented_leaf(params, "character"),
             segmented_leaf(params, "generations"),
+            knobs(ui, params, &["age"]),
         ]),
         // Each rate with its tempo sync straight after it, then its shape.
-        5 => stack(vec![
+        4 => stack(vec![
             row_gap(
                 gap,
                 vec![
@@ -736,7 +760,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             toggle_leaf(params, "follow"),
             knobs(ui, params, &["flange"]),
         ]),
-        6 => stack(vec![
+        5 => stack(vec![
             knobs(ui, params, &["hiss"]),
             segmented_leaf(params, "nr"),
             toggle_leaf(params, "nr_decode"),
@@ -751,14 +775,14 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
                 &["dropouts", "dropout_intensity", "dropout_width"],
             ),
         ]),
-        7 => stack(vec![
+        6 => stack(vec![
             knobs(ui, params, &["azimuth", "crosstalk"]),
             toggle_leaf(params, "wrong_eq"),
         ]),
         _ => stack(vec![
             display(Leaf::Levels, LEVELS_MIN),
             knobs(ui, params, &["drive", "width", "output", "mix"]),
-            knobs(ui, params, &["noise_follows"]),
+            knobs(ui, params, &["noise_follows", "variation"]),
             toggle_leaf(params, "noise_stops"),
         ]),
     }
@@ -775,9 +799,22 @@ pub struct Live<'a, 'b> {
     pub display: Display,
 }
 
-/// Draws one leaf, in the `Ui` the tree bounded to its rectangle, through the bindings.
-pub fn paint(ui: &mut Ui, tokens: &Tokens, leaf: &Leaf, rect: egui::Rect, live: &mut Live<'_, '_>) {
+/// Draws one leaf of card `index`, in the `Ui` the tree bounded to its rectangle, through the
+/// bindings. A switched-off group's leaves are drawn at [`DIMMED`], all but its own switch, which
+/// stays at full strength so the way back on is plain; dimmed, every control still edits.
+pub fn paint(
+    ui: &mut Ui,
+    tokens: &Tokens,
+    index: usize,
+    leaf: &Leaf,
+    rect: egui::Rect,
+    live: &mut Live<'_, '_>,
+) {
     let params = live.params;
+    let switch = matches!(*leaf, Leaf::Toggle(id) if Some(id) == group_of(index));
+    if is_dimmed(params, index) && !switch {
+        ui.multiply_opacity(DIMMED);
+    }
     match *leaf {
         // At the knob row's column (`tree::knob_row`). Synced, a rate reads the division in
         // force; the host still reads its hertz.
@@ -925,7 +962,6 @@ mod tests {
     fn every_switch_cell_has_its_own_sentence_and_every_shape_its_picture() {
         let params = MxmFxOldifyParams::default();
         for id in [
-            "medium",
             "tape",
             "grade",
             "character",
@@ -949,6 +985,28 @@ mod tests {
                 "{id}"
             );
         }
+    }
+
+    /// **A group switched off is dimmed, its switch never**, and the output never is.
+    #[test]
+    fn a_group_switched_off_is_dimmed_and_output_never() {
+        use nice_plug::params::InternalParamMut;
+        let params = MxmFxOldifyParams::default();
+        // Init: the record off, the tape on.
+        let dimmed: Vec<_> = (0..TITLES.len()).map(|i| is_dimmed(&params, i)).collect();
+        assert_eq!(
+            dimmed,
+            [true, true, true, false, false, false, false, false]
+        );
+        unsafe {
+            let _ = params.record_on._internal_set_normalized_value(1.0);
+            let _ = params.tape_on._internal_set_normalized_value(0.0);
+        }
+        let dimmed: Vec<_> = (0..TITLES.len()).map(|i| is_dimmed(&params, i)).collect();
+        assert_eq!(dimmed, [false, false, false, true, true, true, true, false]);
+        assert_eq!(group_of(0), Some("record_on"));
+        assert_eq!(group_of(3), Some("tape_on"));
+        assert_eq!(group_of(TITLES.len() - 1), None);
     }
 
     #[test]

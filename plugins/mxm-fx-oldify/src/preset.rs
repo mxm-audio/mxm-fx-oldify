@@ -6,7 +6,7 @@
 //! what the generator emits today, so a design edited without regenerating fails here.
 //!
 //! **A recipe leaves out Mix, and only Mix** (`is_factory_preserved`), as mxm-fx-delay's do: loading
-//! a factory sound keeps the player's dry/wet balance, so browsing does not change it.
+//! a factory sound keeps the player's Mix, so browsing does not change it.
 
 use std::sync::RwLock;
 
@@ -24,9 +24,7 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
 
     fn parameters(&self) -> Vec<(&'static str, &dyn mxm_preset::ErasedParam)> {
         vec![
-            ("medium", &self.medium),
-            ("age", &self.age),
-            ("variation", &self.variation),
+            ("record_on", &self.record_on),
             ("disc", &self.disc),
             ("era", &self.era),
             ("player", &self.player),
@@ -44,12 +42,14 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("rumble", &self.rumble),
             ("hum", &self.hum),
             ("hum_level", &self.hum_level),
+            ("tape_on", &self.tape_on),
             ("tape", &self.tape),
             ("grade", &self.grade),
             ("tape_tone", &self.tape_tone),
             ("saturation", &self.saturation),
             ("character", &self.character),
             ("generations", &self.generations),
+            ("age", &self.age),
             ("wow", &self.wow),
             ("wow_rate", &self.wow_rate),
             ("wow_sync", &self.wow_sync),
@@ -78,6 +78,7 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("mix", &self.mix),
             ("noise_follows", &self.noise_follows),
             ("noise_stops", &self.noise_stops),
+            ("variation", &self.variation),
         ]
     }
 

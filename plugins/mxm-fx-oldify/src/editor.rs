@@ -1,4 +1,4 @@
-//! The dynamically paged editor for `mxm-fx-oldify`: nine cards in signal order.
+//! The dynamically paged editor for `mxm-fx-oldify`: eight cards in signal order.
 
 pub mod binding;
 pub mod sections;
@@ -17,12 +17,12 @@ use crate::params::MxmFxOldifyParams;
 use crate::telemetry::Telemetry;
 
 // The quarter-4K budget hugged to the cards, held by `the_opening_size_is_the_budget_hugged`.
-const REFERENCE: (u32, u32) = (1836, 1071);
+const REFERENCE: (u32, u32) = (1836, 985);
 // One card wide — the widest computed floor and the gutters — and as tall as
 // the tallest card's row; never narrower than the app bar at its last compact step. Held by
 // `the_window_contract_fits_the_quarter_4k_budget_and_widest_card`,
 // `every_dynamic_page_fits_and_every_card_is_reachable` and `the_app_bar_holds_in_the_minimum_window`.
-const MINIMUM: (u32, u32) = (511, 599);
+const MINIMUM: (u32, u32) = (387, 610);
 
 pub type MxmFxOldifyEditor = nice_plug_egui::EguiEditor<MxmFxOldifyApp>;
 pub use mxm_preset::PresetUi;
@@ -527,7 +527,7 @@ mod tests {
                     *floor,
                     &|ui| sections::card(ui, index, &params),
                     &mut |ui, leaf, rect| {
-                        sections::paint(ui, &mxm_ui::LIGHT, leaf, rect, &mut live);
+                        sections::paint(ui, &mxm_ui::LIGHT, index, leaf, rect, &mut live);
                     },
                 );
             }

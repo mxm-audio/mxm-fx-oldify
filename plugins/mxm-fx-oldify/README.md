@@ -1,33 +1,35 @@
 # mxm-fx-oldify
 
 A stereo effect that makes sound old: a cassette, an old record, or an old record taped onto a
-cassette, worn from new to battered by one Age control.
+cassette.
 
-Nine cards, in signal order:
+Two groups, each with its own switch heading its first card, and the output. Record on alone plays
+an old record; Tape on alone, a cassette; both on, a record taped to cassette. A group switched
+off is dimmed but can still be set up.
 
-- **Medium** — Cassette, Record or Record then cassette; Age; Variation, which picks another take of
-  everything random (the same number always sounds the same).
-- **Era** — the disc (LP, single or shellac 78), when it was cut (nine eras, from acoustic horns to
-  modern), what it is played on (seven players, from a wind-up gramophone to a modern deck), and
-  the cutting and replay curves, which follow the era and the player unless you pick others.
-- **Groove** — wear, where on the side the needle is, groove distortion and an off-centre hole.
-- **Surface** — crackle, clicks, surface noise, scratches and cracks that come round once a turn,
-  rumble, and mains hum.
-- **Tape** — Type I, II or IV at four grades (twelve measured responses) and how much of it is heard;
-  saturation, Soft or Hard; up to four generations of copies, each adding its own hiss, wobble and
-  dullness.
-- **Transport** — wow and flutter (depth, rate, shape), each rate syncable to the host's tempo;
+- **Record** — the Record switch; the disc (LP, single or shellac 78), when it was cut (nine eras,
+  from acoustic horns to modern), what it is played on (seven players, from a wind-up gramophone to
+  a modern deck), and the cutting and replay curves, which follow the era and the player unless you
+  pick others.
+- **Record groove** — wear, where on the side the needle is, groove distortion and an off-centre
+  hole.
+- **Record surface** — crackle, clicks, surface noise, scratches and cracks that come round once a
+  turn, rumble, and mains hum.
+- **Tape** — the Tape switch; Type I, II or IV at four grades (twelve measured responses) and how
+  much of it is heard; saturation, Soft or Hard; up to four generations of copies, each adding its
+  own hiss, wobble and dullness; Age, worn from new to battered.
+- **Tape transport** — wow and flutter (depth, rate, shape), each rate syncable to the host's tempo;
   flutter that follows the wow; Flange, a steady copy of the tape mixed against the moving one.
-- **Noise** — hiss; noise reduction, single- or two-band, with its amount, brightness, a level
+- **Tape noise** — hiss; noise reduction, single- or two-band, with its amount, brightness, a level
   error that makes it mistrack, and Decode off for the tape played without its decoder; and
   dropouts (how many, how deep and long, how differently left and right).
-- **Deck** — azimuth (a tilted head), crosstalk between the tracks, and the wrong playback EQ.
+- **Tape deck** — azimuth (a tilted head), crosstalk between the tracks, and the wrong playback EQ.
 - **Output** — Drive (±24 dB onto the tape, divided back out after it: more saturates more and
-  buries the hiss without getting louder), Width, Output, a dry/wet Mix against the dry input
-  delayed to match, how far the noise follows the input, and whether it stops in silence.
+  buries the hiss without getting louder), Width, Output, Mix against the dry input delayed to
+  match, how far the noise follows the input, whether it stops in silence, and Variation, which
+  picks another take of everything random (the same number always sounds the same).
 
-**Record then cassette** plays the record and tapes it. The chain has one fixed latency (about
-70 ms), reported to the host,
+The chain has one fixed latency (about 70 ms), reported to the host,
 and a tail after which silence in is exact silence out, unless the noise is set to play on.
 Twenty-one factory sounds cover cassettes, records and records taped to cassette, from a home deck
 to an acoustic 78 on a wind-up gramophone.

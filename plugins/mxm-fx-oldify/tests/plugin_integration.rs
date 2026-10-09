@@ -1,18 +1,11 @@
 //! The plugin shell over its DSP, through the same block entry a host's `process` calls.
 
 use mxm_fx_oldify::MxmFxOldify;
-use mxm_fx_oldify::params::MediumChoice;
 use mxm_fx_oldify_dsp::{MAX_GAIN_DB, MAX_WIDTH, db_to_gain};
 use nice_plug::params::{InternalParamMut, Param};
-use nice_plug::prelude::{EnumParam, FloatParam, Params};
+use nice_plug::prelude::{FloatParam, Params};
 
 fn set_float(param: &FloatParam, value: f32) {
-    unsafe {
-        let _ = param._internal_set_normalized_value(param.preview_normalized(value));
-    }
-}
-
-fn set_enum<E: nice_plug::params::enums::Enum + PartialEq>(param: &EnumParam<E>, value: E) {
     unsafe {
         let _ = param._internal_set_normalized_value(param.preview_normalized(value));
     }
@@ -70,13 +63,16 @@ fn every_rate_and_block_size_stays_finite_at_the_extremes() {
     }
 }
 
-/// **The Record medium plays the record**: its default, a played LP on a modern deck, changes the
-/// sound, and stays finite.
+/// **The Record switch plays the record**: its default, a played LP on a modern deck, alone (the
+/// tape switched off) changes the sound, and stays finite.
 #[test]
-fn the_record_medium_plays_the_record() {
+fn the_record_switch_plays_the_record() {
     let source = programme(16_384, 0.031);
     let mut plugin = MxmFxOldify::default();
-    set_enum(&plugin.params.medium, MediumChoice::Record);
+    unsafe {
+        let _ = plugin.params.record_on._internal_set_normalized_value(1.0);
+        let _ = plugin.params.tape_on._internal_set_normalized_value(0.0);
+    }
     assert!(plugin.prepare_for_test(48_000.0, 2));
     let latency = plugin.latency() as usize;
     let [left, right] = render(&mut plugin, &source);
@@ -191,8 +187,8 @@ fn every_cassette_control_changes_the_sound() {
             ],
         ),
     ];
-    // The record's controls, heard on the Record medium.
-    let record = [("medium", 0.5)];
+    // The record's controls, heard on the record alone.
+    let record = [("record_on", 1.0), ("tape_on", 0.0)];
     let record_reference = render_moved(&record, LOUD);
     let on_record: [Move<'_>; 16] = [
         ("disc", 1.0),
@@ -213,7 +209,10 @@ fn every_cassette_control_changes_the_sound() {
         ("variation", 0.5),
     ];
     for moved in on_record {
-        let heard = difference(&render_moved(&[record[0], moved], LOUD), &record_reference);
+        let heard = difference(
+            &render_moved(&[record[0], record[1], moved], LOUD),
+            &record_reference,
+        );
         assert!(
             heard > 1e-3,
             "{} changed nothing on a record: {heard}",
@@ -222,16 +221,19 @@ fn every_cassette_control_changes_the_sound() {
     }
     // A scratch ticks once a turn at its own angle: on a 78, half a second is more than half a
     // turn, where on an LP it is a quarter and a seed may put every scratch past it.
-    let shellac = [record[0], ("disc", 1.0)];
+    let shellac = [record[0], record[1], ("disc", 1.0)];
     let scratched = difference(
-        &render_moved(&[shellac[0], shellac[1], ("scratches", 1.0)], LOUD),
+        &render_moved(
+            &[shellac[0], shellac[1], shellac[2], ("scratches", 1.0)],
+            LOUD,
+        ),
         &render_moved(&shellac, LOUD),
     );
     assert!(scratched > 1e-3, "scratches changed nothing: {scratched}");
-    let hum = [record[0], ("hum", 0.5)];
+    let hum = [record[0], record[1], ("hum", 0.5)];
     let hum_reference = render_moved(&hum, LOUD);
     let louder = difference(
-        &render_moved(&[hum[0], hum[1], ("hum_level", 1.0)], LOUD),
+        &render_moved(&[hum[0], hum[1], hum[2], ("hum_level", 1.0)], LOUD),
         &hum_reference,
     );
     assert!(louder > 1e-3, "hum_level changed nothing: {louder}");

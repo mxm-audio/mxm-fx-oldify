@@ -17,10 +17,9 @@ pub type Part = &'static [(&'static str, f32)];
 /// bank) and its parts, applied in order over Init.
 pub type Design = (&'static str, Category, &'static str, &'static [Part]);
 
-// Medium.
-const CASSETTE: f32 = 0.0;
-const RECORD: f32 = 1.0;
-const RECORD_THEN_CASSETTE: f32 = 2.0;
+// Switches.
+const OFF: f32 = 0.0;
+const ON: f32 = 1.0;
 // Tape and grade.
 const TYPE_I: f32 = 0.0;
 const TYPE_II: f32 = 1.0;
@@ -59,9 +58,12 @@ const MONO_HI_FI: f32 = 4.0;
 const ON_THE_RADIO: f32 = 5.0;
 const MODERN_DECK: f32 = 6.0;
 
-const ON_CASSETTE: Part = &[("medium", CASSETTE)];
-const ON_RECORD: Part = &[("medium", RECORD)];
-const CHAINED: Part = &[("medium", RECORD_THEN_CASSETTE)];
+/// A cassette alone: the tape on, the record off.
+const ON_CASSETTE: Part = &[("tape_on", ON), ("record_on", OFF)];
+/// A record alone.
+const ON_RECORD: Part = &[("record_on", ON), ("tape_on", OFF)];
+/// Both on: a record taped to cassette.
+const CHAINED: Part = &[("record_on", ON), ("tape_on", ON)];
 
 const HOME_DECK: Part = &[
     ("tape", TYPE_I),

@@ -23,20 +23,22 @@ input → Drive → [the record] → the cassette engine → ÷ Drive (a latency
   → Width → Output → Mix with the dry, delayed
 ```
 
-- **Medium**: `Cassette` runs the cassette engine; `Record` the record engine, then the cassette
-  engine **neutral**, for its moving read alone; `RecordThenCassette` both. Switching onto the
-  record clears it first.
+- **Two switches, `record_on` and `tape_on`** (the owner, 2026-10-09: which controls belong to
+  the record and which to the tape must be plain). Record on plays the record engine; tape on the
+  cassette engine; both, a record taped to cassette; with the tape off the cassette engine still
+  runs **neutral**, for its moving read alone; both off leaves Drive, Width, Output and Mix.
+  Switching the record on clears it first.
 - **One moving read for both media.** The record's eccentricity and turntable wobble ride the
   cassette transport's line (`Cassette::set_record_wobbles`, `Transport::set_extras`): a time-warp
   passes through the curves and the player almost unchanged and through a memoryless curve exactly,
-  so the record needs no delay line of its own and the latency is one, whatever the Medium. Hum is
+  so the record needs no delay line of its own and the latency is one, whichever are on. Hum is
   added after the read and does not wobble.
-- **Drive is compensated** by the drive the sound leaving the medium went in with, one latency
+- **Drive is compensated** by the drive the sound leaving the media went in with, one latency
   earlier: dividing by today's drive swung the level by Drive's whole range during a move.
 - **One fixed latency**, `Oldify::latency`: the oversampler's, the transport's base delay (twice
   the wow's, flutter's, eccentricity's and turntable's reach) and the centre of azimuth's delay
-  between the tracks, about 71 ms, the same for every control and Medium; the dry path is delayed by it, so Mix never combs. The plugin
-  reports it.
+  between the tracks, about 71 ms, the same for every control and switch; the dry path is
+  delayed by it, so Mix never combs. The plugin reports it.
 - Width works about the mid; Mix is a linear crossfade with the delayed dry.
 - **The noise** is gated by the chain: it holds `NOISE_HOLD_S` after the input falls silent and
   fades over `NOISE_FADE_S`. **Noise follows** scales it by the input's level against
