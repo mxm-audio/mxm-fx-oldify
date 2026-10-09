@@ -1,0 +1,11 @@
+[package]
+name = "mxm-fx-oldify-dsp"
+description = "Framework-free DSP for mxm-fx-oldify: the stereo chain the cassette and record engines will fill"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.87"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]

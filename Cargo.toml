@@ -1,0 +1,52 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/mxm-fx-oldify-dsp",
+    "plugins/mxm-fx-oldify",
+    "plugins/mxm-fx-oldify/host-tests",
+    "xtask",
+]
+# The fast tier: `cargo build` and `cargo test` here never build MXM Player or a
+# standalone audio backend; `cargo test --workspace` adds the host tests (the slow tier).
+default-members = [
+    "crates/mxm-fx-oldify-dsp",
+    "plugins/mxm-fx-oldify",
+    "xtask",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"        # the GUI floor; crates that do not need it override downward
+license = "GPL-3.0-or-later"
+authors = ["mxm"]
+repository = "https://github.com/mxm-audio/mxm-fx-oldify"
+
+[workspace.dependencies]
+# Pinned exactly, as in every MXM repository; Cargo.lock is committed. Own crates by path, the
+# kit's and the player's from their repositories' `main`, locked to a commit.
+egui = "=0.36.1"
+mxm-fx-oldify-dsp = { path = "crates/mxm-fx-oldify-dsp" }
+mxm-player = { git = "https://github.com/mxm-audio/mxm-player", branch = "main" }
+mxm-player-harness = { git = "https://github.com/mxm-audio/mxm-player", branch = "main" }
+mxm-plugin-test = { git = "https://github.com/mxm-audio/mxm-kit", branch = "main" }
+mxm-preset = { git = "https://github.com/mxm-audio/mxm-kit", branch = "main" }
+mxm-ui = { git = "https://github.com/mxm-audio/mxm-kit", branch = "main" }
+mxm-xtask = { git = "https://github.com/mxm-audio/mxm-kit", branch = "main" }
+nice-plug = { version = "=0.4.2", default-features = false, features = ["editor", "assert_process_allocs"] }
+nice-plug-egui = { version = "=0.5.1", default-features = false, features = ["opengl"] }
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"
+
+# nice-plug and egui-baseview as published, plus the patches in each fork's PATCHES.md, as every
+# MXM repository that builds a plugin patches them.
+[patch.crates-io]
+nice-plug = { git = "https://github.com/mxm-audio/nice-plug", branch = "main" }
+egui-baseview = { git = "https://github.com/mxm-audio/egui-baseview", branch = "main" }
