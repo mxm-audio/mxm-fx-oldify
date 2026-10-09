@@ -7,7 +7,7 @@ Parent: [`../AGENTS.md`](../AGENTS.md)
 The `mxm-fx-oldify` CLAP effect: permanent parameters and identity, tempo sync, latency and tail
 reporting, the preset seam, control map, telemetry and six-card editor around
 [`crates/mxm-fx-oldify-dsp`](../../crates/mxm-fx-oldify-dsp/AGENTS.md). **The cassette engine is
-in, with its noise, dropouts and deck faults; still to come are noise reduction, print-through,
+in, with its noise reduction, noise, dropouts and deck faults; still to come are print-through,
 tape stop, Quality and the record engine.**
 
 UI brief: [`../../docs/briefs/mxm-fx-oldify.md`](../../docs/briefs/mxm-fx-oldify.md). The design and
@@ -50,6 +50,10 @@ remains in the framework-free product crate; visual geometry remains in `mxm-ui`
 | | `follow` | Flutter follows wow | Off / On |
 | | `flange` | Flange | 0–100 %, linear |
 | Noise | `hiss` | Hiss | `HISS_OFF_DB`…`HISS_MAX_DB`, stored as linear gain, `gain_skew_factor`; Off at the bottom |
+| | `nr` | Noise reduction | Off / Single-band / Two-band (`off`, `single-band`, `two-band`) |
+| | `nr_decode` | Decode | On / Off: Off plays the tape without its decoder |
+| | `nr_amount`, `nr_brightness` | NR amount, NR brightness | 0–100 %, linear: half is the period's 10 dB a stage; the band's corner across `nr::CORNER_HZ` |
+| | `nr_level_error` | NR level error | ±`nr::MAX_LEVEL_ERROR_DB`, stored as linear gain, 0 dB mid-travel, read in dB; `params::level_error_db` gives the DSP its decibels to a hundredth, so 0 dB arrives as zero |
 | | `dropouts`, `dropout_intensity`, `dropout_width` | Dropouts, Dropout intensity, Dropout width | 0–100 %, linear |
 | Deck | `azimuth` | Azimuth | 0…`MAX_AZIMUTH_ARCMIN` arc-minutes, read `15.0′` (`'` and `arcmin` parse too), skewed so 15′ is mid-travel |
 | | `crosstalk` | Crosstalk | `CROSSTALK_OFF_DB`…`CROSSTALK_MAX_DB`, as Hiss |
@@ -118,8 +122,8 @@ so a target still lands on its sample.
 
 - **The record engine.** The Record medium passes the input until then:
   `the_record_medium_passes_the_input_delayed_until_its_engine_exists` changes on purpose then.
-- Noise reduction, print-through, tape stop and Quality are not parameters yet; each id is fixed
-  when its control arrives.
+- Print-through, tape stop and Quality are not parameters yet; each id is fixed when its control
+  arrives.
 
 ## Presets
 
@@ -150,12 +154,13 @@ Six Effects cards in signal order, each **under the brief's stable key** (`secti
 record engine's cards take keys 1–3 without moving these: **Medium** (Medium; Age, Variation),
 **Tape** (Tape; Grade; Tape tone, Saturation; Character; Generations), **Transport** (Wow, Wow rate
 and its sync; Wow shape; Flutter, Flutter rate and its sync; Flutter shape; Flutter follows wow;
-Flange), **Noise** (Hiss; Dropouts, Dropout intensity, Dropout width), **Deck** (Azimuth,
+Flange), **Noise** (Hiss; Noise reduction; Decode; NR amount, NR brightness, NR level error; Dropouts,
+Dropout intensity, Dropout width), **Deck** (Azimuth,
 Crosstalk; Wrong EQ) and **Output** (the In and Out levels; Drive, Width, Output, Mix; Noise
 follows; Noise stops in silence). All six show whatever Medium is: whether an absent engine's cards
 disappear is the brief's open question, settled with the record engine's cards. The shapes are
-drawn, not named; every switch cell carries its own sentence (`details_of`); Drive, Width and
-Output are bipolar knobs; the on/off parameters are the collection's labelled toggle.
+drawn, not named; every switch cell carries its own sentence (`details_of`); Drive, Width, Output and NR level
+error are bipolar knobs; the on/off parameters are the collection's labelled toggle.
 
 Every card body is a `mxm_ui::tree` (`editor/sections.rs`), its floor computed by
 `tree::card_floor`; there is no declared usability minimum. The window opens at the quarter-4K

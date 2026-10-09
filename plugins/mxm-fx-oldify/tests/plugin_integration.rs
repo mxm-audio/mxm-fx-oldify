@@ -84,53 +84,60 @@ fn the_record_medium_passes_the_input_delayed_until_its_engine_exists() {
     assert_eq!(right[latency..], source[..8_192 - latency]);
 }
 
-/// Deterministic noise in −0.3..0.3 (a 32-bit LCG): broadband, so a change anywhere in the
-/// spectrum shows.
-fn noise(frames: usize, seed: u32) -> Vec<f32> {
+/// Deterministic noise in −`level`..`level` (a 32-bit LCG): broadband, so a change anywhere in
+/// the spectrum shows.
+fn noise(frames: usize, seed: u32, level: f32) -> Vec<f32> {
     let mut state = seed;
     (0..frames)
         .map(|_| {
             state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            0.3 * ((state >> 8) as f32 / (1u32 << 23) as f32 - 1.0)
+            level * ((state >> 8) as f32 / (1u32 << 23) as f32 - 1.0)
         })
         .collect()
 }
 
+/// A parameter moved by id, as a normalised value.
+type Move<'a> = (&'a str, f32);
+
+/// Renders a pair of `level` noise through a fresh instance with `moves` applied.
+fn render_moved(moves: &[Move<'_>], level: f32) -> [Vec<f32>; 2] {
+    let (left, right) = (noise(24_000, 1, level), noise(24_000, 2, level));
+    let mut plugin = MxmFxOldify::default();
+    for (id, value) in moves {
+        let (_, param, _) = plugin
+            .params
+            .param_map()
+            .into_iter()
+            .find(|(other, _, _)| other == id)
+            .unwrap_or_else(|| panic!("no parameter {id}"));
+        unsafe {
+            let _ = param._internal_set_normalized_value(*value);
+        }
+    }
+    assert!(plugin.prepare_for_test(48_000.0, 2));
+    let (mut l, mut r) = (left, right);
+    let mut channels: Vec<&mut [f32]> = vec![&mut l, &mut r];
+    let _ = plugin.process_block_for_test(&mut channels, None);
+    [l, r]
+}
+
+/// The largest difference between two renders, over both channels.
+fn difference(a: &[Vec<f32>; 2], b: &[Vec<f32>; 2]) -> f32 {
+    a.iter()
+        .zip(b)
+        .flat_map(|(x, y)| x.iter().zip(y))
+        .fold(0.0f32, |peak, (x, y)| peak.max((x - y).abs()))
+}
+
 /// **Every cassette control is heard**: each one moved from the init patch changes what comes
-/// out, in one channel or the other. Dropouts are raised for their two shapers, which shape
-/// nothing while too few happen to be heard.
+/// out, in one channel or the other. A control that shapes something off at Init is moved with
+/// that something on: the dropouts' shapers with Dropouts up, the noise reduction's with it on,
+/// heard on a quiet programme, where it works.
 #[test]
 fn every_cassette_control_changes_the_sound() {
-    let (left, right) = (noise(24_000, 1), noise(24_000, 2));
-    let render_with = |moves: &[(&str, f32)]| {
-        let mut plugin = MxmFxOldify::default();
-        for (id, value) in moves {
-            let (_, param, _) = plugin
-                .params
-                .param_map()
-                .into_iter()
-                .find(|(other, _, _)| other == id)
-                .unwrap_or_else(|| panic!("no parameter {id}"));
-            unsafe {
-                let _ = param._internal_set_normalized_value(*value);
-            }
-        }
-        assert!(plugin.prepare_for_test(48_000.0, 2));
-        let (mut l, mut r) = (left.clone(), right.clone());
-        let mut channels: Vec<&mut [f32]> = vec![&mut l, &mut r];
-        let _ = plugin.process_block_for_test(&mut channels, None);
-        [l, r]
-    };
-    let difference = |a: &[Vec<f32>; 2], b: &[Vec<f32>; 2]| {
-        a.iter()
-            .zip(b)
-            .flat_map(|(x, y)| x.iter().zip(y))
-            .fold(0.0f32, |peak, (x, y)| peak.max((x - y).abs()))
-    };
-    let reference = render_with(&[]);
-    let busy = [("dropouts", 1.0)];
-    let busy_reference = render_with(&busy);
-    let alone: [(&str, f32); 15] = [
+    const LOUD: f32 = 0.3;
+    const QUIET: f32 = 0.01;
+    let alone: [Move<'_>; 16] = [
         ("age", 1.0),
         ("variation", 0.5),
         ("tape", 1.0),
@@ -141,20 +148,48 @@ fn every_cassette_control_changes_the_sound() {
         ("wow", 1.0),
         ("flange", 1.0),
         ("hiss", 1.0),
+        ("nr", 1.0),
         ("dropouts", 1.0),
         ("azimuth", 1.0),
         ("crosstalk", 1.0),
         ("wrong_eq", 1.0),
         ("noise_follows", 1.0),
     ];
-    for (id, value) in alone {
-        let moved = render_with(&[(id, value)]);
-        let heard = difference(&moved, &reference);
-        assert!(heard > 1e-3, "{id} changed nothing: {heard}");
+    let reference = render_moved(&[], LOUD);
+    for moved in alone {
+        let heard = difference(&render_moved(&[moved], LOUD), &reference);
+        assert!(heard > 1e-3, "{} changed nothing: {heard}", moved.0);
     }
-    for id in ["dropout_intensity", "dropout_width"] {
-        let moved = render_with(&[busy[0], (id, 1.0)]);
-        let heard = difference(&moved, &busy_reference);
-        assert!(heard > 1e-3, "{id} changed nothing: {heard}");
+    // (what must be on, its programme's level, the threshold, the controls it shapes)
+    let shaped: [(Move<'_>, f32, f32, [Move<'_>; 4]); 2] = [
+        (
+            ("dropouts", 1.0),
+            LOUD,
+            1e-3,
+            [
+                ("dropout_intensity", 1.0),
+                ("dropout_width", 1.0),
+                ("dropout_intensity", 0.0),
+                ("dropout_width", 0.0),
+            ],
+        ),
+        (
+            ("nr", 0.5),
+            QUIET,
+            1e-4,
+            [
+                ("nr_decode", 0.0),
+                ("nr_amount", 1.0),
+                ("nr_brightness", 1.0),
+                ("nr_level_error", 1.0),
+            ],
+        ),
+    ];
+    for (on, level, threshold, moves) in shaped {
+        let base = render_moved(&[on], level);
+        for moved in moves {
+            let heard = difference(&render_moved(&[on, moved], level), &base);
+            assert!(heard > threshold, "{} changed nothing: {heard}", moved.0);
+        }
     }
 }

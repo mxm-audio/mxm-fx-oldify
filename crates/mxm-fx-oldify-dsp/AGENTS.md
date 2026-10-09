@@ -38,10 +38,10 @@ input → Drive → the medium → ÷ Drive (a latency ago) → Width → Output
 ## The cassette engine (`cassette.rs`)
 
 ```text
-saturator (pre-emphasis → 2× curve → de-emphasis) → tape response × Tape tone
+NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape response × Tape tone
   → transport (wow, flutter; Flange against the unmoved read) → crosstalk → + hiss
   → spacing loss (Age, generations, azimuth, a dropout's lift) → a dropout's dip
-  → wrong playback EQ → azimuth's delay between the tracks
+  → wrong playback EQ → azimuth's delay between the tracks → NR decode
 ```
 
 - The physics' order, not the reference's (which filters before saturating): a known difference.
@@ -76,6 +76,15 @@ saturator (pre-emphasis → 2× curve → de-emphasis) → tape response × Tape
   centred integrals; a change goes into a drift term that leaks away at an eighth of the rate, so
   the read never jumps; the random shape is Ornstein–Uhlenbeck. The base delay is twice the reach.
   Wow and flutter are the same in both channels, as measured.
+- **`nr`**: noise reduction, a sliding-band compander: `y = x + k · H(x)`, `H` a high-pass whose
+  corner slides up and `k` falls with the side chain's own level (previous sample). **The decoder
+  is the encoder solved for its input, exactly** (`x = (y − k · pending) / (1 + k · b₀)`), from its
+  own side chain, so encode then decode is the identity and a tape between mistracks where the
+  physics does; both sides move their corners on the same `UPDATE` schedule. Single-band: one
+  stage, about 10 dB above its corner for quiet treble. Two-band: a second stage 20 dB lower and an
+  octave lower, inside a top-octave skew. Decode off is the encoded sound; the level error scales
+  what reaches the decoder and puts the level back, so only the tracking changes. On white hiss
+  the whole falls about 6–7 dB single-band and 8–9 dB two-band (its energy below the corners stays).
 - **`dropouts`**: Poisson events of raised-cosine dips, log-uniform lengths from 3 ms and uniform
   depths, each lifting the tape `LIFT_UM_PER_DB` per decibel (the measured treble excess). Amount
   sets the rate (up to `MAX_RATE_HZ`) and depth; Intensity makes them fewer, longer, deeper; Width
@@ -125,7 +134,7 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
 The smoothing, gain and width bounds, rate range, the transport's leak, reach and `FOLLOW_DEPTH`,
 the depth and Age laws, `EMPHASIS_DB`, `FADE_IN`, `MAX_DRIVE`, the curves' shapes, the hiss's top
 and its 70 µs offset, the silence thresholds and times, the noise follower's, `GENERATION_UM`, the
-dropout laws and `WRONG_EQ_DB` are chosen here, not measured. The tape table, the spacing law, the
+dropout laws, `WRONG_EQ_DB` and the noise reduction's thresholds, corners, skew and detector are chosen here, not measured. The tape table, the spacing law, the
 dropout statistics and lift, azimuth's geometry and the wow, flutter and saturation extremes come
 from measurement or physics and say so.
 
@@ -154,8 +163,9 @@ off, following noise at three input levels, the ramps, the latency near 50 ms at
 tape table against the measurement, the curves' slope, bounds and asymmetry, treble saturating
 first, the oversampler's round trip, the transport's depths, reach, seeds, unmoved read and
 following flutter, the spacing loss against Wallace at every common rate and a sweep without a
-jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch and loss, and the
-skew's exact split).
+jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch and loss, the
+skew's exact split, and the noise reduction's lift, two-band's reach, exact decode, undecoded and
+off paths, mistracking and hiss reduction).
 
 # Child DOX Index
 

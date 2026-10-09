@@ -101,11 +101,12 @@ Child DOX Index
 **mxm-fx-oldify** is an MXM effect that makes sound old: cassette tape and old records (vinyl and
 shellac), from a new deck to a battered 78 on a radiogram.
 
-**Pre-alpha. The cassette engine is in; the record engine is to come**, and so are noise
-reduction, print-through, tape stop and Quality. The DSP crate holds the chain — Drive, the medium,
+**Pre-alpha. The cassette engine is in; the record engine is to come**, and so are
+print-through, tape stop and Quality. The DSP crate holds the chain — Drive, the medium,
 Width, Output and Mix against the dry input delayed by the chain's fixed latency — and the cassette
-engine: saturation, the measured tape responses, generations, wow and flutter (with Flange), hiss
-that follows or stops with the input, dropouts, the deck's faults and the age's spacing loss. The
+engine: noise reduction, saturation, the measured tape responses, generations, wow and flutter
+(with Flange), hiss that follows or stops with the input, dropouts, the deck's faults and the age's
+spacing loss. The
 plugin syncs the wobble rates to the host's tempo and reports the latency and the chain's tail to
 the host. The Record medium passes the sound through, delayed, until its engine exists. The §14
 brief is [`docs/briefs/mxm-fx-oldify.md`](docs/briefs/mxm-fx-oldify.md).
@@ -200,4 +201,4 @@ only CI reaches macOS.
 |---|---|
 | [`crates/mxm-fx-oldify-dsp/AGENTS.md`](crates/mxm-fx-oldify-dsp/AGENTS.md) | The chain and the cassette engine: order, latency, tail, smoothing, exact paths, the building blocks (filter sections, tape responses, transport, saturation, spacing), sample rates and numeric contracts |
 | [`plugins/AGENTS.md`](plugins/AGENTS.md) | Shared plugin conventions: nice-plug, the init patch, presets, `process()` rules, the editor contract, and installing a bundle in a DAW |
-| [`plugins/mxm-fx-oldify/AGENTS.md`](plugins/mxm-fx-oldify/AGENTS.md) | Identity, the thirty-two permanent parameters, Init as the DSP's init patch, tempo sync, latency and the endless tail, what is still to come, the empty bank, the empty control map, telemetry and the six-card editor |
+| [`plugins/mxm-fx-oldify/AGENTS.md`](plugins/mxm-fx-oldify/AGENTS.md) | Identity, the thirty-seven permanent parameters, Init as the DSP's init patch, tempo sync, latency and the endless tail, what is still to come, the empty bank, the empty control map, telemetry and the six-card editor |

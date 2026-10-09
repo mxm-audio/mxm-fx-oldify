@@ -24,6 +24,8 @@ use core::fmt;
 
 pub mod biquad;
 pub mod cassette;
+pub mod curves;
+pub mod disc;
 pub mod dropouts;
 pub mod nr;
 pub mod oversample;
@@ -628,6 +630,13 @@ mod tests {
             crosstalk_db: crate::cassette::CROSSTALK_MAX_DB,
             wrong_eq: true,
             variation: crate::cassette::MAX_VARIATION,
+            nr: crate::nr::NrControls {
+                kind: crate::nr::NoiseReduction::TwoBand,
+                decode: true,
+                amount: 1.0,
+                brightness: 1.0,
+                level_error_db: crate::nr::MAX_LEVEL_ERROR_DB,
+            },
         };
         let mut all = Vec::new();
         for medium in [Medium::Cassette, Medium::Record] {
@@ -972,6 +981,44 @@ mod tests {
         assert!((hiss_under(FOLLOW_REFERENCE / 10.0) + 60.0).abs() < 1.5);
         let most = -40.0 + 20.0 * FOLLOW_MOST.log10();
         assert!((hiss_under(0.9) - most).abs() < 1.5);
+    }
+
+    #[test]
+    fn decoded_noise_reduction_takes_the_hiss_down() {
+        // A tone far under the hiss keeps the chain awake; what comes out is the hiss, with the
+        // decoder pulling its treble down, and the music, encoded and decoded, as it went in. The
+        // hiss is a real tape's against a −10 dBFS reference, under both stages' thresholds.
+        let hiss_db = |kind| {
+            let controls = Controls {
+                cassette: CassetteControls {
+                    hiss_db: -66.0,
+                    nr: crate::nr::NrControls {
+                        kind,
+                        ..crate::nr::NrControls::OFF
+                    },
+                    ..CassetteControls::NEUTRAL
+                },
+                ..Controls::IDENTITY
+            };
+            let n = 48_000;
+            let quiet: Vec<f32> = (0..n)
+                .map(|i| 2e-6 * (std::f32::consts::TAU * 300.0 * i as f32 / RATE).sin())
+                .collect();
+            let mut oldify = settled_at(controls);
+            let [left, _] = render(&mut oldify, &quiet, &quiet, controls);
+            let rms = (left[n / 2..].iter().map(|s| s * s).sum::<f32>() / (n / 2) as f32).sqrt();
+            20.0 * rms.log10()
+        };
+        let off = hiss_db(crate::nr::NoiseReduction::Off);
+        let single = hiss_db(crate::nr::NoiseReduction::SingleBand);
+        let double = hiss_db(crate::nr::NoiseReduction::TwoBand);
+        // About 10 dB a stage above its corner, as the period's systems; on white hiss, whose
+        // energy below the corners stays, about 6–7 dB single-band and 8–9 dB two-band in all.
+        assert!(single < off - 5.0, "off {off:.1}, single-band {single:.1}");
+        assert!(
+            double < single - 1.0,
+            "single-band {single:.1}, two-band {double:.1}"
+        );
     }
 
     #[test]

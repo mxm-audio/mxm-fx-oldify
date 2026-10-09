@@ -171,6 +171,32 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         ),
         Bound::new("hiss", &params.hiss, "The tape's own hiss, from off to loud."),
         Bound::new(
+            "nr",
+            &params.nr,
+            "Lowers the hiss by lifting quiet treble on the way onto the tape and taking it back off on the way out.",
+        ),
+        Bound::new(
+            "nr_decode",
+            &params.nr_decode,
+            "Off plays the tape without its decoder: brighter, compressed, and breathing on quiet passages.",
+        ),
+        Bound::new(
+            "nr_amount",
+            &params.nr_amount,
+            "How much quiet treble is lifted and taken back: more lowers the hiss further.",
+        ),
+        Bound::new(
+            "nr_brightness",
+            &params.nr_brightness,
+            "Where the noise reduction's band begins, from the upper middle up into the treble.",
+        ),
+        Bound::new(
+            "nr_level_error",
+            &params.nr_level_error,
+            "How far the playback level is off from the recording's, so the treble pumps and the hiss breathes with the music.",
+        )
+        .bipolar(),
+        Bound::new(
             "dropouts",
             &params.dropouts,
             "How often the tape briefly loses touch with the head, dipping the sound.",
@@ -415,6 +441,11 @@ fn details_of(id: &str) -> &'static [&'static str] {
             "An even, steady tremble.",
             "An irregular, wandering tremble.",
         ],
+        "nr" => &[
+            "No noise reduction: the hiss as the tape made it.",
+            "One band on the treble, as on most cassettes of the time.",
+            "Two bands reaching lower, for about twice the hiss reduction.",
+        ],
         "generations" => &[
             "The first recording, as it was made.",
             "A copy of the first recording.",
@@ -509,6 +540,13 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
         ]),
         3 => stack(vec![
             knobs(ui, params, &["hiss"]),
+            segmented_leaf(params, "nr"),
+            toggle_leaf(params, "nr_decode"),
+            knobs(
+                ui,
+                params,
+                &["nr_amount", "nr_brightness", "nr_level_error"],
+            ),
             knobs(
                 ui,
                 params,
@@ -674,6 +712,7 @@ mod tests {
             "grade",
             "character",
             "generations",
+            "nr",
             "wow_shape",
             "flutter_shape",
         ] {

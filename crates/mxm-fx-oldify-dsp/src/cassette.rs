@@ -1,10 +1,11 @@
 //! The cassette engine, per stereo frame:
 //!
 //! ```text
-//! saturator (pre-emphasis → 2× curve → de-emphasis) → tape response, by Tape tone
-//!   → transport (wow and flutter; Flange against the unmoved read) → crosstalk → + hiss
-//!   → spacing loss (Age, generations, azimuth, a dropout's lift) → a dropout's dip
-//!   → wrong playback EQ → azimuth's delay between the tracks
+//! noise-reduction encode → saturator (pre-emphasis → 2× curve → de-emphasis)
+//!   → tape response, by Tape tone → transport (wow and flutter; Flange against the unmoved read)
+//!   → crosstalk → + hiss → spacing loss (Age, generations, azimuth, a dropout's lift)
+//!   → a dropout's dip → wrong playback EQ → azimuth's delay between the tracks
+//!   → noise-reduction decode
 //! ```
 //!
 //! The order is the physics' (`ops: notes/oldify/reports`, the cassette signal chain): the record
@@ -40,6 +41,7 @@
 use crate::Ramp;
 use crate::biquad::{Biquad, Kind, Section};
 use crate::dropouts::{DropoutControls, Dropouts, LIFT_UM_PER_DB};
+use crate::nr::{Nr, NrControls};
 use crate::saturate::{Character, Saturator};
 use crate::spacing::Spacing;
 use crate::tape::{Grade, Tape, TapeResponse};
@@ -129,6 +131,8 @@ pub struct CassetteControls {
     pub age: f32,
     /// Which seed every random source starts from, 0..=[`MAX_VARIATION`].
     pub variation: u32,
+    /// Noise reduction: encoded before the tape, decoded after the deck.
+    pub nr: NrControls,
 }
 
 impl CassetteControls {
@@ -159,6 +163,7 @@ impl CassetteControls {
         wrong_eq: false,
         age: 0.0,
         variation: 0,
+        nr: NrControls::OFF,
     };
 
     /// The init patch's cassette: ferric, standard grade, gently saturated, light random wow and
@@ -227,6 +232,7 @@ impl CassetteControls {
             ),
             age: unit(self.age),
             variation: self.variation.min(MAX_VARIATION),
+            nr: self.nr.bounded(),
             ..self
         }
     }
@@ -401,6 +407,7 @@ pub struct Cassette {
     transport: Transport,
     dropouts: Dropouts,
     skew: Skew,
+    nr: Nr,
     tape: Option<(Tape, Grade)>,
     targets: CassetteControls,
     seed: u32,
@@ -415,6 +422,9 @@ pub struct Cassette {
     azimuth: Ramp,
     crosstalk: Ramp,
     age: Ramp,
+    nr_amount: Ramp,
+    nr_brightness: Ramp,
+    nr_error: Ramp,
 }
 
 impl Cassette {
@@ -436,6 +446,7 @@ impl Cassette {
             transport: Transport::new(sample_rate, WOW_REACH_S + FLUTTER_REACH_S, seed),
             dropouts: Dropouts::new(sample_rate, seed),
             skew: Skew::new(sample_rate),
+            nr: Nr::new(sample_rate),
             tape: None,
             targets: init,
             seed,
@@ -450,6 +461,9 @@ impl Cassette {
             azimuth: ramp(init.azimuth),
             crosstalk: ramp(crosstalk_gain(init.crosstalk_db)),
             age: ramp(init.age),
+            nr_amount: ramp(init.nr.amount),
+            nr_brightness: ramp(init.nr.brightness),
+            nr_error: ramp(init.nr.level_error_db),
         }
     }
 
@@ -505,9 +519,12 @@ impl Cassette {
         self.azimuth.retarget(c.azimuth);
         self.crosstalk.retarget(crosstalk_gain(c.crosstalk_db));
         self.age.retarget(c.age);
+        self.nr_amount.retarget(c.nr.amount);
+        self.nr_brightness.retarget(c.nr.brightness);
+        self.nr_error.retarget(c.nr.level_error_db);
     }
 
-    fn ramps(&mut self) -> [&mut Ramp; 11] {
+    fn ramps(&mut self) -> [&mut Ramp; 14] {
         [
             &mut self.tone,
             &mut self.saturation,
@@ -520,6 +537,9 @@ impl Cassette {
             &mut self.azimuth,
             &mut self.crosstalk,
             &mut self.age,
+            &mut self.nr_amount,
+            &mut self.nr_brightness,
+            &mut self.nr_error,
         ]
     }
 
@@ -546,6 +566,9 @@ impl Cassette {
             &self.azimuth,
             &self.crosstalk,
             &self.age,
+            &self.nr_amount,
+            &self.nr_brightness,
+            &self.nr_error,
         ]
         .iter()
         .all(|r| r.is_settled())
@@ -563,6 +586,7 @@ impl Cassette {
         self.transport.reset();
         self.dropouts.clear(self.seed);
         self.skew.clear();
+        self.nr.reset();
     }
 
     /// One stereo frame through the tape. `noise` (0–1, or more when it follows a loud input)
@@ -607,6 +631,13 @@ impl Cassette {
                 0.0
             };
         let dips = self.dropouts.next(&c.dropouts);
+        let nr = NrControls {
+            amount: self.nr_amount.next(),
+            brightness: self.nr_brightness.next(),
+            level_error_db: self.nr_error.next(),
+            ..c.nr
+        };
+        let input = self.nr.encode(input, &nr);
 
         let mut recorded = [0.0f32; 2];
         for (y, (channel, &x)) in recorded
@@ -657,7 +688,8 @@ impl Cassette {
         } else {
             0.0
         };
-        self.skew.process(out, delay)
+        let played = self.skew.process(out, delay);
+        self.nr.decode(played, &nr)
     }
 }
 

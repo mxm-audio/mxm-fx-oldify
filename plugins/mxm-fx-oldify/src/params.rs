@@ -18,6 +18,7 @@ use mxm_fx_oldify_dsp::cassette::{
     MAX_AZIMUTH_ARCMIN, MAX_GENERATIONS, MAX_VARIATION, Motion, WOW_HZ,
 };
 use mxm_fx_oldify_dsp::dropouts::DropoutControls;
+use mxm_fx_oldify_dsp::nr::{MAX_LEVEL_ERROR_DB, NoiseReduction, NrControls};
 use mxm_fx_oldify_dsp::saturate::Character;
 use mxm_fx_oldify_dsp::tape::{Grade, Tape};
 use mxm_fx_oldify_dsp::transport::Shape;
@@ -121,6 +122,30 @@ pub enum CharacterChoice {
     #[id = "hard"]
     #[name = "Hard"]
     Hard,
+}
+
+/// The noise reduction's system.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoiseReductionChoice {
+    #[id = "off"]
+    #[name = "Off"]
+    Off,
+    #[id = "single-band"]
+    #[name = "Single-band"]
+    SingleBand,
+    #[id = "two-band"]
+    #[name = "Two-band"]
+    TwoBand,
+}
+
+impl NoiseReductionChoice {
+    pub const fn dsp(self) -> NoiseReduction {
+        match self {
+            Self::Off => NoiseReduction::Off,
+            Self::SingleBand => NoiseReduction::SingleBand,
+            Self::TwoBand => NoiseReduction::TwoBand,
+        }
+    }
 }
 
 impl CharacterChoice {
@@ -297,13 +322,26 @@ fn off_level(name: &'static str, default_db: f32, off_db: f32, max_db: f32) -> F
 /// A gain across ±24 dB, **stored as linear gain** (the collection's rule for gain parameters),
 /// skewed so 0 dB sits at the middle of the travel and read in decibels.
 fn gain(name: &'static str) -> FloatParam {
+    gain_within(name, 1.0, MIN_GAIN_DB, MAX_GAIN_DB)
+}
+
+/// **NR level error as the DSP takes it, from the stored gain**: its decibels to a hundredth, so
+/// 0 dB reaches the DSP as exactly zero.
+pub fn level_error_db(gain: f32) -> f32 {
+    let db = 20.0 * gain.max(f32::MIN_POSITIVE).log10();
+    ((db * 100.0).round() / 100.0).clamp(-MAX_LEVEL_ERROR_DB, MAX_LEVEL_ERROR_DB)
+}
+
+/// A gain from `min_db` to `max_db`, stored as linear gain, its decibels spread evenly across the
+/// travel and read in dB.
+fn gain_within(name: &'static str, default: f32, min_db: f32, max_db: f32) -> FloatParam {
     FloatParam::new(
         name,
-        1.0,
+        default,
         FloatRange::Skewed {
-            min: db_to_gain(MIN_GAIN_DB),
-            max: db_to_gain(MAX_GAIN_DB),
-            factor: FloatRange::gain_skew_factor(MIN_GAIN_DB, MAX_GAIN_DB),
+            min: db_to_gain(min_db),
+            max: db_to_gain(max_db),
+            factor: FloatRange::gain_skew_factor(min_db, max_db),
         },
     )
     .with_unit(" dB")
@@ -395,6 +433,17 @@ pub struct MxmFxOldifyParams {
     /// Stored as linear gain; the bottom of the travel is Off.
     #[id = "hiss"]
     pub hiss: FloatParam,
+    #[id = "nr"]
+    pub nr: EnumParam<NoiseReductionChoice>,
+    #[id = "nr_decode"]
+    pub nr_decode: BoolParam,
+    #[id = "nr_amount"]
+    pub nr_amount: FloatParam,
+    #[id = "nr_brightness"]
+    pub nr_brightness: FloatParam,
+    /// Stored as linear gain, read in dB.
+    #[id = "nr_level_error"]
+    pub nr_level_error: FloatParam,
     #[id = "dropouts"]
     pub dropouts: FloatParam,
     #[id = "dropout_intensity"]
@@ -474,6 +523,16 @@ impl Default for MxmFxOldifyParams {
             flange: percent("Flange", cassette.flange, 1.0),
 
             hiss: off_level("Hiss", cassette.hiss_db, HISS_OFF_DB, HISS_MAX_DB),
+            nr: EnumParam::new("Noise reduction", NoiseReductionChoice::Off),
+            nr_decode: BoolParam::new("Decode", cassette.nr.decode),
+            nr_amount: percent("NR amount", cassette.nr.amount, 1.0),
+            nr_brightness: percent("NR brightness", cassette.nr.brightness, 1.0),
+            nr_level_error: gain_within(
+                "NR level error",
+                db_to_gain(cassette.nr.level_error_db),
+                -MAX_LEVEL_ERROR_DB,
+                MAX_LEVEL_ERROR_DB,
+            ),
             dropouts: percent("Dropouts", cassette.dropouts.amount, 1.0),
             dropout_intensity: percent("Dropout intensity", cassette.dropouts.intensity, 1.0),
             dropout_width: percent("Dropout width", cassette.dropouts.width, 1.0),
@@ -573,6 +632,13 @@ impl MxmFxOldifyParams {
                 follow: self.follow.value(),
                 flange: self.flange.value(),
                 hiss_db: hiss_db(self.hiss.value()),
+                nr: NrControls {
+                    kind: self.nr.value().dsp(),
+                    decode: self.nr_decode.value(),
+                    amount: self.nr_amount.value(),
+                    brightness: self.nr_brightness.value(),
+                    level_error_db: level_error_db(self.nr_level_error.value()),
+                },
                 dropouts: DropoutControls {
                     amount: self.dropouts.value(),
                     intensity: self.dropout_intensity.value(),
@@ -625,6 +691,11 @@ mod tests {
             assert_eq!(param.normalized_value_to_string(0.0, true), "-24.0 dB");
             assert_eq!(param.normalized_value_to_string(1.0, true), "24.0 dB");
         }
+        let error = &params.nr_level_error;
+        assert_eq!(error.normalized_value_to_string(0.5, true), "0.0 dB");
+        assert_eq!(error.normalized_value_to_string(0.0, true), "-6.0 dB");
+        assert_eq!(error.normalized_value_to_string(1.0, true), "6.0 dB");
+        assert_eq!(level_error_db(error.preview_plain(0.5)), 0.0);
         assert_eq!(params.width.normalized_value_to_string(0.5, true), "100 %");
         assert_eq!(params.width.normalized_value_to_string(1.0, true), "200 %");
     }
@@ -775,7 +846,7 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 19] = [
+        let continuous: [&FloatParam; 22] = [
             &params.age,
             &params.tape_tone,
             &params.saturation,
@@ -785,6 +856,9 @@ mod tests {
             &params.flutter_rate,
             &params.flange,
             &params.hiss,
+            &params.nr_amount,
+            &params.nr_brightness,
+            &params.nr_level_error,
             &params.dropouts,
             &params.dropout_intensity,
             &params.dropout_width,

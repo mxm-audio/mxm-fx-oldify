@@ -12,7 +12,9 @@ cassette, worn from new to battered by one Age control.
   dullness.
 - **Transport** — wow and flutter (depth, rate, shape), each rate syncable to the host's tempo;
   flutter that follows the wow; Flange, a steady copy of the tape mixed against the moving one.
-- **Noise** — hiss, and dropouts (how many, how deep and long, how differently left and right).
+- **Noise** — hiss; noise reduction, single- or two-band, with its amount, brightness, a level
+  error that makes it mistrack, and Decode off for the tape played without its decoder; and
+  dropouts (how many, how deep and long, how differently left and right).
 - **Deck** — azimuth (a tilted head), crosstalk between the tracks, and the wrong playback EQ.
 - **Output** — Drive (±24 dB onto the tape, divided back out after it: more saturates more and
   buries the hiss without getting louder), Width, Output, a dry/wet Mix against the dry input
