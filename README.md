@@ -3,10 +3,10 @@
 An MXM effect that makes sound old: cassette tape and old records (vinyl and shellac), from a new
 deck to a battered 78 on a radiogram.
 
-**Pre-alpha, and the engines are not built yet.** Today the plugin is the shell every MXM plugin
-has — parameters, presets, editor, control map — around a placeholder chain: Drive, stereo Width,
-Output and a dry/wet Mix. Medium and Age are there, permanent, and do nothing until the cassette
-and record engines arrive. Inserted at its defaults it passes the sound through untouched.
+**Pre-alpha.** The cassette engine works: tape type and grade, saturation, wow and flutter, hiss
+and age, with drive, width, output and mix around them. The record engine is still to come (the
+Record medium passes the sound through for now), and so are noise reduction, dropouts and tempo
+sync. The effect has a fixed latency of about 50 ms, which it reports to the host.
 
 Part of the MXM collection: every instrument, effect and tool lives in its own repository under
 [github.com/mxm-audio](https://github.com/mxm-audio), built on

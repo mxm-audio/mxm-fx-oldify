@@ -1,7 +1,8 @@
 //! `mxm-fx-oldify` — the collection's effect that makes sound old: cassette tape and old records.
 //!
-//! The cassette and record engines are not built yet. What ships today is the shell every MXM
-//! plugin has, around the DSP crate's placeholder chain: Drive, Width, Output and Mix.
+//! The cassette engine is in; the record engine is to come (Record passes the sound, delayed by the
+//! latency). The DSP is `mxm-fx-oldify-dsp`; this shell converts host state and units, reports the
+//! chain's fixed latency and its tail, and publishes levels to the editor.
 
 macro_rules! plugin_name {
     () => {
@@ -19,7 +20,7 @@ pub mod telemetry;
 
 use std::sync::Arc;
 
-use mxm_fx_oldify_dsp::Oldify;
+use mxm_fx_oldify_dsp::{Oldify, SILENCE};
 use nice_plug::prelude::*;
 use params::MxmFxOldifyParams;
 use telemetry::Telemetry;
@@ -29,6 +30,9 @@ pub struct MxmFxOldify {
     telemetry: Arc<Telemetry>,
     engine: Oldify,
     input_channels: usize,
+    /// Samples since the input was last above the DSP's [`SILENCE`], counted as the DSP counts
+    /// them, so the tail reported is the DSP's own: `u64::MAX` when long silent.
+    silent_for: u64,
 }
 
 impl Default for MxmFxOldify {
@@ -38,13 +42,15 @@ impl Default for MxmFxOldify {
             telemetry: Telemetry::shared(),
             engine: Oldify::new(48_000.0).expect("48 kHz is supported"),
             input_channels: 1,
+            silent_for: u64::MAX,
         }
     }
 }
 
 impl MxmFxOldify {
     /// A fresh engine at `sample_rate`, settled at the controls as they stand, so an activation
-    /// never ramps from the identity to a restored state.
+    /// never ramps from the identity to a restored state. Allocates (the engine's delay lines):
+    /// called where the sample rate becomes known, never on the audio thread.
     fn prepare(&mut self, sample_rate: f32, input_channels: usize) -> bool {
         let Ok(mut engine) = Oldify::new(sample_rate) else {
             return false;
@@ -53,7 +59,13 @@ impl MxmFxOldify {
         engine.reset();
         self.engine = engine;
         self.input_channels = input_channels.clamp(1, 2);
+        self.silent_for = u64::MAX;
         true
+    }
+
+    /// The chain's delay, in samples, at the prepared sample rate: what activation reports.
+    pub fn latency(&self) -> u32 {
+        self.engine.latency()
     }
 
     pub fn prepare_for_test(&mut self, sample_rate: f32, input_channels: usize) -> bool {
@@ -86,6 +98,7 @@ impl MxmFxOldify {
                 if self.input_channels == 1 {
                     right[..samples].copy_from_slice(&left[..samples]);
                 }
+                self.count_silence(&left[..samples], &right[..samples]);
                 self.engine.process(
                     &mut left[..samples],
                     &mut right[..samples],
@@ -97,9 +110,32 @@ impl MxmFxOldify {
             _ => 0.0,
         };
         self.telemetry.publish(input_peak, output_peak);
+        self.status()
+    }
 
-        // No state outlives the input yet, so there is never a tail to report.
-        ProcessStatus::Normal
+    /// Moves the silence count across this block's input, as the DSP will see it.
+    fn count_silence(&mut self, left: &[f32], right: &[f32]) {
+        let sounding = |sample: &f32| sample.is_finite() && sample.abs() > SILENCE;
+        let last = left
+            .iter()
+            .zip(right)
+            .rposition(|(l, r)| sounding(l) || sounding(r));
+        self.silent_for = match last {
+            Some(index) => (left.len() - 1 - index) as u64,
+            None => self.silent_for.saturating_add(left.len() as u64),
+        };
+    }
+
+    /// **The tail is the DSP's**: `Tail(n)` with the samples left until the output is exact zero
+    /// if the input stays silent from here, and `Normal` once it is, so a host may sleep the effect
+    /// and doing nothing costs nothing.
+    fn status(&self) -> ProcessStatus {
+        let left = u64::from(self.engine.tail()).saturating_sub(self.silent_for);
+        if left == 0 {
+            ProcessStatus::Normal
+        } else {
+            ProcessStatus::Tail(u32::try_from(left).unwrap_or(u32::MAX))
+        }
     }
 }
 
@@ -137,25 +173,34 @@ impl Plugin for MxmFxOldify {
         editor::create(self.params.clone(), self.telemetry.clone())
     }
 
+    /// Builds the engine for the host's sample rate and **reports the chain's fixed latency**: the
+    /// same for every control and every Medium, so it is reported here once and never changes
+    /// while processing.
     fn activate(
         &mut self,
         layout: &AudioIOLayout,
         config: &BufferConfig,
-        _context: &mut impl ActivateContext<Self>,
+        context: &mut impl ActivateContext<Self>,
     ) -> bool {
-        self.prepare(
+        let prepared = self.prepare(
             config.sample_rate,
             layout
                 .main_input_channels
                 .map_or(1, |channels| channels.get() as usize),
-        )
+        );
+        if prepared {
+            context.set_latency_samples(self.engine.latency());
+        }
+        prepared
     }
 
     fn reset(&mut self) {
         // A host resets without a callback between (a bypass, a transport restart), and a
-        // parameter flush may have moved a control meanwhile: start at the controls as they stand.
+        // parameter flush may have moved a control meanwhile: start at the controls as they stand,
+        // with every memory cleared.
         self.engine.set_controls(self.params.controls());
         self.engine.reset();
+        self.silent_for = u64::MAX;
     }
 
     fn process(
@@ -187,6 +232,7 @@ nice_export_clap!(MxmFxOldify);
 mod tests {
     use super::*;
     use nice_plug::params::{InternalParamMut, Param};
+    use std::cell::Cell;
 
     fn set(param: &FloatParam, value: f32) {
         unsafe {
@@ -194,8 +240,39 @@ mod tests {
         }
     }
 
+    fn set_medium(plugin: &MxmFxOldify, medium: params::MediumChoice) {
+        unsafe {
+            let _ = plugin
+                .params
+                .medium
+                ._internal_set_normalized_value(plugin.params.medium.preview_normalized(medium));
+        }
+    }
+
     fn programme(frames: usize, step: f32) -> Vec<f32> {
         (0..frames).map(|n| (n as f32 * step).sin() * 0.4).collect()
+    }
+
+    fn run(plugin: &mut MxmFxOldify, left: &mut [f32], right: &mut [f32]) -> ProcessStatus {
+        let mut channels: Vec<&mut [f32]> = vec![left, right];
+        plugin.process_block(&mut channels)
+    }
+
+    /// An activation context that remembers the latency it was told.
+    #[derive(Default)]
+    struct Activation {
+        latency: Cell<Option<u32>>,
+    }
+
+    impl ActivateContext<MxmFxOldify> for Activation {
+        fn plugin_api(&self) -> PluginApi {
+            PluginApi::Clap
+        }
+        fn execute(&self, _task: ()) {}
+        fn set_latency_samples(&self, samples: u32) {
+            self.latency.set(Some(samples));
+        }
+        fn set_current_voice_capacity(&self, _capacity: u32) {}
     }
 
     #[test]
@@ -207,62 +284,95 @@ mod tests {
         assert_eq!(MxmFxOldify::MIDI_INPUT, MidiConfig::None);
     }
 
-    /// **The defaults pass the input to the bit** in both layouts, a mono input reaching both
-    /// sides: until the engines exist, an inserted Oldify is out of the way.
+    /// **Activation reports the chain's latency** at the host's rate, as the engine has it.
     #[test]
-    fn the_defaults_pass_the_input_to_the_bit_in_both_layouts() {
-        for inputs in [1, 2] {
+    fn activation_reports_the_chains_latency_at_the_hosts_rate() {
+        for rate in [44_100.0, 48_000.0, 96_000.0] {
             let mut plugin = MxmFxOldify::default();
-            assert!(plugin.prepare(48_000.0, inputs));
-            let source_l = programme(4096, 0.13);
-            let source_r = programme(4096, 0.07);
-            let mut left = source_l.clone();
-            let mut right = source_r.clone();
-            let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
-            let status = plugin.process_block(&mut channels);
-            assert!(matches!(status, ProcessStatus::Normal));
-            assert_eq!(left, source_l);
-            assert_eq!(right, if inputs == 1 { source_l } else { source_r });
+            let mut context = Activation::default();
+            let config = BufferConfig {
+                sample_rate: rate,
+                min_buffer_size: None,
+                max_buffer_size: 512,
+                process_mode: ProcessMode::Realtime,
+            };
+            assert!(plugin.activate(&MxmFxOldify::AUDIO_IO_LAYOUTS[1], &config, &mut context));
+            let reported = context.latency.get().expect("a latency was reported");
+            assert_eq!(reported, Oldify::new(rate).unwrap().latency());
+            assert_eq!(reported, plugin.latency());
         }
     }
 
+    /// **An inserted Oldify is engaged**: the init patch is an audible cassette, finite, and a
+    /// mono input feeds both sides exactly as a stereo pair of it would.
     #[test]
-    fn mix_zero_is_dry_to_the_bit_whatever_else_is_set() {
+    fn the_defaults_are_audible_and_a_mono_input_feeds_both_sides() {
+        let source = programme(16_384, 0.13);
+        let mut mono = MxmFxOldify::default();
+        assert!(mono.prepare(48_000.0, 1));
+        let (mut left, mut right) = (source.clone(), vec![0.0; source.len()]);
+        run(&mut mono, &mut left, &mut right);
+
+        let mut stereo = MxmFxOldify::default();
+        assert!(stereo.prepare(48_000.0, 2));
+        let (mut pair_l, mut pair_r) = (source.clone(), source.clone());
+        run(&mut stereo, &mut pair_l, &mut pair_r);
+
+        assert_eq!(left, pair_l);
+        assert_eq!(right, pair_r);
+        assert!(left.iter().chain(&right).all(|sample| sample.is_finite()));
+        let latency = mono.latency() as usize;
+        let difference = (latency..source.len())
+            .map(|n| (left[n] - source[n - latency]).abs())
+            .fold(0.0f32, f32::max);
+        assert!(
+            difference > 0.01,
+            "the init patch is inaudible: {difference}"
+        );
+    }
+
+    /// **Mix zero is the dry input, delayed by the reported latency**, whatever else is set.
+    #[test]
+    fn mix_zero_is_the_dry_input_delayed_by_the_latency() {
         let mut plugin = MxmFxOldify::default();
         set(&plugin.params.drive, 15.0);
         set(&plugin.params.width, 0.0);
         set(&plugin.params.output, 0.1);
+        set(&plugin.params.saturation, 1.0);
         set(&plugin.params.mix, 0.0);
         assert!(plugin.prepare(48_000.0, 2));
-        let source_l = programme(4096, 0.11);
-        let source_r = programme(4096, 0.05);
-        let mut left = source_l.clone();
-        let mut right = source_r.clone();
-        let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
-        plugin.process_block(&mut channels);
-        assert_eq!(left, source_l);
-        assert_eq!(right, source_r);
+        let latency = plugin.latency() as usize;
+        let source_l = programme(8_192, 0.11);
+        let source_r = programme(8_192, 0.05);
+        let (mut left, mut right) = (source_l.clone(), source_r.clone());
+        run(&mut plugin, &mut left, &mut right);
+        assert!(left[..latency].iter().all(|sample| *sample == 0.0));
+        assert_eq!(left[latency..], source_l[..8_192 - latency]);
+        assert_eq!(right[latency..], source_r[..8_192 - latency]);
     }
 
-    /// **A control moved between blocks ramps**, so automation does not step the audio, and the
-    /// chain is heard: Drive up 12 dB doubles and doubles again what comes out.
+    /// **A moved control ramps**, so automation does not step the audio, and is heard: Output up
+    /// 12 dB on the Record medium (the delayed input, until the record engine exists).
     #[test]
     fn a_moved_control_ramps_and_is_heard() {
         let mut plugin = MxmFxOldify::default();
+        set_medium(&plugin, params::MediumChoice::Record);
         assert!(plugin.prepare(48_000.0, 2));
-        set(&plugin.params.drive, mxm_fx_oldify_dsp::db_to_gain(12.0));
-        let source: Vec<f32> = vec![0.25; 4096];
-        let mut left = source.clone();
-        let mut right = source.clone();
-        let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
-        plugin.process_block(&mut channels);
-        assert!(left[0] < 0.26, "Drive jumped: {}", left[0]);
-        let mut largest_step = 0.0f32;
-        for pair in left.windows(2) {
-            largest_step = largest_step.max((pair[1] - pair[0]).abs());
-        }
-        assert!(largest_step < 0.01, "Drive stepped by {largest_step}");
-        let gain = left[4095] / 0.25;
+        // First the delayed input arrives at 0 dB, then Output moves while it plays.
+        let frames = 2 * plugin.latency() as usize;
+        let (mut left, mut right) = (vec![0.25f32; frames], vec![0.25f32; frames]);
+        run(&mut plugin, &mut left, &mut right);
+        assert_eq!(left[frames - 1], 0.25);
+        set(&plugin.params.output, mxm_fx_oldify_dsp::db_to_gain(12.0));
+        let (mut left, mut right) = (vec![0.25f32; frames], vec![0.25f32; frames]);
+        run(&mut plugin, &mut left, &mut right);
+        let largest_step = left
+            .windows(2)
+            .map(|pair| (pair[1] - pair[0]).abs())
+            .fold(0.0f32, f32::max);
+        assert!(left[0] < 0.26, "Output jumped: {}", left[0]);
+        assert!(largest_step < 0.01, "Output stepped by {largest_step}");
+        let gain = left[frames - 1] / 0.25;
         assert!((gain - 3.981).abs() < 0.01, "12 dB came out as ×{gain}");
     }
 
@@ -271,27 +381,73 @@ mod tests {
     #[test]
     fn a_reset_starts_at_the_controls_as_they_stand() {
         let mut plugin = MxmFxOldify::default();
+        set_medium(&plugin, params::MediumChoice::Record);
         assert!(plugin.prepare(48_000.0, 2));
+        let latency = plugin.latency() as usize;
         set(&plugin.params.output, 0.5);
         plugin.reset();
-        let mut left = vec![0.5f32; 16];
-        let mut right = vec![0.5f32; 16];
-        let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
-        plugin.process_block(&mut channels);
+        let (mut left, mut right) = (vec![0.5f32; latency + 16], vec![0.5f32; latency + 16]);
+        run(&mut plugin, &mut left, &mut right);
         let expected = 0.5 * plugin.params.output.value();
-        assert!(left.iter().all(|sample| *sample == expected), "{left:?}");
+        assert!(
+            left[latency..].iter().all(|sample| *sample == expected),
+            "{:?}",
+            &left[latency..]
+        );
+    }
+
+    /// **The tail is reported until the output is exact zero, then the effect may sleep**: `Tail`
+    /// counts down across silence from the DSP's tail, and at its end the output is exact zero and
+    /// the status `Normal`.
+    #[test]
+    fn the_tail_counts_down_to_exact_silence_and_then_the_effect_may_sleep() {
+        let mut plugin = MxmFxOldify::default();
+        assert!(plugin.prepare(48_000.0, 2));
+        let tail = plugin.engine.tail();
+        let (mut left, mut right) = (vec![0.0f32; 512], vec![0.0f32; 512]);
+        assert!(
+            matches!(
+                run(&mut plugin, &mut left, &mut right),
+                ProcessStatus::Normal
+            ),
+            "a fresh effect is quiet"
+        );
+
+        let (mut left, mut right) = (programme(512, 0.2), programme(512, 0.3));
+        assert!(matches!(
+            run(&mut plugin, &mut left, &mut right),
+            ProcessStatus::Tail(n) if n == tail
+        ));
+
+        let mut elapsed = 0u32;
+        loop {
+            let (mut left, mut right) = (vec![0.0f32; 512], vec![0.0f32; 512]);
+            let status = run(&mut plugin, &mut left, &mut right);
+            elapsed += 512;
+            match status {
+                ProcessStatus::Tail(n) => assert_eq!(n, tail.saturating_sub(elapsed)),
+                ProcessStatus::Normal => {
+                    assert!(elapsed >= tail, "Normal after {elapsed} of {tail}");
+                    break;
+                }
+                _ => panic!("unexpected status"),
+            }
+        }
+        let (mut left, mut right) = (vec![0.0f32; 512], vec![0.0f32; 512]);
+        run(&mut plugin, &mut left, &mut right);
+        assert!(left.iter().chain(&right).all(|sample| *sample == 0.0));
     }
 
     #[test]
     fn levels_reach_the_editor() {
         let mut plugin = MxmFxOldify::default();
+        set_medium(&plugin, params::MediumChoice::Record);
         assert!(plugin.prepare(48_000.0, 1));
         set(&plugin.params.output, mxm_fx_oldify_dsp::db_to_gain(-6.0));
         plugin.reset();
-        let mut left = vec![0.8f32; 256];
-        let mut right = vec![0.0f32; 256];
-        let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
-        plugin.process_block(&mut channels);
+        let frames = plugin.latency() as usize + 256;
+        let (mut left, mut right) = (vec![0.8f32; frames], vec![0.0f32; frames]);
+        run(&mut plugin, &mut left, &mut right);
         let [input, output] = plugin.telemetry.take_levels();
         assert_eq!(input, 0.8);
         assert!((output - 0.4).abs() < 0.01, "{output}");

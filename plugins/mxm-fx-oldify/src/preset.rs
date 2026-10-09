@@ -1,8 +1,7 @@
 //! The shared preset-system seam, with **no factory sounds yet**.
 //!
-//! Medium and Age are the controls a factory sound would be made of, and they move nothing until
-//! the cassette and record engines exist. A bank designed against the placeholder chain would be
-//! sounds nobody has heard, so the bank is empty until the engines can be listened to
+//! A factory sound is a medium heard on purpose and designed by ear; the cassette engine is new and
+//! the record engine is still to come, so the bank is empty until its sounds are designed
 //! (`plugins/mxm-fx-oldify/AGENTS.md`). Init, user presets, banks and favourites all work now:
 //! they are the shared system, and need no factory set.
 
@@ -24,6 +23,18 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
         vec![
             ("medium", &self.medium),
             ("age", &self.age),
+            ("tape", &self.tape),
+            ("grade", &self.grade),
+            ("tape_tone", &self.tape_tone),
+            ("saturation", &self.saturation),
+            ("character", &self.character),
+            ("wow", &self.wow),
+            ("wow_rate", &self.wow_rate),
+            ("wow_shape", &self.wow_shape),
+            ("flutter", &self.flutter),
+            ("flutter_rate", &self.flutter_rate),
+            ("flutter_shape", &self.flutter_shape),
+            ("hiss", &self.hiss),
             ("drive", &self.drive),
             ("width", &self.width),
             ("output", &self.output),
@@ -40,7 +51,7 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
     }
 }
 
-/// The compiled-in factory sounds: none until the engines exist.
+/// The compiled-in factory sounds: none until they are designed by ear.
 pub const FACTORY_FILES: &[(&str, &str)] = &[];
 
 #[cfg(test)]

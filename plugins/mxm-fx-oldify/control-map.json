@@ -5,8 +5,9 @@
     "No role the standard declares is a quantity this effect has. Mix is how much of the aged",
     "sound is heard, which is not how much delay (fx.delay), reverb (fx.reverb), curve stack",
     "(fx.dynamics) or chorus (fx.chorus_mix) is heard; Output is an effect's level, not an",
-    "instrument's (voice.output); Drive feeds the medium, not a filter (filter.drive). Roles of",
-    "its own are a collection-wide change to the standard (docs/MXM_CONTROL_MAP.md in mxm-kit)."
+    "instrument's (voice.output); Drive feeds the medium, not a filter (filter.drive); Wow and",
+    "Flutter are a tape's speed, not a delay line's wobble (fx.delay_wobble). Roles of its own",
+    "are a collection-wide change to the standard (docs/MXM_CONTROL_MAP.md in mxm-kit)."
   ],
   "instruments": [
     {

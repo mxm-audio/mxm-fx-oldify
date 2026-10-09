@@ -1,8 +1,8 @@
 //! The factory bank, and the Init every bank starts from.
 //!
-//! **The bank is empty until the engines exist** (`plugins/mxm-fx-oldify/AGENTS.md`, *Presets*):
-//! a factory sound is a Medium and an Age heard on purpose, and neither moves anything yet. The
-//! recipe check below runs over whatever ships, so the first sound added is held by it at once.
+//! **The bank is empty until its sounds are designed by ear** (`plugins/mxm-fx-oldify/AGENTS.md`,
+//! *Presets*). The recipe check below runs over whatever ships, so the first sound added is held by
+//! it at once.
 
 use mxm_fx_oldify::params::MxmFxOldifyParams;
 use mxm_fx_oldify::{MxmFxOldify, preset};
@@ -86,7 +86,7 @@ fn render(plugin: &mut MxmFxOldify, input: &[f32]) -> Vec<f32> {
 }
 
 #[test]
-fn the_bank_is_empty_until_the_engines_exist() {
+fn the_bank_is_empty_until_its_sounds_are_designed() {
     assert!(
         preset::FACTORY_FILES.is_empty(),
         "a factory sound shipped: record the bank in plugins/mxm-fx-oldify/AGENTS.md and give it \
@@ -112,13 +112,16 @@ fn every_shipped_recipe_loads_completely_and_renders_finite_without_clipping() {
     }
 }
 
-/// **Init, applied as the browser applies it, is the defaults and leaves the sound as it came.**
+/// **Init, applied as the browser applies it, returns every parameter to its default and sounds
+/// as a fresh instance does**: the init patch, the engaged cassette.
 #[test]
-fn init_applied_over_an_edited_patch_restores_the_identity_chain() {
+fn init_applied_over_an_edited_patch_restores_the_init_patch() {
     let plugin = MxmFxOldify::default();
     let edited = MxmFxOldifyParams::default();
     unsafe {
         let _ = edited.drive._internal_set_normalized_value(0.9);
+        let _ = edited.saturation._internal_set_normalized_value(1.0);
+        let _ = edited.tape._internal_set_normalized_value(1.0);
         let _ = edited.mix._internal_set_normalized_value(0.2);
     }
     let edited_patch = preset::Preset::capture("Edited", preset::Category::Fx, &edited);
@@ -127,18 +130,34 @@ fn init_applied_over_an_edited_patch_restores_the_identity_chain() {
 
     let init = preset::Preset::init(&*plugin.params);
     apply(&plugin, &init, preset::Origin::User);
+    for (id, param, _) in plugin.params.param_map() {
+        // SAFETY: the parameters are this test's own.
+        let (now, default) = unsafe {
+            (
+                param.unmodulated_normalized_value(),
+                param.default_normalized_value(),
+            )
+        };
+        assert!(
+            (now - default).abs() < 1e-6,
+            "{id} is not its default after Init"
+        );
+    }
+
+    let input = programme();
     let mut plugin = plugin;
     assert!(plugin.prepare_for_test(FS, 2));
-    let input = programme();
+    let mut reference = MxmFxOldify::default();
+    assert!(reference.prepare_for_test(FS, 2));
     let rendered = render(&mut plugin, &input);
-    let left: Vec<f32> = rendered.iter().step_by(2).copied().collect();
-    let difference = left
+    let expected = render(&mut reference, &input);
+    let difference = rendered
         .iter()
-        .zip(&input)
-        .fold(0.0f32, |peak, (out, dry)| peak.max((out - dry).abs()));
-    // Init writes normalised values, so a gain may land a rounding step off 0 dB.
+        .zip(&expected)
+        .fold(0.0f32, |peak, (a, b)| peak.max((a - b).abs()));
+    // Init writes normalised values, so a control may land a rounding step off its default.
     assert!(
-        difference < 1.0e-5,
-        "Init is not the identity: {difference}"
+        difference < 1.0e-4,
+        "Init does not sound as a fresh instance: {difference}"
     );
 }

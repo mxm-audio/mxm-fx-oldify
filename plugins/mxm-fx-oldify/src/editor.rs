@@ -1,4 +1,4 @@
-//! The dynamically paged two-card editor for `mxm-fx-oldify`.
+//! The dynamically paged editor for `mxm-fx-oldify`: five cards in signal order.
 
 pub mod binding;
 pub mod sections;
@@ -17,12 +17,12 @@ use crate::params::MxmFxOldifyParams;
 use crate::telemetry::Telemetry;
 
 // The quarter-4K budget hugged to the cards, held by `the_opening_size_is_the_budget_hugged`.
-const REFERENCE: (u32, u32) = (811, 309);
-// One card wide — the widest computed floor (Output's four knobs) and the gutters — and as tall as
+const REFERENCE: (u32, u32) = (1495, 461);
+// One card wide — the widest computed floor and the gutters — and as tall as
 // the one row every page holds; never narrower than the app bar at its last compact step. Held by
 // `the_window_contract_fits_the_quarter_4k_budget_and_widest_card`,
 // `every_dynamic_page_fits_and_every_card_is_reachable` and `the_app_bar_holds_in_the_minimum_window`.
-const MINIMUM: (u32, u32) = (511, 309);
+const MINIMUM: (u32, u32) = (511, 461);
 
 pub type MxmFxOldifyEditor = nice_plug_egui::EguiEditor<MxmFxOldifyApp>;
 pub use mxm_preset::PresetUi;
@@ -368,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn opening_page_shows_both_cards() {
+    fn opening_page_shows_every_card() {
         let params = MxmFxOldifyParams::default();
         let telemetry = Telemetry::default();
         let host = keyboard_checks::Recorder::default();
@@ -401,10 +401,15 @@ mod tests {
             });
             output.textures_delta.clear();
         }
-        assert_eq!(
-            paging_checks::all_rects(&context, sections::TITLES.len()).len(),
-            sections::TITLES.len()
-        );
+        // The cards keep the brief's keys, which skip the record engine's, so each is looked for
+        // by its own key (`paging_checks::all_rects` counts keys from zero).
+        let report = mxm_ui::paging::editor::report(&context).expect("paging report");
+        for (key, title) in sections::KEYS.iter().zip(sections::TITLES) {
+            assert!(
+                report.visible.iter().any(|(shown, _)| shown.0 == *key),
+                "{title} is not on the opening page"
+            );
+        }
     }
 
     use mxm_plugin_test::tree_checks;
@@ -452,33 +457,31 @@ mod tests {
     ///
     /// The structural-state matrix: nothing here opens, closes or appears, so the trees are the
     /// same in every state, and what varies is what is painted over their stated sizes — the init
-    /// patch with idle telemetry, and the longest readings with full levels.
+    /// patch with idle telemetry, then every parameter at the bottom and at the top of its travel
+    /// (the gains' longest readings, Hiss's Off, the last switch cells) with full levels.
     #[test]
     fn every_card_passes_the_tree_checks_in_every_state() {
         use nice_plug::prelude::Params;
         let floors = sections::test_floors();
-        let longest = [
-            ("medium", 1.0),
-            ("age", 1.0),
-            ("drive", 0.0),
-            ("width", 1.0),
-            ("output", 0.0),
-            ("mix", 1.0),
-        ];
         let full = sections::Display { levels: [1.0; 2] };
-        /// A state's name, the parameter values it sets and the telemetry.
-        type State<'a> = (&'a str, &'a [(&'a str, f32)], sections::Display);
-        let states: [State<'_>; 2] = [
-            ("init", &[], sections::Display::default()),
-            ("the longest readings, full levels", &longest, full),
+        /// A state's name, every parameter's normalised value (or the defaults) and the telemetry.
+        type State<'a> = (&'a str, Option<f32>, sections::Display);
+        let states: [State<'_>; 3] = [
+            ("init", None, sections::Display::default()),
+            (
+                "every parameter at the bottom, full levels",
+                Some(0.0),
+                full,
+            ),
+            ("every parameter at the top, full levels", Some(1.0), full),
         ];
-        for (state, values, display) in states {
+        for (state, value, display) in states {
             let params = MxmFxOldifyParams::default();
-            for (id, param, _) in params.param_map() {
-                if let Some((_, value)) = values.iter().find(|(wanted, _)| *wanted == id) {
+            if let Some(value) = value {
+                for (_, param, _) in params.param_map() {
                     // SAFETY: the parameters are this test's own and nothing else reads them.
                     unsafe {
-                        let _ = param._internal_set_normalized_value(*value);
+                        let _ = param._internal_set_normalized_value(value);
                     }
                 }
             }

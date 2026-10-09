@@ -1,28 +1,37 @@
-//! Two Effects cards: Medium, then Output.
+//! Five Effects cards in signal order: Medium, Tape, Transport, Noise, Output.
 //!
-//! Each card body is a `mxm_ui::tree`: [`card`] describes it once, the paging renderer measures
-//! that one description for the card's floor and height, and [`paint`] draws it leaf by leaf
-//! through the bindings, so the controls, their gestures and their names are the bindings' own.
-//! Nothing is typed and nothing is drawn to learn a size.
+//! Each card keeps the key the brief gives it (`docs/briefs/mxm-fx-oldify.md` §4), so the record
+//! engine's cards can take their places between Medium and Tape without moving these. Each card
+//! body is a `mxm_ui::tree`: [`card`] describes it once, the paging renderer measures that one
+//! description for the card's floor and height, and [`paint`] draws it leaf by leaf through the
+//! bindings, so the controls, their gestures and their names are the bindings' own. Nothing is typed
+//! and nothing is drawn to learn a size.
 
 use std::collections::HashMap;
 
 use egui::{Ui, Vec2, vec2};
-use mxm_ui::control::Size;
+use mxm_ui::control::{Size, Wave};
 use mxm_ui::theme::Tokens;
 use mxm_ui::tree::{Height, Kind, Node, leaf, stack};
 use mxm_ui::visual::{AXIS_STROKE, CANVAS_RADIUS, EMPHASIS_STROKE};
 use nice_plug::prelude::ParamSetter;
 
-use super::binding::{Bound, segmented};
+use super::binding::{Bound, segmented, segmented_waves};
 use crate::params::MxmFxOldifyParams;
 
 const KNOB: Size = Size::Standard;
 /// The cards' titles, in paging order.
-pub const TITLES: [&str; 2] = ["Medium", "Output"];
+pub const TITLES: [&str; 5] = ["Medium", "Tape", "Transport", "Noise", "Output"];
+/// The cards' stable keys, the brief's: the record engine's cards take 1–3 and the deck's 7.
+pub const KEYS: [u64; 5] = [0, 4, 5, 6, 8];
 
 /// The level display's stated size; it fills its card's width.
 pub const LEVELS_MIN: Vec2 = vec2(160.0, 53.0);
+
+/// Drawn, not named (design system §7.3), each announcing its option's own name. *Random* wanders
+/// smoothly, so it is the smooth-random picture rather than sample-and-hold steps.
+const WOW_SHAPES: [Wave; 4] = [Wave::Sine, Wave::SmoothRandom, Wave::RampUp, Wave::RampDown];
+const FLUTTER_SHAPES: [Wave; 2] = [Wave::Sine, Wave::SmoothRandom];
 
 /// The telemetry a frame paints: the input and output peaks.
 #[derive(Clone, Copy, Default)]
@@ -40,12 +49,68 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "age",
             &params.age,
-            "How worn the medium is, from new to battered.",
+            "How worn the medium is, from new to battered: older loses more of the top.",
+        ),
+        Bound::new(
+            "tape",
+            &params.tape,
+            "The kind of tape, from warm ferric to bright metal.",
+        ),
+        Bound::new(
+            "grade",
+            &params.grade,
+            "How good the tape and the deck are, from cheap to the best there was.",
+        ),
+        Bound::new(
+            "tape_tone",
+            &params.tape_tone,
+            "How much of the tape's own tone is heard.",
+        ),
+        Bound::new(
+            "saturation",
+            &params.saturation,
+            "How hard the tape is pushed into distortion; zero is clean.",
+        ),
+        Bound::new(
+            "character",
+            &params.character,
+            "How the tape distorts when pushed.",
+        ),
+        Bound::new(
+            "wow",
+            &params.wow,
+            "How much the pitch drifts slowly up and down, as an uneven tape speed does.",
+        ),
+        Bound::new("wow_rate", &params.wow_rate, "How fast the slow drift goes."),
+        Bound::new(
+            "wow_shape",
+            &params.wow_shape,
+            "The shape of the slow drift.",
+        ),
+        Bound::new(
+            "flutter",
+            &params.flutter,
+            "How much the pitch trembles quickly, roughening the sound.",
+        ),
+        Bound::new(
+            "flutter_rate",
+            &params.flutter_rate,
+            "How fast the trembling goes.",
+        ),
+        Bound::new(
+            "flutter_shape",
+            &params.flutter_shape,
+            "The shape of the trembling.",
+        ),
+        Bound::new(
+            "hiss",
+            &params.hiss,
+            "The tape's own hiss, from off to loud; it fades out when the sound stops.",
         ),
         Bound::new(
             "drive",
             &params.drive,
-            "How hard the sound goes in; more pushes the medium harder.",
+            "How hard the sound goes onto the tape: more distorts more and buries the hiss, without getting louder.",
         )
         .bipolar(),
         Bound::new(
@@ -109,9 +174,10 @@ pub fn page_items(ui: &Ui, params: &MxmFxOldifyParams) -> Vec<mxm_ui::paging::It
     use mxm_ui::paging::{Category, Item, Key};
     TITLES
         .iter()
+        .zip(KEYS)
         .enumerate()
-        .map(|(index, title)| Item {
-            key: Key(index as u64),
+        .map(|(index, (title, key))| Item {
+            key: Key(key),
             card: {
                 let floor = mxm_ui::tree::card_floor(ui, title, &card(ui, index, params));
                 mxm_ui::flow::Card::new(title, floor).capped(floor)
@@ -152,6 +218,7 @@ pub(crate) fn test_floors() -> Vec<f32> {
 pub enum Leaf {
     Knob(&'static str),
     Segmented(&'static str),
+    Waves(&'static str),
     Levels,
 }
 
@@ -165,6 +232,15 @@ fn options(params: &MxmFxOldifyParams, id: &str) -> Vec<String> {
     (0..=last)
         .map(|option| param.format(option as f32 / last as f32))
         .collect()
+}
+
+/// The pictures of a shape switch's cells.
+fn waves_of(id: &str) -> &'static [Wave] {
+    match id {
+        "wow_shape" => &WOW_SHAPES,
+        "flutter_shape" => &FLUTTER_SHAPES,
+        _ => &[],
+    }
 }
 
 /// The collection's knob row (`mxm_ui::tree::knob_row`): equal columns at the one knob column.
@@ -200,6 +276,31 @@ fn details_of(id: &str) -> &'static [&'static str] {
             "The sound of an old record.",
             "An old record, taped onto a cassette.",
         ],
+        "tape" => &[
+            "Ferric tape: warm, with a soft top.",
+            "Chrome tape: brighter, with less hiss.",
+            "Metal tape: the brightest and cleanest.",
+        ],
+        "grade" => &[
+            "A cheap tape on a cheap deck: dull and muffled.",
+            "An everyday tape on an everyday deck.",
+            "A good tape on a good deck.",
+            "The best tape on the best deck: the most open sound.",
+        ],
+        "character" => &[
+            "Rounds the peaks off gently and warmly.",
+            "Clips the peaks with a sharper, harder edge.",
+        ],
+        "wow_shape" => &[
+            "An even, smooth drift up and down.",
+            "Wanders unpredictably, as a real tape does.",
+            "Drifts up, then drops back.",
+            "Drops, then jumps back up.",
+        ],
+        "flutter_shape" => &[
+            "An even, steady tremble.",
+            "An irregular, wandering tremble.",
+        ],
         _ => &[],
     }
 }
@@ -210,6 +311,18 @@ fn segmented_leaf(params: &MxmFxOldifyParams, id: &'static str) -> Node<Leaf> {
         Kind::Segmented {
             label: bound(id, params).painted().to_owned(),
             options: options(params, id),
+            beside: None,
+        },
+    )
+}
+
+fn waves_leaf(params: &MxmFxOldifyParams, id: &'static str) -> Node<Leaf> {
+    leaf(
+        Leaf::Waves(id),
+        Kind::Waves {
+            label: Some(bound(id, params).painted().to_owned()),
+            count: waves_of(id).len(),
+            marks: Vec::new(),
             beside: None,
         },
     )
@@ -235,6 +348,19 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             segmented_leaf(params, "medium"),
             knobs(ui, params, &["age"]),
         ]),
+        1 => stack(vec![
+            segmented_leaf(params, "tape"),
+            segmented_leaf(params, "grade"),
+            knobs(ui, params, &["tape_tone", "saturation"]),
+            segmented_leaf(params, "character"),
+        ]),
+        2 => stack(vec![
+            knobs(ui, params, &["wow", "wow_rate"]),
+            waves_leaf(params, "wow_shape"),
+            knobs(ui, params, &["flutter", "flutter_rate"]),
+            waves_leaf(params, "flutter_shape"),
+        ]),
+        3 => stack(vec![knobs(ui, params, &["hiss"])]),
         _ => stack(vec![
             display(Leaf::Levels, LEVELS_MIN),
             knobs(ui, params, &["drive", "width", "output", "mix"]),
@@ -269,6 +395,25 @@ pub fn paint(ui: &mut Ui, tokens: &Tokens, leaf: &Leaf, rect: egui::Rect, live: 
                 id,
                 bound.param,
                 &options,
+                None,
+                details_of(id),
+                live.setter,
+            );
+        }
+        Leaf::Waves(id) => {
+            let bound = bound(id, params);
+            let labels = options(params, id);
+            let shapes: Vec<(Wave, &str)> = waves_of(id)
+                .iter()
+                .copied()
+                .zip(labels.iter().map(String::as_str))
+                .collect();
+            segmented_waves(
+                ui,
+                tokens,
+                id,
+                bound.param,
+                &shapes,
                 None,
                 details_of(id),
                 live.setter,
@@ -328,9 +473,30 @@ mod tests {
         }
     }
 
+    /// **Each button of a row says what it does**, and each shape cell has its picture.
     #[test]
-    fn every_medium_cell_says_what_it_does() {
+    fn every_switch_cell_has_its_own_sentence_and_every_shape_its_picture() {
         let params = MxmFxOldifyParams::default();
-        assert_eq!(options(&params, "medium").len(), details_of("medium").len());
+        for id in [
+            "medium",
+            "tape",
+            "grade",
+            "character",
+            "wow_shape",
+            "flutter_shape",
+        ] {
+            assert_eq!(options(&params, id).len(), details_of(id).len(), "{id}");
+        }
+        for id in ["wow_shape", "flutter_shape"] {
+            assert_eq!(options(&params, id).len(), waves_of(id).len(), "{id}");
+        }
+    }
+
+    #[test]
+    fn the_keys_are_the_briefs_and_unique() {
+        let mut keys = KEYS.to_vec();
+        keys.dedup();
+        assert_eq!(keys.len(), TITLES.len());
+        assert!(KEYS.windows(2).all(|pair| pair[0] < pair[1]));
     }
 }

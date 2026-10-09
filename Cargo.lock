@@ -2392,6 +2392,7 @@ version = "0.1.0"
 name = "mxm-fx-oldify-host-tests"
 version = "0.1.0"
 dependencies = [
+ "mxm-fx-oldify-dsp",
  "mxm-player",
  "mxm-player-harness",
 ]

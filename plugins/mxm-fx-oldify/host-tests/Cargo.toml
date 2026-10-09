@@ -15,5 +15,7 @@ test = false
 doctest = false
 
 [dev-dependencies]
+# The effect's silence threshold, so the tests judge the source's end as the effect does.
+mxm-fx-oldify-dsp.workspace = true
 mxm-player.workspace = true
 mxm-player-harness.workspace = true

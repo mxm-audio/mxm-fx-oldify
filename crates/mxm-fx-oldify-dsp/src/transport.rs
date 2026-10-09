@@ -159,6 +159,7 @@ impl Oscillator {
 }
 
 /// A stereo delay line read at a moving position.
+#[derive(Clone, Debug)]
 pub struct Transport {
     lines: [Vec<f32>; 2],
     write: usize,

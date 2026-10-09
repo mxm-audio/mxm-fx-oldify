@@ -112,4 +112,4 @@ clap-validator validate "target/bundled/mxm-fx-oldify.clap"
 
 | Doc | Scope |
 |---|---|
-| [`mxm-fx-oldify/AGENTS.md`](mxm-fx-oldify/AGENTS.md) | Identity, the six permanent parameters, what does nothing yet, Init, the empty bank, the empty control map, telemetry and the two-card editor |
+| [`mxm-fx-oldify/AGENTS.md`](mxm-fx-oldify/AGENTS.md) | Identity, the eighteen permanent parameters, Init as the DSP's init patch, latency and tail reporting, what is not yet, the empty bank, the empty control map, telemetry and the five-card editor |
