@@ -74,7 +74,6 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("wrong_eq", &self.wrong_eq),
             ("drive", &self.drive),
             ("width", &self.width),
-            ("output", &self.output),
             ("mix", &self.mix),
             ("noise_follows", &self.noise_follows),
             ("noise_stops", &self.noise_stops),

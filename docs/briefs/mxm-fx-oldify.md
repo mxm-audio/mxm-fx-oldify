@@ -1,6 +1,6 @@
 # mxm-fx-oldify — interface brief
 
-**Status:** brief, written before the editor beyond its placeholder cards. The product plan and the
+**Status:** brief; the editor follows it, with the owner's rulings of 2026-10-09 (§4). The product plan and the
 measurements behind it are private (`ops`: the oldify plan and `measurements/` notes, cited as plain
 text); this answers design-system §14 and does not reopen their DSP decisions.
 
@@ -8,44 +8,45 @@ text); this answers design-system §14 and does not reopen their DSP decisions.
 
 Make a sound old in one of two ways, or both: as **cassette tape** (from a good deck to a worn
 pocket player, dubbed and redubbed) and as a **record** (from a new LP to a battered 78 on a
-radiogram), and as a record taped to cassette. The everyday path is Medium → Age → the medium's few
-character controls → Mix; the deep path opens one medium's whole chain, block by block, in signal
-order.
+radiogram), and as a record taped to cassette. The everyday path is the Record or Tape switch → the
+medium's few character controls → Mix; the deep path opens one medium's whole chain, block by
+block, in signal order.
 
 ## 2. Controls reached for first
 
-**Medium, Age, Mix**, then per medium: for cassette **Tape** (type and grade), **Saturation**,
-**Wow**, **Hiss**; for a record **Disc**, **Era** (the cut and the player), **Wear**, **Crackle**.
-Age moves the whole medium older at once (`Age owns only what has no control of its own`, the
-plan); the others are the first adjustments people make in every product the research surveyed.
+**Record, Tape, Mix**, then per medium: for cassette **Tape type** and grade, **Saturation**,
+**Wow**, **Hiss**, **Age**; for a record **Disc**, **Era** (the cut and the player), **Wear**,
+**Crackle**. These are the first adjustments people make in every product the research surveyed.
 
 ## 3. Signal flow that must be visible
 
 Input → Drive → *the record* (cut, groove, surface, pickup, player) → *the cassette* (noise
-reduction, tape, transport, playback) → Width → Output → Mix. With Medium on one engine the other is
-absent from the flow, not greyed. A compact flow strip across the top names the stages in order and
+reduction, tape, transport, playback) → Width → Mix. Each medium has its own switch, and both on
+is a record taped to cassette. A compact flow strip across the top names the stages in order and
 marks the active ones; it is a diagram of the chain, never a picture of a deck, a reel or a
 turntable.
 
 ## 4. Cards and category
 
-All primary category **Effects**, stable keys, in signal order. A card belongs to an engine and is
-shown while that engine is in the chain:
+All primary category **Effects**, stable keys, in signal order. Each card is named for its group,
+and each group's switch heads its first card; a group switched off is dimmed, not hidden, so it can
+be set up before it is switched on (the owner, 2026-10-09: "There is not way to know what cards
+control the tape, and what controls the vinyl"). Key 0, the Medium card, is retired with it.
 
-| Key | Card | Engine | Controls (first-reach in bold) |
-|---:|---|---|---|
-| 0 | Medium | both | **Medium**, **Age**, Variation |
-| 1 | Era | record | **Disc**, **Era** (cut), Player, Cut curve, Replay curve |
-| 2 | Groove | record | **Wear**, Side position, Stylus, Groove distortion, Eccentricity, Warp |
-| 3 | Surface | record | **Crackle**, Clicks, Surface noise, Scratches, Cracks, Rumble, Hum, Groove echo |
-| 4 | Tape | cassette | **Tape**, Grade, Tape tone, **Saturation**, Character, Generations |
-| 5 | Transport | cassette | **Wow** depth, rate (sync), shape; Flutter depth, rate (sync), shape; follows wow; Flange; Tape stop |
-| 6 | Noise | cassette | **Hiss**, Noise reduction, Decode, its Amount and Brightness, Dropouts, Print-through |
-| 7 | Deck | cassette | Azimuth, Crosstalk, Wrong EQ, Level error |
-| 8 | Output | both | Drive, Width, Noise follows, Noise stops in silence, Output, **Mix**, Quality |
+| Key | Card | Controls (first-reach in bold; to come in italics) |
+|---:|---|---|
+| 1 | Record | **Record**, **Disc**, **Era** (cut), Player, Cut curve, Replay curve |
+| 2 | Record groove | **Wear**, Side position, Groove distortion, Eccentricity, *Warp* |
+| 3 | Record surface | **Crackle**, Clicks, Surface noise, Scratches, Cracks, Rumble, Hum, *Groove echo* |
+| 4 | Tape | **Tape**, **Tape type**, Grade, Tape tone, **Saturation**, Character, Generations, **Age** |
+| 5 | Tape transport | **Wow** depth, rate (sync), shape; Flutter depth, rate (sync), shape; follows wow; Flange; *Tape stop* |
+| 6 | Tape noise | **Hiss**, Noise reduction, Decode, its Amount, Brightness and Level error, Dropouts, *Print-through* |
+| 7 | Tape deck | Azimuth, Crosstalk, Wrong EQ |
+| 8 | Output | Drive, Width, **Mix**, Noise follows, Variation, Noise stops in silence, *Quality* |
 
-Cards keep their identities and order whatever Medium is; only which are present changes. Each
-card's floor comes from its tree; category-first paging splits only where space requires.
+The effect ends in Mix alone, as the collection's effects do: no output level (the owner,
+2026-10-09). Each card's floor comes from its tree; category-first paging splits only where space
+requires.
 
 ## 5. Advanced controls
 
@@ -81,17 +82,12 @@ a picture of a record.
 
 ## 9. Responsive and quarter-4K answer
 
-With one medium, five cards (Medium, that medium's three or four, Output); with both, nine. The
-opening size is derived with `mxm_plugin_test::opening_size::derive` from the measured layout of the
-default medium (Cassette); the other media re-page within it. Every derived page fits 1920 × 1080
+All eight cards, whichever switches are on. The opening size is derived with
+`mxm_plugin_test::opening_size::derive` from the measured layout. Every derived page fits 1920 × 1080
 physical pixels at 100 % zoom; at 150 % and 200 % the window stays fixed, cards re-page, and
 indivisible overflow scrolls. No first-reach control is ever behind a disclosure or clipped. Native
 QA records Windows DPI 100 %, 150 % and 200 %; Linux and macOS are checked later, together.
 
 ## 10. Open for the owner
 
-- Whether a card that belongs to an absent engine disappears (this brief) or stays and reads
-  *Not in the chain*.
 - The product hue (§6).
-- Reporting latency: the transport's delay line needs a base delay, which the plugin would report to
-  the host as latency (a first in the collection).

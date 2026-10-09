@@ -101,8 +101,8 @@ Child DOX Index
 **mxm-fx-oldify** is an MXM effect that makes sound old: cassette tape and old records (vinyl and
 shellac), from a new deck to a battered 78 on a radiogram.
 
-**Pre-alpha. Both engines are in.** The DSP crate holds the chain — Drive, the record and the tape, Width,
-Output and Mix against the dry input delayed by the chain's fixed latency — and both media: the
+**Pre-alpha. Both engines are in.** The DSP crate holds the chain — Drive, the record and the tape, Width
+and Mix against the dry input delayed by the chain's fixed latency — and both media: the
 record (era, player, cutting and replay curves, groove, the disc's surface, hum) and the cassette
 (noise reduction, saturation, the measured tape responses, generations, wow and flutter with
 Flange, hiss that follows or stops with the input, dropouts, the deck's faults and the age's
@@ -201,4 +201,4 @@ only CI reaches macOS.
 |---|---|
 | [`crates/mxm-fx-oldify-dsp/AGENTS.md`](crates/mxm-fx-oldify-dsp/AGENTS.md) | The chain and the cassette engine: order, latency, tail, smoothing, exact paths, the building blocks (filter sections, tape responses, transport, saturation, spacing), sample rates and numeric contracts |
 | [`plugins/AGENTS.md`](plugins/AGENTS.md) | Shared plugin conventions: nice-plug, the init patch, presets, `process()` rules, the editor contract, and installing a bundle in a DAW |
-| [`plugins/mxm-fx-oldify/AGENTS.md`](plugins/mxm-fx-oldify/AGENTS.md) | Identity, the fifty-five permanent parameters and the retired `medium`, Init as the DSP's init patch, tempo sync, latency and the endless tail, what is still to come, the factory bank, the empty control map, telemetry and the eight-card editor with its two group switches |
+| [`plugins/mxm-fx-oldify/AGENTS.md`](plugins/mxm-fx-oldify/AGENTS.md) | Identity, the fifty-four permanent parameters and the retired `medium` and `output`, Init as the DSP's init patch, tempo sync, latency and the endless tail, what is still to come, the factory bank, the empty control map, telemetry and the eight-card editor with its two group switches |

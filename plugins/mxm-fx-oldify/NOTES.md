@@ -6,8 +6,7 @@ The reasoning behind rules in [`AGENTS.md`](AGENTS.md) that are still in force.
 
 No role the standard declares is
 a quantity this effect has. Mix is how much of the aged sound is heard, not how much delay
-(`fx.delay`), reverb (`fx.reverb`), curve stack (`fx.dynamics`) or chorus (`fx.chorus_mix`);
-Output is an effect's level, not an instrument's (`voice.output`, on the Voice page); Drive feeds
+(`fx.delay`), reverb (`fx.reverb`), curve stack (`fx.dynamics`) or chorus (`fx.chorus_mix`); Drive feeds
 the tape, not a filter (`filter.drive`); Wow and Flutter are a tape's speed, not a delay line's
 wobble (`fx.delay_wobble`, on the Delay page). Roles of its own are a collection-wide change to
 mxm-kit's `docs/MXM_CONTROL_MAP.md` — a new page — and the owner's to rule on.
@@ -48,8 +47,12 @@ Generations; Age), **Tape transport** (Wow, Wow rate and its sync; Wow shape; Fl
 and its sync; Flutter shape; Flutter follows wow; Flange), **Tape noise** (Hiss; Noise reduction;
 Decode; NR amount, NR brightness, NR level error; Dropouts, Dropout intensity, Dropout width),
 **Tape deck** (Azimuth, Crosstalk; Wrong EQ) and **Output** (the In and Out levels; Drive, Width,
-Output, Mix; Noise follows, Variation; Noise stops in silence). Noise follows and Variation share a
-knob row so Output fits beside the seven group cards on one page at the budget.
+Mix; Noise follows, Variation; Noise stops in silence). Noise follows and Variation share a knob row
+so Output fits beside the seven group cards on one page at the budget.
+
+**No output level** (the owner, 2026-10-09: "it still has both output and mix"; earlier, "our
+effects only have 'mix'"): the collection's effects end in Mix, so the `output` id is retired.
+Drive is divided back out after the media, so the level leaving is the level that came in.
 
 **Why a switch on each group** (the owner, 2026-10-09): each group's switch heads its first card and
 each card is named for its group, so which cards shape the record and which the tape is plain; a

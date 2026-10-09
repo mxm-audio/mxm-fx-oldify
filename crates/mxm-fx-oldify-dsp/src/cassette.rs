@@ -14,15 +14,17 @@
 //! physics stays and that is a known difference: a dull tape still saturates, and its losses take
 //! the harmonics too.
 //!
-//! **Laws chosen here** ([`WOW_MAX`], [`FLUTTER_MAX`], [`AGE_MAX_UM`] and the curves on them):
-//! wow and flutter depth go as the square of their controls, so a realistic deck (0.05–0.2 %)
-//! sits in the first quarter of the travel and the far end reaches the reference's extremes;
-//! Age is a spacing of up to [`AGE_MAX_UM`] (the reference's full Age reads as about 1.7 µm), as
-//! the 1.5 power of the control.
+//! **Laws** ([`WOW_MAX`], [`FLUTTER_MAX`], [`AGE_MAX_UM`] and the curves on them): wow and
+//! flutter depth go as their controls, as the reference's do, up to the reference's extremes, so
+//! a realistic deck (0.05–0.2 %) is the first few percent of the travel and the rest is heard (the
+//! owner, 2026-10-09, of a squared law: "I dont think the paramaters do much"); Age is a spacing of
+//! up to [`AGE_MAX_UM`] (the reference's full Age reads as about 1.7 µm), as the 1.5 power of the
+//! control, a law chosen here.
 //!
 //! **The transport's reach is bounded**, so its delay, which the plugin reports as latency, stays
 //! near 50 ms: a wobble whose read would go further than [`WOW_REACH_S`] or [`FLUTTER_REACH_S`]
-//! has its depth lowered to fit. Only slow, deep wow meets it (1 % of random wow at 0.6 Hz, say).
+//! has its depth lowered to fit. Only slow, deep wow meets it: a sine below about 0.22 Hz, random
+//! wow below about 0.6 Hz at full depth.
 //!
 //! **Generations** is a dub of a dub: each copy adds its own noise (the hiss's power times the
 //! count), its own wobble (the depth times the count's square root, the copies being
@@ -174,12 +176,12 @@ impl CassetteControls {
         tone: 1.0,
         saturation: 0.25,
         wow: Motion {
-            depth: 0.25,
+            depth: 0.0625,
             hz: 0.5,
             shape: Shape::Random,
         },
         flutter: Motion {
-            depth: 0.1,
+            depth: 0.01,
             hz: 7.6,
             shape: Shape::Random,
         },
@@ -279,7 +281,7 @@ fn azimuth_delay_s(arcmin: f64) -> f64 {
 /// A wobble from its control values, its depth lowered if its read would go past `reach_s`.
 fn wobble(depth: f32, hz: f32, shape: Shape, max: f32, scale: f64, reach_s: f64) -> Wobble {
     let mut wobble = Wobble {
-        depth: f64::from(max * depth * depth) * scale,
+        depth: f64::from(max * depth) * scale,
         hz: f64::from(hz),
         shape,
     };

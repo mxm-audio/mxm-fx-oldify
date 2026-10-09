@@ -349,7 +349,6 @@ mod tests {
         let mut plugin = MxmFxOldify::default();
         set(&plugin.params.drive, 15.0);
         set(&plugin.params.width, 0.0);
-        set(&plugin.params.output, 0.1);
         set(&plugin.params.saturation, 1.0);
         set(&plugin.params.mix, 0.0);
         assert!(plugin.prepare(48_000.0, 2));
@@ -389,33 +388,33 @@ mod tests {
         }
     }
 
-    /// **A moved control ramps**, so automation does not step the audio, and is heard: Output up
-    /// 12 dB on a neutral cassette.
+    /// **A moved control ramps**, so automation does not step the audio, and is heard: Width from
+    /// 100 % to 200 % on a neutral cassette, doubling a side-only input.
     #[test]
     fn a_moved_control_ramps_and_is_heard() {
         let mut plugin = MxmFxOldify::default();
         neutral(&plugin);
         assert!(plugin.prepare(48_000.0, 2));
-        // First the delayed input arrives at 0 dB, then Output moves while it plays.
+        // First the delayed input arrives as it went in, then Width moves while it plays.
         let frames = 2 * plugin.latency() as usize;
-        let (mut left, mut right) = (vec![0.25f32; frames], vec![0.25f32; frames]);
+        let (mut left, mut right) = (vec![0.25f32; frames], vec![-0.25f32; frames]);
         run(&mut plugin, &mut left, &mut right);
         assert!(
             (left[frames - 1] - 0.25).abs() < 1e-3,
             "{}",
             left[frames - 1]
         );
-        set(&plugin.params.output, mxm_fx_oldify_dsp::db_to_gain(12.0));
-        let (mut left, mut right) = (vec![0.25f32; frames], vec![0.25f32; frames]);
+        set(&plugin.params.width, 2.0);
+        let (mut left, mut right) = (vec![0.25f32; frames], vec![-0.25f32; frames]);
         run(&mut plugin, &mut left, &mut right);
         let largest_step = left
             .windows(2)
             .map(|pair| (pair[1] - pair[0]).abs())
             .fold(0.0f32, f32::max);
-        assert!(left[0] < 0.26, "Output jumped: {}", left[0]);
-        assert!(largest_step < 0.01, "Output stepped by {largest_step}");
+        assert!(left[0] < 0.26, "Width jumped: {}", left[0]);
+        assert!(largest_step < 0.01, "Width stepped by {largest_step}");
         let gain = left[frames - 1] / 0.25;
-        assert!((gain - 3.981).abs() < 0.02, "12 dB came out as ×{gain}");
+        assert!((gain - 2.0).abs() < 0.02, "200 % came out as ×{gain}");
     }
 
     /// **A reset clears every memory and starts at the controls as they stand**: what was playing
@@ -426,7 +425,7 @@ mod tests {
         assert!(plugin.prepare(48_000.0, 2));
         let (mut left, mut right) = (programme(4_096, 0.2), programme(4_096, 0.3));
         run(&mut plugin, &mut left, &mut right);
-        set(&plugin.params.output, 0.5);
+        set(&plugin.params.drive, 0.5);
         plugin.reset();
         let (mut left, mut right) = (vec![0.0f32; 8_192], vec![0.0f32; 8_192]);
         assert!(matches!(

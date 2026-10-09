@@ -357,7 +357,6 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "How wide the stereo image is, from mono to twice as wide.",
         )
         .bipolar(),
-        Bound::new("output", &params.output, "The level coming out.").bipolar(),
         Bound::new(
             "mix",
             &params.mix,
@@ -781,7 +780,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
         ]),
         _ => stack(vec![
             display(Leaf::Levels, LEVELS_MIN),
-            knobs(ui, params, &["drive", "width", "output", "mix"]),
+            knobs(ui, params, &["drive", "width", "mix"]),
             knobs(ui, params, &["noise_follows", "variation"]),
             toggle_leaf(params, "noise_stops"),
         ]),

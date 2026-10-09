@@ -20,13 +20,13 @@ Owns `src/` and `Cargo.toml`. Host parameters, presets, telemetry and editor beh
 
 ```text
 input → Drive → [the record] → the cassette engine → ÷ Drive (a latency ago) → [+ hum]
-  → Width → Output → Mix with the dry, delayed
+  → Width → Mix with the dry, delayed
 ```
 
 - **Two switches, `record_on` and `tape_on`** (the owner, 2026-10-09: which controls belong to
   the record and which to the tape must be plain). Record on plays the record engine; tape on the
   cassette engine; both, a record taped to cassette; with the tape off the cassette engine still
-  runs **neutral**, for its moving read alone; both off leaves Drive, Width, Output and Mix.
+  runs **neutral**, for its moving read alone; both off leaves Drive, Width and Mix.
   Switching the record on clears it first.
 - **One moving read for both media.** The record's eccentricity and turntable wobble ride the
   cassette transport's line (`Cassette::set_record_wobbles`, `Transport::set_extras`): a time-warp
@@ -55,10 +55,11 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
 ```
 
 - The physics' order, not the reference's (which filters before saturating): a known difference.
-- **Laws** (chosen, named in `cassette.rs`): wow and flutter depth as the control squared, up to
-  `WOW_MAX` and `FLUTTER_MAX` (the reference's extremes); Age as a spacing of `AGE_MAX_UM` times the
-  control to the 1.5. **The transport's reach is bounded** (`WOW_REACH_S`, `FLUTTER_REACH_S`), so
-  the latency stays near 50 ms; only slow, deep wow is lowered to fit.
+- **Laws** (named in `cassette.rs`): wow and flutter depth go as the control, as the reference's
+  do, up to `WOW_MAX` and `FLUTTER_MAX` (its extremes), so the whole travel is heard (the owner,
+  2026-10-09, of a squared law: "I dont think the paramaters do much"); Age, chosen, as a spacing of
+  `AGE_MAX_UM` times the control to the 1.5. **The transport's reach is bounded** (`WOW_REACH_S`,
+  `FLUTTER_REACH_S`), so the latency stays near 50 ms; only slow, deep wow is lowered to fit.
 - Hiss is seeded, independent per channel, 4 dB lower on the 70 µs tapes, and gated by the chain.
 - **Generations** (1–4): each dub adds its hiss power, its own uncorrelated wobble (depth × √n)
   and `GENERATION_UM` of spacing.
@@ -103,8 +104,10 @@ era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall) →
 - **`oversample`**: an honest copy of mxm-mono-00's half-band pair; its latency is part of ours.
 - **`transport`**: a delay line read by the integral of the speed error. Sine and saw are exact
   centred integrals; a change goes into a drift term that leaks away at an eighth of the rate, so
-  the read never jumps; the random shape is Ornstein–Uhlenbeck. The base delay is twice the reach.
-  Wow and flutter are the same in both channels, as measured.
+  the read never jumps. The random shape is Ornstein–Uhlenbeck, its integral a walk of its own
+  leaking at the rate itself (`RANDOM_LEAK`): its speed wanders about the rate, and it needs a
+  third of the reach a slower leak did, so its full depth fits the bounded reach at everyday rates.
+  The base delay is twice the reach. Wow and flutter are the same in both channels, as measured.
 - **`nr`**: noise reduction, a sliding-band compander: `y = x + k · H(x)`, `H` a high-pass whose
   corner slides up and `k` falls with the side chain's own level (previous sample). **The decoder
   is the encoder solved for its input, exactly** (`x = (y − k · pending) / (1 + k · b₀)`), from its
@@ -123,9 +126,13 @@ era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall) →
   `CEILING_S` on its lift; a missing low shelf stops at `MISSING_SHELF_S`. Bilinear, so the top
   octave is squeezed alike in cut and replay.
 - **`disc`**: a disc that turns at its `Speed` and holds its defects at angles: per revolution
-  tables of crackle (Pareto sizes) and clicks (each its own damped ring), `TURNOVER` of them renewed
-  every turn; scratches and cracks at fixed angles, varied a little each time; surface noise
-  swishing with the turn; rumble. Tables allocated in `new` for the busiest revolution.
+  tables of crackle (Pareto sizes) and clicks, `TURNOVER` of them renewed every turn; scratches and
+  cracks at fixed angles, varied a little each time; surface noise swishing with the turn; rumble.
+  **A click is a burst of coloured noise behind a sharp edge, never a ring of one pitch**, which
+  is heard as a drop of water (the owner, 2026-10-09: "the scratches… sound like rain drops"):
+  20 µs to 4 ms, darker the longer. A scratch is two such edges of opposite sign a scratch's width
+  apart, the same burst every turn (its seed kept); a crack a burst and Esquef's falling ring.
+  Tables allocated in `new` for the busiest revolution.
 - **`groove`**: tracing distortion `x / √(1 + c·x²)` on the lateral motion, `c` from the cited
   0.8 % (outer) and 4.5 % (inner) for an 18 µm tip, with the pinch effect's second harmonic in the
   vertical; a treble limit falling with the groove speed and with Wear (`FRESH_TOP_HZ`,
@@ -175,12 +182,9 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
 
 ## Chosen constants
 
-The smoothing, gain and width bounds, rate range, the transport's leak, reach and `FOLLOW_DEPTH`,
-the depth and Age laws, `EMPHASIS_DB`, `FADE_IN`, `MAX_DRIVE`, the curves' shapes, the hiss's top
-and its 70 µs offset, the silence thresholds and times, the noise follower's, `GENERATION_UM`, the
-dropout laws, `WRONG_EQ_DB`, the noise reduction's thresholds, corners, skew and detector, the record's era Qs, limiter times, players, `TURNOVER`, crackle and click sizes and the groove's corners are chosen here, not measured. The tape table, the spacing law, the
-dropout statistics and lift, azimuth's geometry and the wow, flutter and saturation extremes come
-from measurement or physics and say so.
+**What is chosen here and what is measured is in [NOTES.md § Chosen
+constants](NOTES.md#chosen-constants)**: a chosen constant is tuned by ear, a measured one only by
+new measurement.
 
 # Work Guidance
 
@@ -197,22 +201,9 @@ cargo tree -e normal,build -p mxm-fx-oldify-dsp
 cargo +1.87.0 test -p mxm-fx-oldify-dsp
 ```
 
-The chain's tests hold silence → exact zero at every setting, exact zero again after the tail, Mix
-zero → the delayed input to the bit, a clean record → the delayed input at its level, the neutral
-cassette → the delayed input to −50 dB, an impulse at the latency, blocks of 1, 37 and 512 bit-identical through a quiet stretch
-and a retarget, a reset rendering the same again, finite bounded output at every extreme, Width
-zero → mono, the hiss at its level and silent after its hold, the hiss playing on with Noise stops
-off, following noise at three input levels, the ramps, the latency near 50 ms at 44.1, 48 and
-96 kHz, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
-tape table against the measurement, the curves' slope, bounds and asymmetry, treble saturating
-first, the oversampler's round trip, the transport's depths, reach, seeds, unmoved read and
-following flutter, the spacing loss against Wallace at every common rate and a sweep without a
-jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch and loss, the
-skew's exact split, and the noise reduction's lift, two-band's reach, exact decode, undecoded and
-off paths, mistracking and hiss reduction, the curves' shapes, exact cut-and-replay and the UK 78
-error, the disc's rate, heavy tail, turn-locked renewal, cracks and levels, the groove's cited
-distortion and treble loss, the players' bands, crystal, radio and mono, and the record side's
-brick wall, acoustic band, wrong-curve dullness, eccentricity and gated noise).
+What the chain's and each block's tests hold: [NOTES.md § What the tests hold](NOTES.md#what-the-tests-hold).
+`examples/measure_controls.rs` prints how far each tape control moves the sound, at rest and moved
+while playing: run it when a control seems to do nothing.
 
 # Child DOX Index
 

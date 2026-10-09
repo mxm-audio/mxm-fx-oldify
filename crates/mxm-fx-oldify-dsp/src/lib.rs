@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! input → Drive → [the record, when on] → the tape (neutral when off) → ÷ Drive → [+ hum]
-//!   → Width (mid/side) → Output → Mix with the dry input, delayed to match
+//!   → Width (mid/side) → Mix with the dry input, delayed to match
 //! ```
 //!
 //! **Two engines, each switched on or off** (the owner, 2026-10-09: which cards belong to the
@@ -51,9 +51,9 @@ use transport::Wobble;
 pub const MIN_SAMPLE_RATE: f32 = 1_000.0;
 /// The highest sample rate [`Oldify::new`] accepts.
 pub const MAX_SAMPLE_RATE: f32 = 768_000.0;
-/// The bottom of Drive's and Output's travel, in decibels.
+/// The bottom of Drive's travel, in decibels.
 pub const MIN_GAIN_DB: f32 = -24.0;
-/// The top of Drive's and Output's travel, in decibels.
+/// The top of Drive's travel, in decibels.
 pub const MAX_GAIN_DB: f32 = 24.0;
 /// The widest Width: 200 %. Zero is mono and 1 leaves the stereo image as it came.
 pub const MAX_WIDTH: f32 = 2.0;
@@ -91,14 +91,12 @@ pub struct Controls {
     /// The record plays: its side, groove, disc and player.
     pub record_on: bool,
     /// The tape plays. With the record on too, the record is taped to cassette; with both off,
-    /// only Drive, Width, Output and Mix act.
+    /// only Drive, Width and Mix act.
     pub tape_on: bool,
     /// The level into the medium, linear, divided back out after it.
     pub drive: f32,
     /// Stereo width: 0 mono, 1 unchanged, [`MAX_WIDTH`] twice as wide.
     pub width: f32,
-    /// The chain's output level, linear.
-    pub output: f32,
     /// The wet share: 0 is the dry input, 1 the chain alone.
     pub mix: f32,
     /// How far the noise follows the input's level, 0–1: louder under loud passages, quieter
@@ -119,7 +117,6 @@ impl Controls {
         tape_on: true,
         drive: 1.0,
         width: 1.0,
-        output: 1.0,
         mix: 1.0,
         noise_follows: 0.0,
         noise_stops: true,
@@ -157,7 +154,6 @@ impl Controls {
             tape_on: self.tape_on,
             drive: gain(self.drive),
             width: within(self.width, MAX_WIDTH, 1.0),
-            output: gain(self.output),
             mix: within(self.mix, 1.0, 1.0),
             noise_follows: within(self.noise_follows, 1.0, 0.0),
             noise_stops: self.noise_stops,
@@ -286,7 +282,6 @@ pub struct Oldify {
     tape_on: bool,
     drive: Ramp,
     width: Ramp,
-    output: Ramp,
     mix: Ramp,
     cassette: Cassette,
     record: Record,
@@ -330,7 +325,6 @@ impl Oldify {
             tape_on: identity.tape_on,
             drive: Ramp::settled_at(identity.drive, steps),
             width: Ramp::settled_at(identity.width, steps),
-            output: Ramp::settled_at(identity.output, steps),
             mix: Ramp::settled_at(identity.mix, steps),
             cassette,
             record: Record::new(f64::from(sample_rate), seed_for(0)),
@@ -389,7 +383,6 @@ impl Oldify {
         }
         self.drive.retarget(controls.drive);
         self.width.retarget(controls.width);
-        self.output.retarget(controls.output);
         self.mix.retarget(controls.mix);
         self.noise_follows.retarget(controls.noise_follows);
         self.noise_stops = controls.noise_stops;
@@ -416,7 +409,6 @@ impl Oldify {
     pub fn reset(&mut self) {
         self.drive.snap();
         self.width.snap();
-        self.output.snap();
         self.mix.snap();
         self.noise_follows.snap();
         self.cassette.snap();
@@ -434,21 +426,16 @@ impl Oldify {
         self.quiet = true;
     }
 
-    /// The outer controls as they stand this sample; the cassette's are its own.
-    pub fn current(&self) -> (f32, f32, f32, f32) {
-        (
-            self.drive.value(),
-            self.width.value(),
-            self.output.value(),
-            self.mix.value(),
-        )
+    /// The outer controls as they stand this sample (Drive, Width, Mix); the cassette's are its
+    /// own.
+    pub fn current(&self) -> (f32, f32, f32) {
+        (self.drive.value(), self.width.value(), self.mix.value())
     }
 
     /// True when no control is ramping.
     pub fn is_settled(&self) -> bool {
         self.drive.is_settled()
             && self.width.is_settled()
-            && self.output.is_settled()
             && self.mix.is_settled()
             && self.cassette.is_settled()
     }
@@ -487,7 +474,6 @@ impl Oldify {
         let samples = u32::try_from(frames).unwrap_or(u32::MAX);
         self.drive.advance(samples);
         self.width.advance(samples);
-        self.output.advance(samples);
         self.mix.advance(samples);
         self.noise_follows.advance(samples);
         self.cassette.advance(samples);
@@ -515,7 +501,6 @@ impl Oldify {
         let follows = self.noise_follows.next();
         let drive = self.drive.next();
         let width = self.width.next();
-        let output = self.output.next();
         let mix = self.mix.next();
 
         if self.quiet {
@@ -568,7 +553,6 @@ impl Oldify {
             let side = (wet[0] - wet[1]) * 0.5 * width;
             wet = [mid + side, mid - side];
         }
-        wet = [wet[0] * output, wet[1] * output];
 
         let out = if mix == 1.0 {
             wet
@@ -717,21 +701,18 @@ mod tests {
         ] {
             for cassette in [CassetteControls::NEUTRAL, CassetteControls::INIT, loud] {
                 for drive in gains {
-                    for output in gains {
-                        for (width, mix) in [(0.0, 0.0), (1.0, 0.5), (MAX_WIDTH, 1.0)] {
-                            all.push(Controls {
-                                record_on,
-                                tape_on,
-                                drive,
-                                width,
-                                output,
-                                mix,
-                                noise_follows: 1.0,
-                                noise_stops: true,
-                                cassette,
-                                record,
-                            });
-                        }
+                    for (width, mix) in [(0.0, 0.0), (1.0, 0.5), (MAX_WIDTH, 1.0)] {
+                        all.push(Controls {
+                            record_on,
+                            tape_on,
+                            drive,
+                            width,
+                            mix,
+                            noise_follows: 1.0,
+                            noise_stops: true,
+                            cassette,
+                            record,
+                        });
                     }
                 }
             }
@@ -870,7 +851,6 @@ mod tests {
         let first = Controls {
             drive: db_to_gain(9.0),
             width: 1.6,
-            output: db_to_gain(-7.0),
             mix: 0.7,
             ..Controls::INIT
         };
@@ -942,7 +922,6 @@ mod tests {
             settings.push(Controls {
                 drive: bad,
                 width: bad,
-                output: bad,
                 mix: bad,
                 cassette: CassetteControls {
                     tone: bad,
@@ -964,11 +943,11 @@ mod tests {
                 ..Controls::INIT
             });
         }
-        // Full scale through the loudest gains, widest image and the media's own lift. The record
-        // lifts most: a square wave at full Drive is clipped by the groove in the cut's
-        // treble-lifted domain, and the replay curve lifts that clipped groove's bass by up to
-        // 20 dB, about eight times full scale. Finite and bounded is what this holds.
-        let ceiling = 16.0 * db_to_gain(MAX_GAIN_DB) * MAX_WIDTH + 1.0;
+        // Full scale through the widest image and the media's own lift; Drive is divided back out.
+        // The record lifts most: a square wave at full Drive is clipped by the groove in the
+        // cut's treble-lifted domain, and the replay curve lifts that clipped groove's bass by up
+        // to 20 dB, about eight times full scale. Finite and bounded is what this holds.
+        let ceiling = 16.0 * MAX_WIDTH + 1.0;
         for controls in settings {
             let mut oldify = Oldify::new(RATE).unwrap();
             for _ in 0..2 {
@@ -1131,22 +1110,22 @@ mod tests {
         let mut oldify = Oldify::new(RATE).unwrap();
         let target = db_to_gain(MAX_GAIN_DB);
         oldify.set_controls(Controls {
-            output: target,
+            drive: target,
             ..Controls::IDENTITY
         });
         let steps = (RATE * SMOOTHING_S).round() as usize;
         let largest = (target - 1.0) / steps as f32 * 1.001;
-        let mut previous = oldify.current().2;
+        let mut previous = oldify.current().0;
         assert_eq!(previous, 1.0, "the ramp jumped before the first sample");
         for sample in 1..=steps {
-            let output = oldify.output.next();
+            let drive = oldify.drive.next();
             assert!(
-                output - previous <= largest,
+                drive - previous <= largest,
                 "a step of {}",
-                output - previous
+                drive - previous
             );
-            assert!(output > previous, "the ramp stalled at sample {sample}");
-            previous = output;
+            assert!(drive > previous, "the ramp stalled at sample {sample}");
+            previous = drive;
         }
         assert_eq!(previous, target);
 
@@ -1164,7 +1143,7 @@ mod tests {
 
         // A reset ends the ramp at its target.
         oldify.reset();
-        assert_eq!(oldify.current().3, 0.0);
+        assert_eq!(oldify.current().2, 0.0);
         assert!(oldify.is_settled());
     }
 

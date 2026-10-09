@@ -25,7 +25,7 @@ off is dimmed but can still be set up.
   dropouts (how many, how deep and long, how differently left and right).
 - **Tape deck** — azimuth (a tilted head), crosstalk between the tracks, and the wrong playback EQ.
 - **Output** — Drive (±24 dB onto the tape, divided back out after it: more saturates more and
-  buries the hiss without getting louder), Width, Output, Mix against the dry input delayed to
+  buries the hiss without getting louder), Width, Mix against the dry input delayed to
   match, how far the noise follows the input, whether it stops in silence, and Variation, which
   picks another take of everything random (the same number always sounds the same).
 

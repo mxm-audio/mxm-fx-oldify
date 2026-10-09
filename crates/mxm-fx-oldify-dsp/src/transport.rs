@@ -10,10 +10,9 @@
 //! **Centring.** A sine or a saw moves the read by its own integral, centred, so its speed has
 //! exactly its shape. A change of depth, rate or shape would make that integral jump; the jump goes
 //! into a drift term instead, so the read never jumps, and the drift leaks away through a
-//! first-order high-pass at an eighth of the wobble's rate, within a cycle or two. The random
-//! shape's integral lives in the drift term from the start, so it cannot wander off; the leak takes
-//! a ninth of its power, which its scale gives back. Until a change has leaked away the read can
-//! swing up to twice its reach one way, so the base delay is twice the reach.
+//! first-order high-pass at an eighth of the wobble's rate, within a cycle or two. Until a change
+//! has leaked away the read can swing up to twice its reach one way, so the base delay is twice
+//! the reach.
 //!
 //! **Reading between samples:** four-point, third-order Hermite interpolation (Catmull–Rom; Olli
 //! Niemitalo, "Polynomial Interpolators for High-Quality Resampling of Oversampled Audio", 2001),
@@ -21,6 +20,10 @@
 //!
 //! **Random wobble** is an Ornstein–Uhlenbeck process (white noise through a one-pole low-pass at
 //! the wobble's rate), scaled to the asked-for depth: wobble that wanders, as a real machine's does.
+//! Its integral is a walk of its own that leaks at the rate itself, so the speed it gives is the
+//! noise band-passed about the rate (both corners there): it wanders about the rate, not down to
+//! nothing, and moves the read a third as far as a leak at an eighth of the rate would, so a deep
+//! random wow fits the reach. The leak takes half its power, which its scale gives back.
 //!
 //! Every random draw comes from the transport's own seeded generator, one per sample, so a render
 //! with the same seed is the same at any block size.
@@ -58,12 +61,13 @@ impl Wobble {
     /// How far it moves the read, in seconds either way, once centred.
     pub fn reach_seconds(&self) -> f64 {
         // The integral of a sine of depth d at f peaks at d / (2π f); a saw's at d / (6 f). The
-        // random shape's, through the leak, has a standard deviation of about 0.32·d / f (its speed
-        // RMS d/√2 through 1/(s + ω/8), ω = 2π f, its corner); four of those is held.
+        // random shape's walk has a standard deviation of d / (√2·ω), ω = 2π f (its speed RMS
+        // d/√2, made up by √2, through 1/(s + ω) after the noise's own 1/(s + ω)); four of those
+        // is held.
         let per_cycle = match self.shape {
             Shape::Sine => 1.0 / TAU,
             Shape::Saw | Shape::ReverseSaw => 1.0 / 6.0,
-            Shape::Random => 1.35,
+            Shape::Random => 4.0 / (std::f64::consts::SQRT_2 * TAU),
         };
         self.depth.abs() * per_cycle / self.hz.max(0.01)
     }
@@ -72,6 +76,12 @@ impl Wobble {
 /// A xorshift32 generator (George Marsaglia, "Xorshift RNGs", 2003): small, fast, seeded.
 #[derive(Clone, Copy, Debug)]
 pub struct Rng(u32);
+
+impl Default for Rng {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
 
 impl Rng {
     pub fn new(seed: u32) -> Self {
@@ -95,8 +105,10 @@ impl Rng {
 const LEAK: f64 = 1.0 / 8.0;
 /// How far a following flutter's rate moves with the wow, as a share of itself. Chosen.
 pub const FOLLOW_DEPTH: f64 = 0.5;
-/// What the random shape is scaled by to give back the power the leak takes: √(1 + LEAK).
-const RANDOM_MAKEUP: f64 = 1.060_660_171_779_821_2;
+/// The random walk's leak's corner, as a share of the wobble's rate: the rate itself.
+const RANDOM_LEAK: f64 = 1.0;
+/// What the random shape is scaled by to give back the power its leak takes: √(1 + RANDOM_LEAK).
+const RANDOM_MAKEUP: f64 = std::f64::consts::SQRT_2;
 
 /// A periodic shape's centred integral at `phase`, in samples: the read's offset that gives the
 /// speed error `depth · shape(phase)`. Zero for the random shape, whose integral is the drift.
@@ -119,8 +131,10 @@ struct Oscillator {
     /// The random shape's low-passed noise.
     wander: f64,
     /// What the read's offset carries besides the centred integral, in samples: the jumps a change
-    /// made, and the random shape's integral, leaking away.
+    /// made, leaking away.
     drift: f64,
+    /// The random shape's integral, in samples, leaking at the rate.
+    walk: f64,
     /// Last sample's wobble, to see a change; none before the first sample, so a reset starts
     /// centred.
     last: Option<Wobble>,
@@ -151,6 +165,8 @@ impl Oscillator {
             Shape::ReverseSaw => 1.0 - 2.0 * self.phase,
             Shape::Random => 0.0,
         };
+        // The walk leaks whatever the shape, so leaving the random shape eases it home.
+        self.walk *= 1.0 - TAU * step * RANDOM_LEAK;
         if wobble.shape == Shape::Random {
             // An Ornstein–Uhlenbeck process: uniform noise (RMS 1/√3) through a one-pole low-pass
             // at the rate, whose output variance is σ²·(1 − a)/(1 + a). Divided by its RMS it has
@@ -161,9 +177,9 @@ impl Oscillator {
             let unit = self.wander / rms.max(1e-12);
             self.level = (unit * std::f64::consts::FRAC_1_SQRT_2).clamp(-1.0, 1.0);
             let speed = RANDOM_MAKEUP * wobble.depth * std::f64::consts::FRAC_1_SQRT_2 * unit;
-            self.drift -= speed;
+            self.walk -= speed;
         }
-        self.offset = now + self.drift;
+        self.offset = now + self.drift + self.walk;
         self.offset
     }
 }

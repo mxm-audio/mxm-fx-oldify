@@ -55,8 +55,10 @@ pub const FLUTTER_SYNC: Ladder = Ladder::new(
 ///
 /// `medium`, the Cassette / Record / Record then cassette selector, gave way to the Record and Tape
 /// switches (the owner, 2026-10-09: "There is not way to know what cards control the tape, and what
-/// controls the vinyl. So the tape/vinyl/tape+vinyl makes no sense.").
-pub const RETIRED_IDS: [&str; 1] = ["medium"];
+/// controls the vinyl. So the tape/vinyl/tape+vinyl makes no sense."). `output`, an output level,
+/// went because the collection's effects end in Mix alone (the owner, 2026-10-09: "it still has
+/// both output and mix").
+pub const RETIRED_IDS: [&str; 2] = ["medium", "output"];
 
 /// The disc's speed, and so its size and its noise's pace.
 #[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -802,8 +804,6 @@ pub struct MxmFxOldifyParams {
     pub drive: FloatParam,
     #[id = "width"]
     pub width: FloatParam,
-    #[id = "output"]
-    pub output: FloatParam,
     #[id = "mix"]
     pub mix: FloatParam,
     #[id = "noise_follows"]
@@ -950,7 +950,6 @@ impl Default for MxmFxOldifyParams {
 
             drive: gain("Drive"),
             width: percent("Width", init.width, MAX_WIDTH),
-            output: gain("Output"),
             mix: percent("Mix", init.mix, 1.0),
             noise_follows: percent("Noise follows", init.noise_follows, 1.0),
             noise_stops: BoolParam::new("Noise stops in silence", init.noise_stops),
@@ -1007,7 +1006,6 @@ impl MxmFxOldifyParams {
             tape_on: self.tape_on.value(),
             drive: self.drive.value(),
             width: self.width.value(),
-            output: self.output.value(),
             mix: self.mix.value(),
             noise_follows: self.noise_follows.value(),
             noise_stops: self.noise_stops.value(),
@@ -1125,11 +1123,10 @@ mod tests {
     #[test]
     fn a_gain_reads_zero_decibels_at_the_middle_and_its_ends_at_plus_minus_twenty_four() {
         let params = MxmFxOldifyParams::default();
-        for param in [&params.drive, &params.output] {
-            assert_eq!(param.normalized_value_to_string(0.5, true), "0.0 dB");
-            assert_eq!(param.normalized_value_to_string(0.0, true), "-24.0 dB");
-            assert_eq!(param.normalized_value_to_string(1.0, true), "24.0 dB");
-        }
+        let drive = &params.drive;
+        assert_eq!(drive.normalized_value_to_string(0.5, true), "0.0 dB");
+        assert_eq!(drive.normalized_value_to_string(0.0, true), "-24.0 dB");
+        assert_eq!(drive.normalized_value_to_string(1.0, true), "24.0 dB");
         let error = &params.nr_level_error;
         assert_eq!(error.normalized_value_to_string(0.5, true), "0.0 dB");
         assert_eq!(error.normalized_value_to_string(0.0, true), "-6.0 dB");
@@ -1288,7 +1285,7 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 31] = [
+        let continuous: [&FloatParam; 30] = [
             &params.age,
             &params.tape_tone,
             &params.saturation,
@@ -1317,7 +1314,6 @@ mod tests {
             &params.crosstalk,
             &params.drive,
             &params.width,
-            &params.output,
             &params.mix,
             &params.noise_follows,
         ];

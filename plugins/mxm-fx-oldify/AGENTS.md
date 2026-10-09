@@ -26,7 +26,8 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 - The sole crate-local name literal is `plugin_name!` in `src/lib.rs`; `bundler.toml` is the only
   external duplicate.
 - The parameter ids and every option id below are permanent: a stored enum is its id. Never rename
-  or recycle one; the retired ones are `params::RETIRED_IDS` (`medium`, `no_retired_id_is_back`).
+  or recycle one; the retired ones are `params::RETIRED_IDS` (`medium`, `output`;
+  `no_retired_id_is_back`).
   Declaration order is signal order, the cards'.
 - CLAP features: audio-effect, distortion, stereo. Layouts: mono → stereo and stereo → stereo; a
   mono input feeds both sides. There is no note port and no developer MIDI channel.
@@ -66,7 +67,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | Deck | `azimuth` | Azimuth | 0…`MAX_AZIMUTH_ARCMIN` arc-minutes, read `15.0′` (`'` and `arcmin` parse too), skewed so 15′ is mid-travel |
 | | `crosstalk` | Crosstalk | `CROSSTALK_OFF_DB`…`CROSSTALK_MAX_DB`, as Hiss |
 | | `wrong_eq` | Wrong EQ | Off / On |
-| Output | `drive`, `output` | Drive, Output | `MIN_GAIN_DB`…`MAX_GAIN_DB`, stored as linear gain, 0 dB mid-travel, read in dB; Drive compensated after the tape |
+| Output | `drive` | Drive | `MIN_GAIN_DB`…`MAX_GAIN_DB`, stored as linear gain, 0 dB mid-travel, read in dB; compensated after the media, so the effect ends in Mix alone, with no output level ([NOTES.md § The cards](NOTES.md#the-cards)) |
 | | `width` | Width | 0…`MAX_WIDTH`, linear, read in percent; 100 % is the image as it came |
 | | `mix` | Mix | 0–100 %, linear, against the dry input delayed by the latency |
 | | `noise_follows` | Noise follows | 0–100 %, linear |
@@ -154,7 +155,7 @@ shared disabled module's) but stays editable and reachable** (the owner, 2026-10
 way to know what cards control the tape, and what controls the vinyl. So the tape/vinyl/tape+vinyl
 makes no sense."; [NOTES.md § Dimming](NOTES.md#dimming)). Era, Player and the curves are caret
 selectors whose hover adds the chosen option's sentence (`option_sentences`). The shapes are drawn,
-not named; every switch cell carries its own sentence (`details_of`); Drive, Width, Output and NR
+not named; every switch cell carries its own sentence (`details_of`); Drive, Width and NR
 level error are bipolar knobs; the on/off parameters are the collection's labelled toggle.
 
 Every card body is a `mxm_ui::tree` (`editor/sections.rs`), its floor computed by

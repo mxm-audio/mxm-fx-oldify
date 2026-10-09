@@ -16,8 +16,14 @@
 //!   (a smooth level change fixed to the angle, a little different each revolution).
 //! - **Crackle**: a dense bed of single-sample impulses with heavy-tailed (Pareto) sizes, up to
 //!   2,000 a second on a 78, where they fuse into the familiar fry.
-//! - **Clicks**: sparser, larger, each a damped ring of its own pitch and length (20 µs to 4 ms).
-//! - **Scratches**: a click at a fixed angle every turn, louder, its sound its own.
+//! - **Clicks**: sparser, larger, each a burst of noise behind a sharp edge, 20 µs to 4 ms long,
+//!   its colour its own and darker the longer it lasts. A click is "localized impulsive
+//!   disturbances… durations range from less than 20 µs to 4 ms" whose initial part "behaves as
+//!   high-variance noise" (Moliner & Välimäki, after Rayner & Godsill; Esquef): noise, not a
+//!   tone. A damped ring of one pitch, which a click is not, is heard as a drop of water.
+//! - **Scratches**: at a fixed angle every turn, louder: the stylus drops into the scratch and
+//!   climbs out, two edges of opposite sign a scratch's width apart, the same burst each turn
+//!   with its size varied a little.
 //! - **Cracks**: a thump at a fixed angle every turn: a short burst, then a damped ring falling in
 //!   pitch, over 50 ms (Esquef's model, as cited there).
 //! - **Rumble**: low noise under 30 Hz.
@@ -54,7 +60,18 @@ const CLICK_SIZE: f64 = 0.03;
 /// A scratch's and a crack's.
 const SCRATCH_SIZE: f64 = 0.12;
 const CRACK_SIZE: f64 = 0.25;
-/// Voices sounding at once: clicks, scratches and thumps.
+/// A click's shortest and longest (Rayner & Godsill, as cited).
+const CLICK_SHORTEST_S: f64 = 0.000_02;
+const CLICK_LONGEST_S: f64 = 0.004;
+/// A burst's colour, a one-pole low-pass: the shortest click's corner, and the longest's. Chosen.
+const BRIGHTEST_HZ: f64 = 16_000.0;
+const DARKEST_HZ: f64 = 2_500.0;
+/// A burst's noise against its edge. Chosen.
+const GRIT: f64 = 0.35;
+/// A scratch's width, as the time the stylus takes to cross it: 30–300 µm at 0.2–0.5 m/s on an
+/// LP, faster on a 78 (est.).
+const SCRATCH_WIDTH_S: (f64, f64) = (0.000_1, 0.001_5);
+/// Voices sounding at once: clicks, scratch edges and thumps.
 const VOICES: usize = 32;
 
 /// The disc's speed.
@@ -151,28 +168,87 @@ fn unit(rng: &mut Rng) -> f64 {
     0.5 * (rng.bipolar() + 1.0)
 }
 
-/// One sounding event: a damped ring, its pitch possibly falling.
+/// A burst of coloured noise behind a sharp edge: a click, a scratch's edge, a thump's start.
+#[derive(Clone, Copy, Debug, Default)]
+struct Burst {
+    /// The edge's height, signed: the click's polarity.
+    size: f64,
+    seconds: f64,
+    /// The colour's corner.
+    hz: f64,
+    /// The burst's own generator's seed: the same seed is the same burst.
+    seed: u32,
+}
+
+impl Burst {
+    /// A click: its length log-uniform across Rayner & Godsill's range, darker the longer it is.
+    fn click(size: f64, rng: &mut Rng) -> Self {
+        let seconds = CLICK_SHORTEST_S * (CLICK_LONGEST_S / CLICK_SHORTEST_S).powf(unit(rng));
+        Self {
+            size,
+            seconds,
+            hz: Self::colour(seconds),
+            seed: seed(rng),
+        }
+    }
+
+    /// The corner for a burst this long: from [`BRIGHTEST_HZ`] at the shortest click to
+    /// [`DARKEST_HZ`] at the longest, geometrically.
+    fn colour(seconds: f64) -> f64 {
+        let share = (seconds / CLICK_SHORTEST_S).ln() / (CLICK_LONGEST_S / CLICK_SHORTEST_S).ln();
+        BRIGHTEST_HZ * (DARKEST_HZ / BRIGHTEST_HZ).powf(share.clamp(0.0, 1.0))
+    }
+}
+
+/// One sounding event: a burst, a damped ring whose pitch may fall, or both.
 #[derive(Clone, Copy, Debug, Default)]
 struct Voice {
     live: bool,
+    /// Samples before it starts.
+    wait: u32,
+    /// The burst: the edge still to come, the noise's level and its per-sample decay, the noise's
+    /// generator, the colour's coefficient and state, and the gain that gives the coloured noise
+    /// unit RMS.
+    edge: f64,
+    grit: f64,
+    grit_decay: f64,
+    noise: Rng,
+    colour: f64,
+    tone: f64,
+    gain: f64,
+    /// The ring: its level, per-sample decay, the pitch's per-sample fall (1 is none), its phase
+    /// step and phase.
     amp: f64,
-    /// Per-sample decay, and the pitch's per-sample fall (1 is none).
     decay: f64,
     fall: f64,
-    /// The ring's phase step, and phase.
     step: f64,
     phase: f64,
-    /// A burst at the start, in samples, of noise: a thump's initial crack.
-    burst: u32,
 }
 
-/// A fixed defect: a scratch or a crack.
+/// A scratch: where it sits, its near edge's burst, and the far edge's size against the near
+/// one's and its delay.
 #[derive(Clone, Copy, Debug, Default)]
-struct Fixed {
+struct Scratch {
     angle: f64,
+    near: Burst,
+    far: f64,
+    width_s: f64,
+}
+
+/// A crack: where it sits, its thump's start, and its ring.
+#[derive(Clone, Copy, Debug, Default)]
+struct Crack {
+    angle: f64,
+    start: Burst,
     amp: f64,
     hz: f64,
     decay_s: f64,
+}
+
+/// A fresh seed for a burst.
+#[inline]
+fn seed(rng: &mut Rng) -> u32 {
+    (unit(rng) * f64::from(u32::MAX)) as u32
 }
 
 /// The disc.
@@ -182,14 +258,14 @@ pub struct Disc {
     rng: Rng,
     seed: u32,
     angle: f64,
-    /// This revolution's crackle (angle, size) and clicks (angle, size, pitch Hz, decay s), sorted
-    /// by angle, and how far into each this revolution has come.
+    /// This revolution's crackle (angle, size) and clicks (angle, burst), sorted by angle, and how
+    /// far into each this revolution has come.
     crackle: Vec<(f64, f64)>,
-    clicks: Vec<(f64, f64, f64, f64)>,
+    clicks: Vec<(f64, Burst)>,
     next_crackle: usize,
     next_click: usize,
-    scratches: [Fixed; MAX_SCRATCHES],
-    cracks: [Fixed; MAX_CRACKS],
+    scratches: [Scratch; MAX_SCRATCHES],
+    cracks: [Crack; MAX_CRACKS],
     voices: [Voice; VOICES],
     /// The swish: three harmonics of the turn, amplitude and phase each.
     swish: [(f64, f64); 3],
@@ -215,8 +291,8 @@ impl Disc {
             clicks: Vec::with_capacity(most_clicks),
             next_crackle: 0,
             next_click: 0,
-            scratches: [Fixed::default(); MAX_SCRATCHES],
-            cracks: [Fixed::default(); MAX_CRACKS],
+            scratches: [Scratch::default(); MAX_SCRATCHES],
+            cracks: [Crack::default(); MAX_CRACKS],
             voices: [Voice::default(); VOICES],
             swish: [(0.0, 0.0); 3],
             tilt: 0.0,
@@ -247,20 +323,41 @@ impl Disc {
             *amp = 0.4 * unit(&mut self.rng);
             *phase = TAU * unit(&mut self.rng);
         }
-        for fixed in self.scratches.iter_mut() {
-            *fixed = Fixed {
-                angle: unit(&mut self.rng),
-                amp: SCRATCH_SIZE * (0.5 + unit(&mut self.rng)),
-                hz: 1_500.0 + 4_000.0 * unit(&mut self.rng),
-                decay_s: 0.0003 + 0.0015 * unit(&mut self.rng),
+        let rng = &mut self.rng;
+        for scratch in self.scratches.iter_mut() {
+            let angle = unit(rng);
+            let sign = if rng.bipolar() < 0.0 { -1.0 } else { 1.0 };
+            let size = sign * SCRATCH_SIZE * (0.5 + unit(rng));
+            // An edge is short: the first third of the clicks' range.
+            let seconds = CLICK_SHORTEST_S
+                * (CLICK_LONGEST_S / CLICK_SHORTEST_S).powf(0.33 * unit(rng) + 0.33);
+            let (narrowest, widest) = SCRATCH_WIDTH_S;
+            *scratch = Scratch {
+                angle,
+                near: Burst {
+                    size,
+                    seconds,
+                    hz: Burst::colour(seconds),
+                    seed: seed(rng),
+                },
+                far: 0.3 + 0.6 * unit(rng),
+                width_s: narrowest * (widest / narrowest).powf(unit(rng)),
             };
         }
-        for fixed in self.cracks.iter_mut() {
-            *fixed = Fixed {
-                angle: unit(&mut self.rng),
-                amp: CRACK_SIZE * (0.6 + 0.8 * unit(&mut self.rng)),
-                hz: 180.0 + 220.0 * unit(&mut self.rng),
-                decay_s: 0.03 + 0.04 * unit(&mut self.rng),
+        for crack in self.cracks.iter_mut() {
+            let angle = unit(rng);
+            let amp = CRACK_SIZE * (0.6 + 0.8 * unit(rng));
+            *crack = Crack {
+                angle,
+                start: Burst {
+                    size: amp,
+                    seconds: 0.0015,
+                    hz: DARKEST_HZ,
+                    seed: seed(rng),
+                },
+                amp,
+                hz: 180.0 + 220.0 * unit(rng),
+                decay_s: 0.03 + 0.04 * unit(rng),
             };
         }
         self.crackle.clear();
@@ -293,13 +390,10 @@ impl Disc {
             (unit(rng), sign * size.min(CRACKLE_SIZE * CRACKLE_LARGEST))
         };
         let click = |rng: &mut Rng| {
+            let angle = unit(rng);
             let sign = if rng.bipolar() < 0.0 { -1.0 } else { 1.0 };
-            (
-                unit(rng),
-                sign * CLICK_SIZE * (0.3 + 1.7 * unit(rng).powi(2)),
-                1_000.0 + 7_000.0 * unit(rng),
-                0.00002 * (200.0f64).powf(unit(rng)),
-            )
+            let size = sign * CLICK_SIZE * (0.3 + 1.7 * unit(rng).powi(2));
+            (angle, Burst::click(size, rng))
         };
         self.crackle.truncate(want_crackle);
         for event in &mut self.crackle {
@@ -325,27 +419,39 @@ impl Disc {
         self.next_click = 0;
     }
 
-    /// Starts a ring, stealing the quietest voice when all are busy.
-    fn ring(&mut self, amp: f64, hz: f64, decay_s: f64, fall_per_s: f64, burst_s: f64) {
+    /// A voice playing `burst` at `scale` of its size, after `wait_s`, with no ring.
+    fn voice(&self, burst: &Burst, scale: f64, wait_s: f64) -> Voice {
+        let colour = (-TAU * burst.hz.min(0.45 * self.rate) / self.rate).exp();
+        let size = burst.size * scale;
+        Voice {
+            live: true,
+            wait: (wait_s * self.rate) as u32,
+            edge: size,
+            grit: GRIT * size.abs(),
+            // Down by e three times over its length.
+            grit_decay: (-3.0 / (burst.seconds * self.rate).max(1.0)).exp(),
+            noise: Rng::new(burst.seed),
+            colour,
+            tone: 0.0,
+            // A one-pole's output variance is (1 − a) / (1 + a) of white's.
+            gain: ((1.0 + colour) / (1.0 - colour)).sqrt(),
+            amp: 0.0,
+            decay: 0.0,
+            fall: 1.0,
+            step: 0.0,
+            phase: 0.0,
+        }
+    }
+
+    /// Starts a voice, stealing the quietest when all are busy.
+    fn start(&mut self, voice: Voice) {
+        let loudness = |v: &Voice| v.grit.abs().max(v.amp.abs()).max(v.edge.abs());
         let slot = self.voices.iter().position(|v| !v.live).unwrap_or_else(|| {
             (0..VOICES)
-                .min_by(|&a, &b| {
-                    self.voices[a]
-                        .amp
-                        .abs()
-                        .total_cmp(&self.voices[b].amp.abs())
-                })
+                .min_by(|&a, &b| loudness(&self.voices[a]).total_cmp(&loudness(&self.voices[b])))
                 .unwrap_or(0)
         });
-        self.voices[slot] = Voice {
-            live: true,
-            amp,
-            decay: (-1.0 / (decay_s * self.rate)).exp(),
-            fall: (-fall_per_s / self.rate).exp(),
-            step: TAU * hz.min(0.45 * self.rate) / self.rate,
-            phase: 0.0,
-            burst: (burst_s * self.rate) as u32,
-        };
+        self.voices[slot] = voice;
     }
 
     /// One sample of the disc's own sound, in the groove.
@@ -365,23 +471,38 @@ impl Disc {
             self.next_crackle += 1;
         }
         while self.next_click < self.clicks.len() && self.clicks[self.next_click].0 < now {
-            let (_, amp, hz, decay) = self.clicks[self.next_click];
-            self.ring(amp, hz, decay, 0.0, 0.0);
+            let (_, burst) = self.clicks[self.next_click];
+            let voice = self.voice(&burst, 1.0, 0.0);
+            self.start(voice);
             self.next_click += 1;
         }
         for i in 0..usize::from(c.scratches) {
             let s = self.scratches[i];
             if s.angle >= before && s.angle < now {
+                // Into the scratch, then out of it: the far edge the other way, a width later.
                 let vary = 0.85 + 0.3 * unit(&mut self.rng);
-                self.ring(s.amp * vary, s.hz * vary, s.decay_s, 0.0, 0.0);
+                let near = self.voice(&s.near, vary, 0.0);
+                let far_burst = Burst {
+                    seed: s.near.seed.wrapping_add(1),
+                    ..s.near
+                };
+                let far = self.voice(&far_burst, -s.far * vary, s.width_s);
+                self.start(near);
+                self.start(far);
             }
         }
         for i in 0..usize::from(c.cracks) {
             let k = self.cracks[i];
             if k.angle >= before && k.angle < now {
                 let vary = 0.9 + 0.2 * unit(&mut self.rng);
-                // The pitch falls by e every 40 ms: from a few hundred hertz toward the bass.
-                self.ring(k.amp * vary, k.hz, k.decay_s, 25.0, 0.0015);
+                // A burst, then the ring, whose pitch falls by e every 40 ms: from a few hundred
+                // hertz toward the bass.
+                let mut voice = self.voice(&k.start, vary, 0.0);
+                voice.amp = k.amp * vary;
+                voice.decay = (-1.0 / (k.decay_s * self.rate)).exp();
+                voice.fall = (-25.0 / self.rate).exp();
+                voice.step = TAU * k.hz.min(0.45 * self.rate) / self.rate;
+                self.start(voice);
             }
         }
         if wrapped {
@@ -392,18 +513,32 @@ impl Disc {
 
         // The voices.
         for voice in self.voices.iter_mut().filter(|v| v.live) {
-            let mut v = voice.amp * voice.phase.sin();
-            if voice.burst > 0 {
-                v += voice.amp * 0.5 * self.rng.bipolar();
-                voice.burst -= 1;
+            if voice.wait > 0 {
+                voice.wait -= 1;
+                continue;
             }
-            out += v;
-            voice.phase += voice.step;
-            voice.step *= voice.fall;
-            voice.amp *= voice.decay;
-            if voice.amp.abs() < 1e-7 {
-                voice.live = false;
+            // The burst: the edge and the noise behind it, through the burst's colour.
+            if voice.grit != 0.0 || voice.edge != 0.0 {
+                let white = voice.noise.bipolar() * 3f64.sqrt();
+                let drive = voice.edge + voice.grit * white;
+                voice.edge = 0.0;
+                voice.tone = voice.colour * voice.tone + (1.0 - voice.colour) * drive;
+                out += voice.gain * voice.tone;
+                voice.grit *= voice.grit_decay;
+                if voice.grit.abs() < 1e-7 {
+                    voice.grit = 0.0;
+                }
             }
+            if voice.amp != 0.0 {
+                out += voice.amp * voice.phase.sin();
+                voice.phase += voice.step;
+                voice.step *= voice.fall;
+                voice.amp *= voice.decay;
+                if voice.amp.abs() < 1e-7 {
+                    voice.amp = 0.0;
+                }
+            }
+            voice.live = voice.grit != 0.0 || voice.amp != 0.0;
         }
 
         // Surface noise, swishing with the turn.
@@ -542,6 +677,95 @@ mod tests {
         for p in &peaks[1..] {
             assert!(p.abs_diff(peaks[0]) < 400, "{peaks:?}");
         }
+    }
+
+    /// The largest third-octave band's share of `x`'s energy from 200 Hz to 16 kHz.
+    fn largest_band_share(x: &[f64]) -> f64 {
+        let n = x.len();
+        let power = |hz: f64| {
+            let (mut re, mut im) = (0.0, 0.0);
+            for (i, v) in x.iter().enumerate() {
+                let p = TAU * hz * i as f64 / RATE;
+                re += v * p.cos();
+                im += v * p.sin();
+            }
+            re * re + im * im
+        };
+        let step = RATE / n as f64;
+        let bands: Vec<f64> = (0..22)
+            .map(|b| 200.0 * 2f64.powf(b as f64 / 3.0))
+            .map(|centre| {
+                let (lo, hi) = (
+                    centre * 2f64.powf(-1.0 / 6.0),
+                    centre * 2f64.powf(1.0 / 6.0),
+                );
+                let mut sum = 0.0;
+                let mut hz = (lo / step).ceil() * step;
+                while hz < hi {
+                    sum += power(hz);
+                    hz += step;
+                }
+                sum
+            })
+            .collect();
+        let total: f64 = bands.iter().sum();
+        bands.iter().cloned().fold(0.0, f64::max) / total
+    }
+
+    /// **A click is noise, not a tone**: a click's energy spreads across the bands, where a ring of
+    /// one pitch (heard as a drop of water) puts most of it in one or two.
+    #[test]
+    fn a_click_is_a_burst_of_noise_not_a_tone() {
+        let c = DiscControls {
+            clicks: 2.0,
+            ..DiscControls::SILENT
+        };
+        let out = render(c, 6.0, 9);
+        let mut shares = Vec::new();
+        let mut i = 0;
+        while i + 2048 < out.len() {
+            if out[i].abs() > 1e-3 {
+                shares.push(largest_band_share(&out[i..i + 2048]));
+                i += 2048;
+            } else {
+                i += 1;
+            }
+        }
+        assert!(shares.len() >= 6, "{} clicks", shares.len());
+        let worst = shares.iter().cloned().fold(0.0, f64::max);
+        assert!(worst < 0.35, "a click put {worst:.2} of itself in one band");
+    }
+
+    /// **A scratch is the same tick every turn**, in the same place, only its size varied.
+    #[test]
+    fn a_scratch_ticks_once_every_turn_the_same_tick_each_time() {
+        let c = DiscControls {
+            speed: Speed::Shellac78,
+            scratches: 1,
+            ..DiscControls::SILENT
+        };
+        let out = render(c, 4.0, 10);
+        let turn = (RATE / Speed::Shellac78.hz()).round() as usize;
+        let ticks: Vec<&[f64]> = (1..4)
+            .map(|r| {
+                let first = (r * turn..(r + 1) * turn)
+                    .find(|&i| out[i] != 0.0)
+                    .expect("a tick every turn");
+                &out[first..first + 2048]
+            })
+            .collect();
+        let correlation = |a: &[f64], b: &[f64]| {
+            let dot: f64 = a.iter().zip(b).map(|(x, y)| x * y).sum();
+            let norm = |x: &[f64]| x.iter().map(|v| v * v).sum::<f64>().sqrt();
+            dot / (norm(a) * norm(b))
+        };
+        assert!(correlation(ticks[0], ticks[1]) > 0.999);
+        assert!(correlation(ticks[1], ticks[2]) > 0.999);
+        let share = largest_band_share(ticks[0]);
+        assert!(
+            share < 0.35,
+            "the scratch put {share:.2} of itself in one band"
+        );
     }
 
     #[test]
