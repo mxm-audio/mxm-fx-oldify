@@ -2378,6 +2378,7 @@ dependencies = [
  "mxm-fx-oldify-dsp",
  "mxm-plugin-test",
  "mxm-preset",
+ "mxm-tempo",
  "mxm-ui",
  "nice-plug",
  "nice-plug-egui",

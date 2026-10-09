@@ -55,7 +55,10 @@ impl MxmFxOldify {
         let Ok(mut engine) = Oldify::new(sample_rate) else {
             return false;
         };
-        engine.set_controls(self.params.controls());
+        // No tempo until the first block reports one: a synced rate must not start at a division
+        // resolved from a tempo the host may since have changed.
+        self.telemetry.forget_tempo();
+        engine.set_controls(self.params.controls(None));
         engine.reset();
         self.engine = engine;
         self.input_channels = input_channels.clamp(1, 2);
@@ -72,11 +75,16 @@ impl MxmFxOldify {
         self.prepare(sample_rate, input_channels)
     }
 
-    pub fn process_block_for_test(&mut self, channels: &mut [&mut [f32]]) -> ProcessStatus {
-        self.process_block(channels)
+    pub fn process_block_for_test(
+        &mut self,
+        channels: &mut [&mut [f32]],
+        tempo: Option<f64>,
+    ) -> ProcessStatus {
+        self.process_block(channels, tempo)
     }
 
-    fn process_block(&mut self, channels: &mut [&mut [f32]]) -> ProcessStatus {
+    /// One block at the host's `tempo`, which the synced rates resolve against.
+    fn process_block(&mut self, channels: &mut [&mut [f32]], tempo: Option<f64>) -> ProcessStatus {
         let Some(first) = channels.first() else {
             return ProcessStatus::Normal;
         };
@@ -102,14 +110,14 @@ impl MxmFxOldify {
                 self.engine.process(
                     &mut left[..samples],
                     &mut right[..samples],
-                    self.params.controls(),
+                    self.params.controls(tempo),
                 );
                 peak(&left[..samples]).max(peak(&right[..samples]))
             }
             // Every declared layout has a stereo output, so a host never hands over fewer.
             _ => 0.0,
         };
-        self.telemetry.publish(input_peak, output_peak);
+        self.telemetry.publish(input_peak, output_peak, tempo);
         self.status()
     }
 
@@ -126,10 +134,14 @@ impl MxmFxOldify {
         };
     }
 
-    /// **The tail is the DSP's**: `Tail(n)` with the samples left until the output is exact zero
-    /// if the input stays silent from here, and `Normal` once it is, so a host may sleep the effect
-    /// and doing nothing costs nothing.
+    /// **The tail is the DSP's**: `KeepAlive` while it is endless (hiss that plays on in silence,
+    /// so the host must never sleep the effect); otherwise `Tail(n)` with the samples left until the
+    /// output is exact zero if the input stays silent from here, and `Normal` once it is, so a host
+    /// may sleep the effect and doing nothing costs nothing.
     fn status(&self) -> ProcessStatus {
+        if self.engine.endless() {
+            return ProcessStatus::KeepAlive;
+        }
         let left = u64::from(self.engine.tail()).saturating_sub(self.silent_for);
         if left == 0 {
             ProcessStatus::Normal
@@ -197,19 +209,27 @@ impl Plugin for MxmFxOldify {
     fn reset(&mut self) {
         // A host resets without a callback between (a bypass, a transport restart), and a
         // parameter flush may have moved a control meanwhile: start at the controls as they stand,
-        // with every memory cleared.
-        self.engine.set_controls(self.params.controls());
+        // the synced rates at the last tempo seen, with every memory cleared.
+        self.engine
+            .set_controls(self.params.controls(self.telemetry.tempo()));
         self.engine.reset();
         self.silent_for = u64::MAX;
+    }
+
+    /// **A project saved before the tempo syncs** restores each Off rather than keeping this
+    /// instance's, and a loaded preset's baseline gains it, so the preset stays clean
+    /// (`mxm_preset::add_switches_off`).
+    fn filter_state(state: &mut PluginState) {
+        mxm_preset::add_switches_off(state, crate::preset::TEMPO_SYNC_IDS);
     }
 
     fn process(
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<Self>,
+        context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        self.process_block(buffer.as_slice())
+        self.process_block(buffer.as_slice(), context.transport().tempo)
     }
 }
 
@@ -255,7 +275,7 @@ mod tests {
 
     fn run(plugin: &mut MxmFxOldify, left: &mut [f32], right: &mut [f32]) -> ProcessStatus {
         let mut channels: Vec<&mut [f32]> = vec![left, right];
-        plugin.process_block(&mut channels)
+        plugin.process_block(&mut channels, None)
     }
 
     /// An activation context that remembers the latency it was told.
@@ -436,6 +456,94 @@ mod tests {
         let (mut left, mut right) = (vec![0.0f32; 512], vec![0.0f32; 512]);
         run(&mut plugin, &mut left, &mut right);
         assert!(left.iter().chain(&right).all(|sample| *sample == 0.0));
+    }
+
+    /// **Hiss that plays on in silence keeps the effect alive**: with Noise stops in silence off,
+    /// the status is `KeepAlive` — never `Normal`, never a finite tail — and silence in is hiss
+    /// out. Turned back on after a long silence, the chain is quiet at once and the effect may
+    /// sleep.
+    #[test]
+    fn an_endless_hiss_keeps_the_effect_alive_until_the_noise_stops() {
+        let mut plugin = MxmFxOldify::default();
+        unsafe {
+            let _ = plugin
+                .params
+                .noise_stops
+                ._internal_set_normalized_value(0.0);
+        }
+        assert!(plugin.prepare(48_000.0, 2));
+        for _ in 0..20 {
+            let (mut left, mut right) = (vec![0.0f32; 4_096], vec![0.0f32; 4_096]);
+            assert!(matches!(
+                run(&mut plugin, &mut left, &mut right),
+                ProcessStatus::KeepAlive
+            ));
+        }
+        let (mut left, mut right) = (vec![0.0f32; 4_096], vec![0.0f32; 4_096]);
+        run(&mut plugin, &mut left, &mut right);
+        assert!(
+            left.iter().any(|sample| *sample != 0.0),
+            "no hiss in silence"
+        );
+
+        unsafe {
+            let _ = plugin
+                .params
+                .noise_stops
+                ._internal_set_normalized_value(1.0);
+        }
+        let (mut left, mut right) = (vec![0.0f32; 4_096], vec![0.0f32; 4_096]);
+        assert!(matches!(
+            run(&mut plugin, &mut left, &mut right),
+            ProcessStatus::Normal
+        ));
+        let (mut left, mut right) = (vec![0.0f32; 512], vec![0.0f32; 512]);
+        run(&mut plugin, &mut left, &mut right);
+        assert!(left.iter().chain(&right).all(|sample| *sample == 0.0));
+    }
+
+    /// **The tempo in force reaches the editor, and an activation forgets it**, so a synced rate
+    /// neither reads nor starts at a division from a tempo the host may since have changed.
+    #[test]
+    fn the_tempo_reaches_the_editor_and_an_activation_forgets_it() {
+        let mut plugin = MxmFxOldify::default();
+        assert!(plugin.prepare(48_000.0, 2));
+        let (mut left, mut right) = (vec![0.0f32; 64], vec![0.0f32; 64]);
+        let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
+        plugin.process_block(&mut channels, Some(97.0));
+        assert_eq!(plugin.telemetry.tempo(), Some(97.0));
+        assert!(plugin.prepare(48_000.0, 2));
+        assert_eq!(plugin.telemetry.tempo(), None);
+    }
+
+    /// **A reset resolves the syncs at the last tempo seen**: nothing resolved is cached, so a
+    /// sync switched while the host held the effect still takes effect at the reset.
+    #[test]
+    fn a_reset_resolves_the_syncs_at_the_last_tempo_seen() {
+        let mut plugin = MxmFxOldify::default();
+        assert!(plugin.prepare(48_000.0, 2));
+        let (mut left, mut right) = (vec![0.0f32; 64], vec![0.0f32; 64]);
+        let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
+        plugin.process_block(&mut channels, Some(120.0));
+        unsafe {
+            let _ = plugin.params.wow_sync._internal_set_normalized_value(1.0);
+        }
+        plugin.reset();
+        let tempo = plugin.telemetry.tempo();
+        assert_eq!(tempo, Some(120.0));
+        assert_eq!(
+            plugin.params.controls(tempo).cassette.wow.hz,
+            params::WOW_SYNC
+                .resolve(
+                    true,
+                    tempo,
+                    plugin.params.wow_rate.unmodulated_normalized_value(),
+                    0.1,
+                    5.0
+                )
+                .map(|hz| hz as f32)
+                .unwrap()
+        );
     }
 
     #[test]

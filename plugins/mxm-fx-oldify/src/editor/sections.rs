@@ -1,4 +1,4 @@
-//! Five Effects cards in signal order: Medium, Tape, Transport, Noise, Output.
+//! Six Effects cards in signal order: Medium, Tape, Transport, Noise, Deck, Output.
 //!
 //! Each card keeps the key the brief gives it (`docs/briefs/mxm-fx-oldify.md` §4), so the record
 //! engine's cards can take their places between Medium and Tape without moving these. Each card
@@ -12,18 +12,18 @@ use std::collections::HashMap;
 use egui::{Ui, Vec2, vec2};
 use mxm_ui::control::{Size, Wave};
 use mxm_ui::theme::Tokens;
-use mxm_ui::tree::{Height, Kind, Node, leaf, stack};
+use mxm_ui::tree::{Height, Kind, Node, leaf, row_gap, stack, switch_beside_knob};
 use mxm_ui::visual::{AXIS_STROKE, CANVAS_RADIUS, EMPHASIS_STROKE};
 use nice_plug::prelude::ParamSetter;
 
-use super::binding::{Bound, segmented, segmented_waves};
+use super::binding::{Bound, segmented, segmented_waves, toggle_labelled};
 use crate::params::MxmFxOldifyParams;
 
 const KNOB: Size = Size::Standard;
 /// The cards' titles, in paging order.
-pub const TITLES: [&str; 5] = ["Medium", "Tape", "Transport", "Noise", "Output"];
-/// The cards' stable keys, the brief's: the record engine's cards take 1–3 and the deck's 7.
-pub const KEYS: [u64; 5] = [0, 4, 5, 6, 8];
+pub const TITLES: [&str; 6] = ["Medium", "Tape", "Transport", "Noise", "Deck", "Output"];
+/// The cards' stable keys, the brief's: the record engine's cards take 1–3.
+pub const KEYS: [u64; 6] = [0, 4, 5, 6, 7, 8];
 
 /// The level display's stated size; it fills its card's width.
 pub const LEVELS_MIN: Vec2 = vec2(160.0, 53.0);
@@ -39,6 +39,43 @@ pub struct Display {
     pub levels: [f32; 2],
 }
 
+/// The ladder of the rate `id`, if it has a tempo sync.
+fn ladder_of(id: &str) -> Option<mxm_tempo::Ladder> {
+    match id {
+        "wow_rate" => Some(crate::params::WOW_SYNC),
+        "flutter_rate" => Some(crate::params::FLUTTER_SYNC),
+        _ => None,
+    }
+}
+
+/// **The division a synced rate reads**, or `None` for its free value: sync off, or no tempo.
+fn shown_division(
+    params: &MxmFxOldifyParams,
+    id: &str,
+    tempo: Option<f64>,
+) -> Option<mxm_tempo::Division> {
+    use nice_plug::prelude::Param as _;
+    let (on, param): (bool, &nice_plug::prelude::FloatParam) = match id {
+        "wow_rate" => (params.wow_sync.value(), &params.wow_rate),
+        "flutter_rate" => (params.flutter_sync.value(), &params.flutter_rate),
+        _ => return None,
+    };
+    if !on {
+        return None;
+    }
+    let ladder = ladder_of(id)?;
+    let (lo, hi) = (
+        f64::from(param.preview_plain(0.0)),
+        f64::from(param.preview_plain(1.0)),
+    );
+    ladder.shown(param.unmodulated_normalized_value(), tempo, lo, hi)
+}
+
+/// A rate's tempo sync, the quarter note on its knob's grid.
+fn sync_beside(id: &'static str) -> Node<Leaf> {
+    switch_beside_knob(KNOB, leaf(Leaf::Picture(id), Kind::SyncToggle))
+}
+
 pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
     vec![
         Bound::new(
@@ -50,6 +87,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "age",
             &params.age,
             "How worn the medium is, from new to battered: older loses more of the top.",
+        ),
+        Bound::new(
+            "variation",
+            &params.variation,
+            "Picks another take of the wobble, hiss and dropouts; the same number always sounds the same.",
         ),
         Bound::new(
             "tape",
@@ -77,11 +119,21 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "How the tape distorts when pushed.",
         ),
         Bound::new(
+            "generations",
+            &params.generations,
+            "How many times the tape has been copied: each copy adds its own hiss, wobble and dullness.",
+        ),
+        Bound::new(
             "wow",
             &params.wow,
             "How much the pitch drifts slowly up and down, as an uneven tape speed does.",
         ),
         Bound::new("wow_rate", &params.wow_rate, "How fast the slow drift goes."),
+        Bound::new(
+            "wow_sync",
+            &params.wow_sync,
+            super::binding::SYNC_DESCRIPTION,
+        ),
         Bound::new(
             "wow_shape",
             &params.wow_shape,
@@ -98,14 +150,55 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "How fast the trembling goes.",
         ),
         Bound::new(
+            "flutter_sync",
+            &params.flutter_sync,
+            super::binding::SYNC_DESCRIPTION,
+        ),
+        Bound::new(
             "flutter_shape",
             &params.flutter_shape,
             "The shape of the trembling.",
         ),
         Bound::new(
-            "hiss",
-            &params.hiss,
-            "The tape's own hiss, from off to loud; it fades out when the sound stops.",
+            "follow",
+            &params.follow,
+            "Makes the trembling speed up and slow down with the slow drift, as a slipping belt does.",
+        ),
+        Bound::new(
+            "flange",
+            &params.flange,
+            "Blends in a steady copy of the tape, for the sweeping sound of two tapes side by side.",
+        ),
+        Bound::new("hiss", &params.hiss, "The tape's own hiss, from off to loud."),
+        Bound::new(
+            "dropouts",
+            &params.dropouts,
+            "How often the tape briefly loses touch with the head, dipping the sound.",
+        ),
+        Bound::new(
+            "dropout_intensity",
+            &params.dropout_intensity,
+            "Trades many shallow dropouts for fewer, longer and deeper ones.",
+        ),
+        Bound::new(
+            "dropout_width",
+            &params.dropout_width,
+            "How differently the dropouts hit left and right, from both at once to each on its own.",
+        ),
+        Bound::new(
+            "azimuth",
+            &params.azimuth,
+            "How far the playback head is tilted: it dulls the top, and more so in mono.",
+        ),
+        Bound::new(
+            "crosstalk",
+            &params.crosstalk,
+            "How much each side leaks into the other, from off to a worn deck's.",
+        ),
+        Bound::new(
+            "wrong_eq",
+            &params.wrong_eq,
+            "Plays the tape back with the wrong treble setting, too bright or too dull.",
         ),
         Bound::new(
             "drive",
@@ -125,6 +218,16 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             &params.mix,
             "The balance of the dry sound and the aged one; at zero the effect is off.",
         ),
+        Bound::new(
+            "noise_follows",
+            &params.noise_follows,
+            "How far the noise rises with loud passages and falls with quiet ones.",
+        ),
+        Bound::new(
+            "noise_stops",
+            &params.noise_stops,
+            "Stops the noise a moment after the sound does; off, it plays on in silence.",
+        ),
     ]
 }
 
@@ -141,6 +244,7 @@ pub fn cards(
     params: &MxmFxOldifyParams,
     setter: &ParamSetter<'_>,
     text: &mut HashMap<&'static str, Option<String>>,
+    tempo: Option<f64>,
     display: Display,
 ) -> f32 {
     let items = page_items(ui, params);
@@ -149,6 +253,7 @@ pub fn cards(
         params,
         setter,
         text,
+        tempo,
         display,
     };
     let report = mxm_ui::paging::editor::show(
@@ -219,6 +324,10 @@ pub enum Leaf {
     Knob(&'static str),
     Segmented(&'static str),
     Waves(&'static str),
+    /// An on/off parameter's switch, labelled with its name.
+    Toggle(&'static str),
+    /// A rate's tempo sync, the quarter note beside it.
+    Picture(&'static str),
     Levels,
 }
 
@@ -251,11 +360,16 @@ fn knobs(ui: &Ui, params: &MxmFxOldifyParams, ids: &[&'static str]) -> Node<Leaf
             .map(|id| {
                 let bound = bound(id, params);
                 let param = bound.param;
+                // A synced rate's column holds its free readings and every division.
+                let widest = match ladder_of(id) {
+                    Some(ladder) => super::binding::synced_widest(param, ladder.span),
+                    None => mxm_ui::control::widest_value(|n| param.format(n as f32)),
+                };
                 let knob = leaf(
                     Leaf::Knob(id),
                     Kind::Knob {
                         name: bound.painted().to_owned(),
-                        widest: mxm_ui::control::widest_value(|n| param.format(n as f32)),
+                        widest,
                         size: KNOB,
                         // In the collection's knob row, which sizes the columns.
                         column: 0.0,
@@ -301,6 +415,12 @@ fn details_of(id: &str) -> &'static [&'static str] {
             "An even, steady tremble.",
             "An irregular, wandering tremble.",
         ],
+        "generations" => &[
+            "The first recording, as it was made.",
+            "A copy of the first recording.",
+            "A copy of a copy.",
+            "Three copies down from the first recording.",
+        ],
         _ => &[],
     }
 }
@@ -328,6 +448,16 @@ fn waves_leaf(params: &MxmFxOldifyParams, id: &'static str) -> Node<Leaf> {
     )
 }
 
+/// An on/off parameter's switch, labelled with its name (design system §7.2).
+fn toggle_leaf(params: &MxmFxOldifyParams, id: &'static str) -> Node<Leaf> {
+    leaf(
+        Leaf::Toggle(id),
+        Kind::Toggle {
+            label: bound(id, params).painted().to_owned(),
+        },
+    )
+}
+
 /// A display that fills its card's width, at its stated size.
 fn display(key: Leaf, min: Vec2) -> Node<Leaf> {
     leaf(
@@ -343,27 +473,57 @@ fn display(key: Leaf, min: Vec2) -> Node<Leaf> {
 /// Card `index`'s body, as a tree. Nothing in it follows telemetry: the level display states its
 /// size, and only its painting reads the live levels.
 pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
+    let gap = ui.spacing().item_spacing.x;
     match index {
         0 => stack(vec![
             segmented_leaf(params, "medium"),
-            knobs(ui, params, &["age"]),
+            knobs(ui, params, &["age", "variation"]),
         ]),
         1 => stack(vec![
             segmented_leaf(params, "tape"),
             segmented_leaf(params, "grade"),
             knobs(ui, params, &["tape_tone", "saturation"]),
             segmented_leaf(params, "character"),
+            segmented_leaf(params, "generations"),
         ]),
+        // Each rate with its tempo sync straight after it, then its shape.
         2 => stack(vec![
-            knobs(ui, params, &["wow", "wow_rate"]),
+            row_gap(
+                gap,
+                vec![
+                    knobs(ui, params, &["wow", "wow_rate"]),
+                    sync_beside("wow_sync"),
+                ],
+            ),
             waves_leaf(params, "wow_shape"),
-            knobs(ui, params, &["flutter", "flutter_rate"]),
+            row_gap(
+                gap,
+                vec![
+                    knobs(ui, params, &["flutter", "flutter_rate"]),
+                    sync_beside("flutter_sync"),
+                ],
+            ),
             waves_leaf(params, "flutter_shape"),
+            toggle_leaf(params, "follow"),
+            knobs(ui, params, &["flange"]),
         ]),
-        3 => stack(vec![knobs(ui, params, &["hiss"])]),
+        3 => stack(vec![
+            knobs(ui, params, &["hiss"]),
+            knobs(
+                ui,
+                params,
+                &["dropouts", "dropout_intensity", "dropout_width"],
+            ),
+        ]),
+        4 => stack(vec![
+            knobs(ui, params, &["azimuth", "crosstalk"]),
+            toggle_leaf(params, "wrong_eq"),
+        ]),
         _ => stack(vec![
             display(Leaf::Levels, LEVELS_MIN),
             knobs(ui, params, &["drive", "width", "output", "mix"]),
+            knobs(ui, params, &["noise_follows"]),
+            toggle_leaf(params, "noise_stops"),
         ]),
     }
 }
@@ -374,6 +534,8 @@ pub struct Live<'a, 'b> {
     pub params: &'a MxmFxOldifyParams,
     pub setter: &'a ParamSetter<'b>,
     pub text: &'a mut HashMap<&'static str, Option<String>>,
+    /// The host tempo in force, which a synced rate reads its division against.
+    pub tempo: Option<f64>,
     pub display: Display,
 }
 
@@ -381,9 +543,38 @@ pub struct Live<'a, 'b> {
 pub fn paint(ui: &mut Ui, tokens: &Tokens, leaf: &Leaf, rect: egui::Rect, live: &mut Live<'_, '_>) {
     let params = live.params;
     match *leaf {
-        // At the knob row's column (`tree::knob_row`).
+        // At the knob row's column (`tree::knob_row`). Synced, a rate reads the division in
+        // force; the host still reads its hertz.
         Leaf::Knob(id) => {
-            bound(id, params).knob(ui, tokens, live.setter, KNOB, rect.width(), live.text);
+            let bound = bound(id, params);
+            match shown_division(params, id, live.tempo) {
+                Some(division) => bound.knob_with_reading(
+                    ui,
+                    tokens,
+                    live.setter,
+                    KNOB,
+                    rect.width(),
+                    live.text,
+                    division.label(),
+                ),
+                None => bound.knob(ui, tokens, live.setter, KNOB, rect.width(), live.text),
+            }
+        }
+        Leaf::Picture(id) => {
+            super::binding::sync_picture(ui, tokens, id, bound(id, params).param, live.setter);
+        }
+        Leaf::Toggle(id) => {
+            let bound = bound(id, params);
+            toggle_labelled(
+                ui,
+                tokens,
+                id,
+                bound.param,
+                bound.painted(),
+                bound.description,
+                live.setter,
+                0.0,
+            );
         }
         Leaf::Segmented(id) => {
             let bound = bound(id, params);
@@ -482,6 +673,7 @@ mod tests {
             "tape",
             "grade",
             "character",
+            "generations",
             "wow_shape",
             "flutter_shape",
         ] {

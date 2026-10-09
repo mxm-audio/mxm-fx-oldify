@@ -24,6 +24,8 @@ use core::fmt;
 
 pub mod biquad;
 pub mod cassette;
+pub mod dropouts;
+pub mod nr;
 pub mod oversample;
 pub mod saturate;
 pub mod spacing;
@@ -55,8 +57,13 @@ pub const NOISE_HOLD_S: f32 = 0.25;
 pub const NOISE_FADE_S: f32 = 0.05;
 /// What the filters' tails need after the transport's line has emptied. Chosen, generous.
 const FILTER_TAIL_S: f32 = 0.2;
-/// The engine's seed. A Variation control will move it.
-const SEED: u32 = 1;
+/// Noise follows the input's level about this: −20 dBFS of input leaves it as set. Chosen.
+const FOLLOW_REFERENCE: f32 = 0.1;
+/// Following, the noise rises at most this many times its set level. Chosen.
+const FOLLOW_MOST: f32 = 2.0;
+/// The level follower's attack and release. Chosen.
+const FOLLOW_ATTACK_S: f32 = 0.010;
+const FOLLOW_RELEASE_S: f32 = 0.300;
 
 /// Decibels to a linear gain, the same law as nice-plug's `util::db_to_gain` above its −100 dB
 /// floor, so a plugin's range and this crate's bounds are the same numbers.
@@ -87,6 +94,12 @@ pub struct Controls {
     pub output: f32,
     /// The wet share: 0 is the dry input, 1 the chain alone.
     pub mix: f32,
+    /// How far the noise follows the input's level, 0–1: louder under loud passages, quieter
+    /// under quiet ones.
+    pub noise_follows: f32,
+    /// The noise stops when the input does (after [`NOISE_HOLD_S`]); off, it plays on in silence
+    /// and the chain never goes quiet.
+    pub noise_stops: bool,
     pub cassette: CassetteControls,
 }
 
@@ -99,11 +112,14 @@ impl Controls {
         width: 1.0,
         output: 1.0,
         mix: 1.0,
+        noise_follows: 0.0,
+        noise_stops: true,
         cassette: CassetteControls::NEUTRAL,
     };
 
     /// The init patch: what the plugin's parameters default to.
     pub const INIT: Self = Self {
+        noise_follows: 0.3,
         cassette: CassetteControls::INIT,
         ..Self::IDENTITY
     };
@@ -131,6 +147,8 @@ impl Controls {
             width: within(self.width, MAX_WIDTH, 1.0),
             output: gain(self.output),
             mix: within(self.mix, 1.0, 1.0),
+            noise_follows: within(self.noise_follows, 1.0, 0.0),
+            noise_stops: self.noise_stops,
             cassette: self.cassette.bounded(),
         }
     }
@@ -266,6 +284,12 @@ pub struct Oldify {
     silent_for: u64,
     noise_hold: u64,
     noise: Ramp,
+    noise_follows: Ramp,
+    noise_stops: bool,
+    /// The input's level, for the noise to follow, and the follower's two coefficients.
+    level: f32,
+    attack: f32,
+    release: f32,
     /// After this much silence every memory is cleared: [`Oldify::tail`].
     quiet_after: u64,
     /// True from a clear until the input returns: the output is exact zero.
@@ -281,7 +305,7 @@ impl Oldify {
         }
         let steps = ((sample_rate * SMOOTHING_S).round() as u32).max(1);
         let identity = Controls::IDENTITY;
-        let cassette = Cassette::new(f64::from(sample_rate), steps, SEED);
+        let cassette = Cassette::new(f64::from(sample_rate), steps);
         let latency = cassette.latency();
         let seconds = |s: f32| (sample_rate * s).round() as u64;
         Ok(Self {
@@ -298,6 +322,11 @@ impl Oldify {
             silent_for: u64::MAX,
             noise_hold: seconds(NOISE_HOLD_S),
             noise: Ramp::settled_at(0.0, seconds(NOISE_FADE_S).max(1) as u32),
+            noise_follows: Ramp::settled_at(identity.noise_follows, steps),
+            noise_stops: identity.noise_stops,
+            level: 0.0,
+            attack: 1.0 - (-1.0 / (sample_rate * FOLLOW_ATTACK_S)).exp(),
+            release: 1.0 - (-1.0 / (sample_rate * FOLLOW_RELEASE_S)).exp(),
             quiet_after: 2 * latency as u64 + seconds(NOISE_HOLD_S + NOISE_FADE_S + FILTER_TAIL_S),
             quiet: true,
         })
@@ -308,9 +337,19 @@ impl Oldify {
         self.latency as u32
     }
 
-    /// How long after the input falls silent the output is exact zero, in samples.
+    /// How long after the input falls silent the output is exact zero, in samples; while
+    /// [`Oldify::endless`], never.
     pub fn tail(&self) -> u32 {
-        u32::try_from(self.quiet_after).unwrap_or(u32::MAX)
+        if self.endless() {
+            u32::MAX
+        } else {
+            u32::try_from(self.quiet_after).unwrap_or(u32::MAX)
+        }
+    }
+
+    /// True while the output never falls silent: noise that plays on in silence.
+    pub fn endless(&self) -> bool {
+        !self.noise_stops && self.medium != Medium::Record && self.cassette.hisses()
     }
 
     /// Asks for new controls; each continuous one that changed ramps there over [`SMOOTHING_S`].
@@ -327,6 +366,8 @@ impl Oldify {
         self.width.retarget(controls.width);
         self.output.retarget(controls.output);
         self.mix.retarget(controls.mix);
+        self.noise_follows.retarget(controls.noise_follows);
+        self.noise_stops = controls.noise_stops;
         self.cassette.set_controls(controls.cassette);
     }
 
@@ -336,6 +377,7 @@ impl Oldify {
         self.width.snap();
         self.output.snap();
         self.mix.snap();
+        self.noise_follows.snap();
         self.cassette.snap();
         self.noise = Ramp::settled_at(0.0, self.noise.steps);
         self.clear();
@@ -345,6 +387,7 @@ impl Oldify {
     fn clear(&mut self) {
         self.cassette.clear();
         self.dry.clear();
+        self.level = 0.0;
         self.quiet = true;
     }
 
@@ -384,7 +427,7 @@ impl Oldify {
                 silent = false;
             }
         }
-        if silent && self.quiet {
+        if silent && self.quiet && !self.endless() {
             left.fill(0.0);
             right.fill(0.0);
             self.advance(frames);
@@ -403,6 +446,7 @@ impl Oldify {
         self.width.advance(samples);
         self.output.advance(samples);
         self.mix.advance(samples);
+        self.noise_follows.advance(samples);
         self.cassette.advance(samples);
         self.noise.advance(samples);
         self.silent_for = self.silent_for.saturating_add(frames as u64);
@@ -417,19 +461,22 @@ impl Oldify {
         } else {
             self.silent_for.saturating_add(1)
         };
-        self.noise.retarget(if self.silent_for < self.noise_hold {
-            1.0
-        } else {
-            0.0
-        });
-        let noise = self.noise.next();
+        let endless = self.endless();
+        self.noise
+            .retarget(if endless || self.silent_for < self.noise_hold {
+                1.0
+            } else {
+                0.0
+            });
+        let gate = self.noise.next();
+        let follows = self.noise_follows.next();
         let drive = self.drive.next();
         let width = self.width.next();
         let output = self.output.next();
         let mix = self.mix.next();
 
         if self.quiet {
-            if !active {
+            if !active && !endless {
                 self.cassette.advance(1);
                 return [0.0, 0.0];
             }
@@ -438,6 +485,17 @@ impl Oldify {
             let drive_now = drive;
             self.driven.fill(drive_now);
         }
+
+        // The input's level, for the noise to follow: fast up, slow down.
+        let peak = input[0].abs().max(input[1].abs());
+        let coefficient = if peak > self.level {
+            self.attack
+        } else {
+            self.release
+        };
+        self.level += coefficient * (peak - self.level);
+        let noise =
+            gate * (1.0 - follows + follows * (self.level / FOLLOW_REFERENCE).min(FOLLOW_MOST));
 
         let dry = self.dry.exchange(input);
         let mut wet = match self.medium {
@@ -475,7 +533,7 @@ impl Oldify {
                 dry[1] * (1.0 - mix) + wet[1] * mix,
             ]
         };
-        if self.silent_for >= self.quiet_after {
+        if self.silent_for >= self.quiet_after && !endless {
             self.clear();
         }
         out.map(flush)
@@ -558,6 +616,18 @@ mod tests {
             },
             hiss_db: HISS_MAX_DB,
             age: 1.0,
+            generations: crate::cassette::MAX_GENERATIONS,
+            follow: true,
+            flange: 1.0,
+            dropouts: crate::dropouts::DropoutControls {
+                amount: 1.0,
+                intensity: 1.0,
+                width: 1.0,
+            },
+            azimuth: crate::cassette::MAX_AZIMUTH_ARCMIN,
+            crosstalk_db: crate::cassette::CROSSTALK_MAX_DB,
+            wrong_eq: true,
+            variation: crate::cassette::MAX_VARIATION,
         };
         let mut all = Vec::new();
         for medium in [Medium::Cassette, Medium::Record] {
@@ -571,6 +641,8 @@ mod tests {
                                 width,
                                 output,
                                 mix,
+                                noise_follows: 1.0,
+                                noise_stops: true,
                                 cassette,
                             });
                         }
@@ -847,6 +919,59 @@ mod tests {
             after[hold..].iter().all(|s| s.abs() < 1e-6),
             "the hiss kept going in silence"
         );
+    }
+
+    #[test]
+    fn with_noise_stopping_off_the_hiss_plays_on_in_silence() {
+        let controls = Controls {
+            noise_stops: false,
+            cassette: CassetteControls {
+                hiss_db: -40.0,
+                ..CassetteControls::NEUTRAL
+            },
+            ..Controls::IDENTITY
+        };
+        let mut oldify = settled_at(controls);
+        assert!(oldify.endless());
+        assert_eq!(oldify.tail(), u32::MAX);
+        let n = 4 * oldify.latency() as usize;
+        let [left, _] = render(&mut oldify, &vec![0.0; n], &vec![0.0; n], controls);
+        let rms = (left[n / 2..].iter().map(|s| s * s).sum::<f32>() / (n / 2) as f32).sqrt();
+        assert!((20.0 * rms.log10() + 40.0).abs() < 1.5);
+        // Hiss off, it is silence again.
+        let quiet = Controls {
+            cassette: CassetteControls::NEUTRAL,
+            ..controls
+        };
+        assert!(!settled_at(quiet).endless());
+    }
+
+    #[test]
+    fn following_noise_rises_and_falls_with_the_input() {
+        // A steady input at three levels through a neutral cassette; the hiss is what is left
+        // when the steady part is taken away.
+        let hiss_under = |level: f32| {
+            let controls = Controls {
+                noise_follows: 1.0,
+                cassette: CassetteControls {
+                    hiss_db: -40.0,
+                    ..CassetteControls::NEUTRAL
+                },
+                ..Controls::IDENTITY
+            };
+            let mut oldify = settled_at(controls);
+            let n = 48_000;
+            let [left, _] = render(&mut oldify, &vec![level; n], &vec![level; n], controls);
+            let tail = &left[n / 2..];
+            let mean = tail.iter().sum::<f32>() / tail.len() as f32;
+            let rms =
+                (tail.iter().map(|s| (s - mean).powi(2)).sum::<f32>() / tail.len() as f32).sqrt();
+            20.0 * rms.log10()
+        };
+        assert!((hiss_under(FOLLOW_REFERENCE) + 40.0).abs() < 1.5);
+        assert!((hiss_under(FOLLOW_REFERENCE / 10.0) + 60.0).abs() < 1.5);
+        let most = -40.0 + 20.0 * FOLLOW_MOST.log10();
+        assert!((hiss_under(0.9) - most).abs() < 1.5);
     }
 
     #[test]

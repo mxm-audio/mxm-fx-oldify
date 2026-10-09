@@ -26,16 +26,22 @@ input → Drive → the medium → ÷ Drive (a latency ago) → Width → Output
   yet and passes the input delayed. Switching back into the cassette clears it first.
 - **Drive is compensated** by the drive the sound leaving the medium went in with, one latency
   earlier: dividing by today's drive swung the level by Drive's whole range during a move.
-- **One fixed latency**, `Oldify::latency`: the oversampler's and the transport's base delay, the
-  same for every control and Medium; the dry path is delayed by it, so Mix never combs. The plugin
+- **One fixed latency**, `Oldify::latency`: the oversampler's, the transport's base delay and the
+  centre of azimuth's delay between the tracks, the same for every control and Medium; the dry path is delayed by it, so Mix never combs. The plugin
   reports it.
 - Width works about the mid; Mix is a linear crossfade with the delayed dry.
+- **The noise** is gated by the chain: it holds `NOISE_HOLD_S` after the input falls silent and
+  fades over `NOISE_FADE_S`. **Noise follows** scales it by the input's level against
+  `FOLLOW_REFERENCE` (up to `FOLLOW_MOST` times), from a fast-up, slow-down follower. **Noise stops
+  in silence** off keeps it playing: the chain is then `endless`, never quiet, its tail `u32::MAX`.
 
 ## The cassette engine (`cassette.rs`)
 
 ```text
 saturator (pre-emphasis → 2× curve → de-emphasis) → tape response × Tape tone
-  → transport (wow, flutter) → + hiss → spacing loss (Age)
+  → transport (wow, flutter; Flange against the unmoved read) → crosstalk → + hiss
+  → spacing loss (Age, generations, azimuth, a dropout's lift) → a dropout's dip
+  → wrong playback EQ → azimuth's delay between the tracks
 ```
 
 - The physics' order, not the reference's (which filters before saturating): a known difference.
@@ -44,6 +50,17 @@ saturator (pre-emphasis → 2× curve → de-emphasis) → tape response × Tape
   control to the 1.5. **The transport's reach is bounded** (`WOW_REACH_S`, `FLUTTER_REACH_S`), so
   the latency stays near 50 ms; only slow, deep wow is lowered to fit.
 - Hiss is seeded, independent per channel, 4 dB lower on the 70 µs tapes, and gated by the chain.
+- **Generations** (1–4): each dub adds its hiss power, its own uncorrelated wobble (depth × √n)
+  and `GENERATION_UM` of spacing.
+- **Flange** mixes the line read at exactly the base delay against the moving read: through-zero
+  tape flanging. **Flutter follows wow** moves the flutter's rate by up to `FOLLOW_DEPTH` with the
+  wow's shape.
+- **Azimuth**: across a track, the sinc's main lobe as the spacing losing the same at half its
+  first null; between the tracks, `TRACK_PITCH_M` · tan θ / speed of delay, split either side of a
+  fixed centre so the latency never moves. 15′ gives the mono notch at 6.1 kHz. **Crosstalk** bleeds
+  each channel into the other; **Wrong EQ** is the other time constant's ±`WRONG_EQ_DB` shelf.
+- **Variation** picks the seed (`seed_for`) of every random source: transport, hiss, dropouts.
+  A change reseeds from the next draw; a clear goes back to the seed's start.
 
 ## The blocks
 
@@ -59,6 +76,10 @@ saturator (pre-emphasis → 2× curve → de-emphasis) → tape response × Tape
   centred integrals; a change goes into a drift term that leaks away at an eighth of the rate, so
   the read never jumps; the random shape is Ornstein–Uhlenbeck. The base delay is twice the reach.
   Wow and flutter are the same in both channels, as measured.
+- **`dropouts`**: Poisson events of raised-cosine dips, log-uniform lengths from 3 ms and uniform
+  depths, each lifting the tape `LIFT_UM_PER_DB` per decibel (the measured treble excess). Amount
+  sets the rate (up to `MAX_RATE_HZ`) and depth; Intensity makes them fewer, longer, deeper; Width
+  blends a shared stream into two independent ones. Nothing is drawn while the amount is zero.
 - **`spacing`**: Wallace's spacing loss from two fitted tables (`BASE` at 44.1 and 48 kHz, `HIGH`
   from 88.2 kHz; `ops:oldify/measure/fit_spacing.py`). Between two rows it **crossfades the two
   rows' outputs**; a slot takes a new row only at weight zero, so a moving spacing never clicks.
@@ -78,7 +99,8 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
 - **Mix zero is the dry input delayed by the latency, to the bit**; so is the Record medium.
 - **A neutral cassette** (`Controls::IDENTITY`) is the input delayed, within the oversampler's
   passband; an impulse peaks at exactly the reported latency.
-- **Seeded**: the transport's and the two hiss generators' draws, one per sample; how a host cuts
+- **Seeded**: the transport's, the two hiss generators' and the three dropout streams' draws, at
+  most one each per sample; how a host cuts
   its blocks never changes a sample, quiet stretches included.
 
 ## Realtime and numeric rules
@@ -100,10 +122,12 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
 
 ## Chosen constants
 
-The smoothing, gain and width bounds, rate range, the transport's leak and reach, the depth and Age
-laws, `EMPHASIS_DB`, `FADE_IN`, `MAX_DRIVE`, the curves' shapes, the hiss's top and its 70 µs
-offset, and the silence thresholds and times are chosen here, not measured. The tape table, the
-spacing law and the wow, flutter and saturation extremes come from measurement or physics and say so.
+The smoothing, gain and width bounds, rate range, the transport's leak, reach and `FOLLOW_DEPTH`,
+the depth and Age laws, `EMPHASIS_DB`, `FADE_IN`, `MAX_DRIVE`, the curves' shapes, the hiss's top
+and its 70 µs offset, the silence thresholds and times, the noise follower's, `GENERATION_UM`, the
+dropout laws and `WRONG_EQ_DB` are chosen here, not measured. The tape table, the spacing law, the
+dropout statistics and lift, azimuth's geometry and the wow, flutter and saturation extremes come
+from measurement or physics and say so.
 
 # Work Guidance
 
@@ -124,11 +148,14 @@ The chain's tests hold silence → exact zero at every setting, exact zero again
 zero and the Record medium → the delayed input to the bit, the neutral cassette → the delayed input
 to −50 dB, an impulse at the latency, blocks of 1, 37 and 512 bit-identical through a quiet stretch
 and a retarget, a reset rendering the same again, finite bounded output at every extreme, Width
-zero → mono, the hiss at its level and silent after its hold, the ramps, the latency near 50 ms at
-44.1, 48 and 96 kHz, and the refused rates. Each block's own tests hold its contract (the cookbook
-gains, the tape table against the measurement, the curves' slope, bounds and asymmetry, treble
-saturating first, the oversampler's round trip, the transport's depths, reach and seeds, the
-spacing loss against Wallace at every common rate and a sweep without a jump).
+zero → mono, the hiss at its level and silent after its hold, the hiss playing on with Noise stops
+off, following noise at three input levels, the ramps, the latency near 50 ms at 44.1, 48 and
+96 kHz, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
+tape table against the measurement, the curves' slope, bounds and asymmetry, treble saturating
+first, the oversampler's round trip, the transport's depths, reach, seeds, unmoved read and
+following flutter, the spacing loss against Wallace at every common rate and a sweep without a
+jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch and loss, and the
+skew's exact split).
 
 # Child DOX Index
 

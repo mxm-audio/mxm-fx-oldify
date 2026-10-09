@@ -15,6 +15,7 @@ pub const NYQUIST_FRACTION: f64 = 0.45;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Kind {
     LowPass,
+    HighPass,
     Peak,
     LowShelf,
     HighShelf,
@@ -49,6 +50,10 @@ impl Section {
         let (b, den) = match self.kind {
             Kind::LowPass => (
                 [(1.0 - cos) / 2.0, 1.0 - cos, (1.0 - cos) / 2.0],
+                [1.0 + alpha, -2.0 * cos, 1.0 - alpha],
+            ),
+            Kind::HighPass => (
+                [(1.0 + cos) / 2.0, -(1.0 + cos), (1.0 + cos) / 2.0],
                 [1.0 + alpha, -2.0 * cos, 1.0 - alpha],
             ),
             Kind::Peak => (
@@ -168,6 +173,17 @@ impl Biquad {
         self.s2 = 0.0;
     }
 
+    /// The coefficients in use.
+    pub fn coefficients(&self) -> Coefficients {
+        self.c
+    }
+
+    /// What the next output holds before the next input's own term: the next output is
+    /// `b0 · x + pending()`. A decoder that must solve for `x` reads it.
+    pub fn pending(&self) -> f64 {
+        self.s1
+    }
+
     #[inline]
     pub fn process(&mut self, x: f64) -> f64 {
         let y = self.c.b0 * x + self.s1;
@@ -215,6 +231,13 @@ mod tests {
         let amplitude =
             (2.0 * settled.iter().map(|y| y * y).sum::<f64>() / settled.len() as f64).sqrt();
         assert!((db(amplitude) - db(c.magnitude(hz, 48_000.0))).abs() < 0.05);
+    }
+
+    #[test]
+    fn a_high_pass_passes_the_treble_and_stops_the_bass() {
+        let c = Section::new(Kind::HighPass, 2000.0, 0.0, 0.707).coefficients(48_000.0);
+        assert!(db(c.magnitude(16_000.0, 48_000.0)).abs() < 0.1);
+        assert!(db(c.magnitude(100.0, 48_000.0)) < -40.0);
     }
 
     #[test]

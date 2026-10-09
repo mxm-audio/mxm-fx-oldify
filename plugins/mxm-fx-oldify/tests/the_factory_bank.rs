@@ -76,7 +76,7 @@ fn render(plugin: &mut MxmFxOldify, input: &[f32]) -> Vec<f32> {
         let mut right = block.to_vec();
         {
             let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
-            let _ = plugin.process_block_for_test(&mut channels);
+            let _ = plugin.process_block_for_test(&mut channels, None);
         }
         for (&left, &right) in left.iter().zip(&right) {
             output.extend_from_slice(&[left, right]);

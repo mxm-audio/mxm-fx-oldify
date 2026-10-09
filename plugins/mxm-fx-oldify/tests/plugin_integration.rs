@@ -34,7 +34,7 @@ fn programme(frames: usize, step: f32) -> Vec<f32> {
 fn render(plugin: &mut MxmFxOldify, source: &[f32]) -> [Vec<f32>; 2] {
     let (mut left, mut right) = (source.to_vec(), source.to_vec());
     let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
-    let _ = plugin.process_block_for_test(&mut channels);
+    let _ = plugin.process_block_for_test(&mut channels, None);
     [left, right]
 }
 
@@ -57,7 +57,7 @@ fn every_rate_and_block_size_stays_finite_at_the_extremes() {
                     let mut right = vec![0.0; frames];
                     left[0] = f32::NAN;
                     let mut channels: Vec<&mut [f32]> = vec![&mut left, &mut right];
-                    let _ = plugin.process_block_for_test(&mut channels);
+                    let _ = plugin.process_block_for_test(&mut channels, None);
                     assert!(
                         left.iter()
                             .chain(&right)
@@ -84,32 +84,77 @@ fn the_record_medium_passes_the_input_delayed_until_its_engine_exists() {
     assert_eq!(right[latency..], source[..8_192 - latency]);
 }
 
-/// A named change to a fresh instance's parameters.
-type Change = fn(&MxmFxOldify);
+/// Deterministic noise in −0.3..0.3 (a 32-bit LCG): broadband, so a change anywhere in the
+/// spectrum shows.
+fn noise(frames: usize, seed: u32) -> Vec<f32> {
+    let mut state = seed;
+    (0..frames)
+        .map(|_| {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            0.3 * ((state >> 8) as f32 / (1u32 << 23) as f32 - 1.0)
+        })
+        .collect()
+}
 
-/// **The cassette's controls are heard**: Age, Saturation, Wow and Hiss each change what comes out
-/// of the init patch.
+/// **Every cassette control is heard**: each one moved from the init patch changes what comes
+/// out, in one channel or the other. Dropouts are raised for their two shapers, which shape
+/// nothing while too few happen to be heard.
 #[test]
-fn the_cassette_controls_change_the_sound() {
-    let source = programme(16_384, 0.057);
-    let mut init = MxmFxOldify::default();
-    assert!(init.prepare_for_test(48_000.0, 2));
-    let reference = render(&mut init, &source);
-    let moved: [(&str, Change); 4] = [
-        ("Age", |p| set_float(&p.params.age, 1.0)),
-        ("Saturation", |p| set_float(&p.params.saturation, 1.0)),
-        ("Wow", |p| set_float(&p.params.wow, 1.0)),
-        ("Hiss", |p| set_float(&p.params.hiss, db_to_gain(-30.0))),
-    ];
-    for (name, change) in moved {
+fn every_cassette_control_changes_the_sound() {
+    let (left, right) = (noise(24_000, 1), noise(24_000, 2));
+    let render_with = |moves: &[(&str, f32)]| {
         let mut plugin = MxmFxOldify::default();
-        change(&plugin);
+        for (id, value) in moves {
+            let (_, param, _) = plugin
+                .params
+                .param_map()
+                .into_iter()
+                .find(|(other, _, _)| other == id)
+                .unwrap_or_else(|| panic!("no parameter {id}"));
+            unsafe {
+                let _ = param._internal_set_normalized_value(*value);
+            }
+        }
         assert!(plugin.prepare_for_test(48_000.0, 2));
-        let rendered = render(&mut plugin, &source);
-        let difference = rendered[0]
-            .iter()
-            .zip(&reference[0])
-            .fold(0.0f32, |peak, (a, b)| peak.max((a - b).abs()));
-        assert!(difference > 1e-3, "{name} changed nothing: {difference}");
+        let (mut l, mut r) = (left.clone(), right.clone());
+        let mut channels: Vec<&mut [f32]> = vec![&mut l, &mut r];
+        let _ = plugin.process_block_for_test(&mut channels, None);
+        [l, r]
+    };
+    let difference = |a: &[Vec<f32>; 2], b: &[Vec<f32>; 2]| {
+        a.iter()
+            .zip(b)
+            .flat_map(|(x, y)| x.iter().zip(y))
+            .fold(0.0f32, |peak, (x, y)| peak.max((x - y).abs()))
+    };
+    let reference = render_with(&[]);
+    let busy = [("dropouts", 1.0)];
+    let busy_reference = render_with(&busy);
+    let alone: [(&str, f32); 15] = [
+        ("age", 1.0),
+        ("variation", 0.5),
+        ("tape", 1.0),
+        ("grade", 0.0),
+        ("saturation", 1.0),
+        ("character", 1.0),
+        ("generations", 1.0),
+        ("wow", 1.0),
+        ("flange", 1.0),
+        ("hiss", 1.0),
+        ("dropouts", 1.0),
+        ("azimuth", 1.0),
+        ("crosstalk", 1.0),
+        ("wrong_eq", 1.0),
+        ("noise_follows", 1.0),
+    ];
+    for (id, value) in alone {
+        let moved = render_with(&[(id, value)]);
+        let heard = difference(&moved, &reference);
+        assert!(heard > 1e-3, "{id} changed nothing: {heard}");
+    }
+    for id in ["dropout_intensity", "dropout_width"] {
+        let moved = render_with(&[busy[0], (id, 1.0)]);
+        let heard = difference(&moved, &busy_reference);
+        assert!(heard > 1e-3, "{id} changed nothing: {heard}");
     }
 }

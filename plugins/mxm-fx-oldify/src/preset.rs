@@ -23,22 +23,36 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
         vec![
             ("medium", &self.medium),
             ("age", &self.age),
+            ("variation", &self.variation),
             ("tape", &self.tape),
             ("grade", &self.grade),
             ("tape_tone", &self.tape_tone),
             ("saturation", &self.saturation),
             ("character", &self.character),
+            ("generations", &self.generations),
             ("wow", &self.wow),
             ("wow_rate", &self.wow_rate),
+            ("wow_sync", &self.wow_sync),
             ("wow_shape", &self.wow_shape),
             ("flutter", &self.flutter),
             ("flutter_rate", &self.flutter_rate),
+            ("flutter_sync", &self.flutter_sync),
             ("flutter_shape", &self.flutter_shape),
+            ("follow", &self.follow),
+            ("flange", &self.flange),
             ("hiss", &self.hiss),
+            ("dropouts", &self.dropouts),
+            ("dropout_intensity", &self.dropout_intensity),
+            ("dropout_width", &self.dropout_width),
+            ("azimuth", &self.azimuth),
+            ("crosstalk", &self.crosstalk),
+            ("wrong_eq", &self.wrong_eq),
             ("drive", &self.drive),
             ("width", &self.width),
             ("output", &self.output),
             ("mix", &self.mix),
+            ("noise_follows", &self.noise_follows),
+            ("noise_stops", &self.noise_stops),
         ]
     }
 
@@ -49,7 +63,16 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
     fn factory_files(&self) -> &'static [(&'static str, &'static str)] {
         FACTORY_FILES
     }
+
+    fn default_missing_legacy_parameter(&self, id: &str) -> bool {
+        TEMPO_SYNC_IDS.contains(&id)
+    }
 }
+
+/// **The tempo syncs this plugin gained on 2026-10-09**. A preset written before them was written
+/// unsynced, so each loads off rather than keeping the instance's sync, and without reporting a
+/// missing control; a project from before them restores them off (`Plugin::filter_state`).
+pub(crate) const TEMPO_SYNC_IDS: &[&str] = &["wow_sync", "flutter_sync"];
 
 /// The compiled-in factory sounds: none until they are designed by ear.
 pub const FACTORY_FILES: &[(&str, &str)] = &[];
@@ -85,6 +108,46 @@ mod tests {
                 init.params[id].v,
                 param.default_normalised(),
                 "{id} is not its default in Init"
+            );
+        }
+    }
+
+    /// **A project saved before the tempo syncs restores them Off** (`mxm_preset::add_switches_off`),
+    /// whatever this instance had.
+    #[test]
+    fn an_older_state_restores_the_tempo_syncs_off() {
+        use nice_plug::prelude::Plugin as _;
+        let mut state = nice_plug::prelude::PluginState {
+            version: String::new(),
+            params: Default::default(),
+            fields: Default::default(),
+        };
+        crate::MxmFxOldify::filter_state(&mut state);
+        for id in TEMPO_SYNC_IDS {
+            assert!(
+                matches!(
+                    state.params.get(*id),
+                    Some(nice_plug::plugin::ParamValue::Bool(false))
+                ),
+                "{id} was not restored off"
+            );
+        }
+    }
+
+    /// **A preset saved before the tempo syncs loads them off, and cleanly** ([`TEMPO_SYNC_IDS`]).
+    #[test]
+    fn a_preset_from_before_the_tempo_syncs_loads_them_off() {
+        let params = MxmFxOldifyParams::default();
+        let mut old = Preset::init(&params);
+        for id in TEMPO_SYNC_IDS {
+            old.params.remove(*id);
+        }
+        let (writes, problems) = old.resolve(&params);
+        assert!(problems.is_empty(), "{problems:?}");
+        for id in TEMPO_SYNC_IDS {
+            assert!(
+                writes.iter().any(|(w, _, v)| w == id && *v == 0.0),
+                "{id} was not written off"
             );
         }
     }

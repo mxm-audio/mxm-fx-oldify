@@ -93,6 +93,8 @@ impl Rng {
 
 /// The leak's corner, as a share of the wobble's rate.
 const LEAK: f64 = 1.0 / 8.0;
+/// How far a following flutter's rate moves with the wow, as a share of itself. Chosen.
+pub const FOLLOW_DEPTH: f64 = 0.5;
 /// What the random shape is scaled by to give back the power the leak takes: √(1 + LEAK).
 const RANDOM_MAKEUP: f64 = 1.060_660_171_779_821_2;
 
@@ -124,6 +126,8 @@ struct Oscillator {
     last: Option<Wobble>,
     /// The offset this wobble made last sample, in samples.
     offset: f64,
+    /// The shape's value this sample, about −1..1: what a wobble that follows this one reads.
+    level: f64,
 }
 
 impl Oscillator {
@@ -141,6 +145,12 @@ impl Oscillator {
         });
         self.last = Some(*wobble);
         self.drift = self.drift * (1.0 - TAU * step * LEAK) + before - now;
+        self.level = match wobble.shape {
+            Shape::Sine => (TAU * self.phase).sin(),
+            Shape::Saw => 2.0 * self.phase - 1.0,
+            Shape::ReverseSaw => 1.0 - 2.0 * self.phase,
+            Shape::Random => 0.0,
+        };
         if wobble.shape == Shape::Random {
             // An Ornstein–Uhlenbeck process: uniform noise (RMS 1/√3) through a one-pole low-pass
             // at the rate, whose output variance is σ²·(1 − a)/(1 + a). Divided by its RMS it has
@@ -148,9 +158,9 @@ impl Oscillator {
             let a = (-TAU * step).exp();
             self.wander = a * self.wander + (1.0 - a) * rng.bipolar();
             let rms = (1.0 / 3.0 * (1.0 - a) / (1.0 + a)).sqrt();
-            let speed =
-                RANDOM_MAKEUP * wobble.depth * std::f64::consts::FRAC_1_SQRT_2 * self.wander
-                    / rms.max(1e-12);
+            let unit = self.wander / rms.max(1e-12);
+            self.level = (unit * std::f64::consts::FRAC_1_SQRT_2).clamp(-1.0, 1.0);
+            let speed = RANDOM_MAKEUP * wobble.depth * std::f64::consts::FRAC_1_SQRT_2 * unit;
             self.drift -= speed;
         }
         self.offset = now + self.drift;
@@ -209,15 +219,45 @@ impl Transport {
         self.rng = Rng::new(self.seed);
     }
 
+    /// A new seed for the random shapes, from the next draw on; the line and phases stay.
+    pub fn reseed(&mut self, seed: u32) {
+        if seed != self.seed {
+            self.seed = seed;
+            self.rng = Rng::new(seed);
+        }
+    }
+
     /// One stereo sample through the moving read, with this sample's wow and flutter.
     #[inline]
     pub fn process(&mut self, input: [f32; 2], wow: &Wobble, flutter: &Wobble) -> [f32; 2] {
+        self.process_full(input, wow, flutter, 0.0).0
+    }
+
+    /// One stereo sample: the moving read, and the line read at exactly the base delay (the tape
+    /// as it would play with no wobble, for flanging against). With `follow` above zero the
+    /// flutter's rate moves with the wow, by up to [`FOLLOW_DEPTH`] of itself at full `follow`.
+    #[inline]
+    pub fn process_full(
+        &mut self,
+        input: [f32; 2],
+        wow: &Wobble,
+        flutter: &Wobble,
+        follow: f64,
+    ) -> ([f32; 2], [f32; 2]) {
         let length = self.lines[0].len();
         for (line, &x) in self.lines.iter_mut().zip(&input) {
             line[self.write] = x;
         }
-        let offset = self.wow.next(wow, self.rate, &mut self.rng)
-            + self.flutter.next(flutter, self.rate, &mut self.rng);
+        let wow_offset = self.wow.next(wow, self.rate, &mut self.rng);
+        let flutter = if follow > 0.0 {
+            Wobble {
+                hz: flutter.hz * (1.0 + follow * FOLLOW_DEPTH * self.wow.level),
+                ..*flutter
+            }
+        } else {
+            *flutter
+        };
+        let offset = wow_offset + self.flutter.next(&flutter, self.rate, &mut self.rng);
         let room = length as f64 - self.base - 6.0;
         let delay = self.base + offset.clamp(-(self.base - 2.0), room);
 
@@ -230,15 +270,17 @@ impl Transport {
             let at = |k: usize| f64::from(line[(index + k + length - 1) % length]);
             *y = hermite(at(0), at(1), at(2), at(3), fraction) as f32;
         }
+        let still = (self.write + length - self.base as usize) % length;
+        let fixed = [self.lines[0][still], self.lines[1][still]];
         self.write = (self.write + 1) % length;
-        out
+        (out, fixed)
     }
 }
 
 /// Four-point, third-order Hermite: the value between `x0` and `x1` at `t` (0..1), from the
 /// points before and after.
 #[inline]
-fn hermite(xm1: f64, x0: f64, x1: f64, x2: f64, t: f64) -> f64 {
+pub(crate) fn hermite(xm1: f64, x0: f64, x1: f64, x2: f64, t: f64) -> f64 {
     let c1 = 0.5 * (x1 - xm1);
     let c2 = xm1 - 2.5 * x0 + 2.0 * x1 - 0.5 * x2;
     let c3 = 0.5 * (x2 - xm1) + 1.5 * (x0 - x1);
@@ -415,6 +457,59 @@ mod tests {
         let first = run(&mut transport);
         transport.reset();
         assert_eq!(first, run(&mut transport));
+    }
+
+    #[test]
+    fn the_fixed_read_is_the_base_delay_whatever_the_wobble() {
+        let wow = Wobble {
+            depth: 0.01,
+            hz: 1.0,
+            shape: Shape::Random,
+        };
+        let mut transport = Transport::new(RATE, wow.reach_seconds(), 1);
+        let latency = transport.latency() as usize;
+        let fixed: Vec<f32> = (0..2_000)
+            .map(|n| {
+                let x = if n == 10 { 1.0 } else { 0.0 };
+                transport.process_full([x, x], &wow, &Wobble::NONE, 0.0).1[0]
+            })
+            .collect();
+        assert_eq!(fixed.iter().position(|&y| y == 1.0), Some(10 + latency));
+    }
+
+    #[test]
+    fn a_following_flutter_speeds_up_and_slows_down_with_the_wow() {
+        // Flutter alone at 8 Hz, then following a slow sine wow: its cycles crowd and spread.
+        let wow = Wobble {
+            depth: 0.002,
+            hz: 0.5,
+            shape: Shape::Sine,
+        };
+        let flutter = Wobble {
+            depth: 0.003,
+            hz: 8.0,
+            shape: Shape::Sine,
+        };
+        let count = |follow: f64| {
+            let mut transport =
+                Transport::new(RATE, wow.reach_seconds() + flutter.reach_seconds(), 1);
+            // Cycles in the second the wow is above its centre, then in the second it is below.
+            let mut halves = [0u32; 2];
+            let mut previous = 0.0f64;
+            for n in 0..(RATE as usize * 2) {
+                transport.process_full([0.0, 0.0], &wow, &flutter, follow);
+                let phase = transport.flutter.phase;
+                if phase < previous {
+                    halves[usize::from(n >= RATE as usize)] += 1;
+                }
+                previous = phase;
+            }
+            halves
+        };
+        let still = count(0.0);
+        let moving = count(1.0);
+        assert!(still[0].abs_diff(still[1]) <= 1, "{still:?}");
+        assert!(moving[0] > moving[1] + 3, "{moving:?}");
     }
 
     #[test]

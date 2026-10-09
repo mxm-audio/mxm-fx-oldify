@@ -1,4 +1,4 @@
-//! The dynamically paged editor for `mxm-fx-oldify`: five cards in signal order.
+//! The dynamically paged editor for `mxm-fx-oldify`: six cards in signal order.
 
 pub mod binding;
 pub mod sections;
@@ -17,12 +17,12 @@ use crate::params::MxmFxOldifyParams;
 use crate::telemetry::Telemetry;
 
 // The quarter-4K budget hugged to the cards, held by `the_opening_size_is_the_budget_hugged`.
-const REFERENCE: (u32, u32) = (1495, 461);
+const REFERENCE: (u32, u32) = (1792, 599);
 // One card wide — the widest computed floor and the gutters — and as tall as
 // the one row every page holds; never narrower than the app bar at its last compact step. Held by
 // `the_window_contract_fits_the_quarter_4k_budget_and_widest_card`,
 // `every_dynamic_page_fits_and_every_card_is_reachable` and `the_app_bar_holds_in_the_minimum_window`.
-const MINIMUM: (u32, u32) = (511, 461);
+const MINIMUM: (u32, u32) = (511, 599);
 
 pub type MxmFxOldifyEditor = nice_plug_egui::EguiEditor<MxmFxOldifyApp>;
 pub use mxm_preset::PresetUi;
@@ -148,7 +148,15 @@ pub fn panel(
                 .inner_margin(egui::Margin::same(SPACE_5 as i8)),
         )
         .show(ui, |ui| {
-            sections::cards(ui, &tokens, params, setter, text_entry, display);
+            sections::cards(
+                ui,
+                &tokens,
+                params,
+                setter,
+                text_entry,
+                telemetry.tempo(),
+                display,
+            );
         });
 }
 
@@ -458,24 +466,40 @@ mod tests {
     /// The structural-state matrix: nothing here opens, closes or appears, so the trees are the
     /// same in every state, and what varies is what is painted over their stated sizes — the init
     /// patch with idle telemetry, then every parameter at the bottom and at the top of its travel
-    /// (the gains' longest readings, Hiss's Off, the last switch cells) with full levels.
+    /// (the gains' longest readings, the levels' Off, the last switch cells) with full levels and
+    /// the syncs on with no tempo, and the top again at a slow tempo and at 120 bpm, where each
+    /// synced rate reads its division.
     #[test]
     fn every_card_passes_the_tree_checks_in_every_state() {
         use nice_plug::prelude::Params;
         let floors = sections::test_floors();
         let full = sections::Display { levels: [1.0; 2] };
-        /// A state's name, every parameter's normalised value (or the defaults) and the telemetry.
-        type State<'a> = (&'a str, Option<f32>, sections::Display);
-        let states: [State<'_>; 3] = [
-            ("init", None, sections::Display::default()),
+        /// A state's name, every parameter's normalised value (or the defaults), the host tempo
+        /// and the telemetry.
+        type State<'a> = (&'a str, Option<f32>, Option<f64>, sections::Display);
+        let states: [State<'_>; 5] = [
+            ("init", None, None, sections::Display::default()),
+            ("every parameter at the bottom", Some(0.0), None, full),
             (
-                "every parameter at the bottom, full levels",
-                Some(0.0),
+                "every parameter at the top, no tempo",
+                Some(1.0),
+                None,
                 full,
             ),
-            ("every parameter at the top, full levels", Some(1.0), full),
+            (
+                "every parameter at the top, 30 bpm",
+                Some(1.0),
+                Some(30.0),
+                full,
+            ),
+            (
+                "every parameter at the top, 120 bpm",
+                Some(1.0),
+                Some(120.0),
+                full,
+            ),
         ];
-        for (state, value, display) in states {
+        for (state, value, tempo, display) in states {
             let params = MxmFxOldifyParams::default();
             if let Some(value) = value {
                 for (_, param, _) in params.param_map() {
@@ -493,6 +517,7 @@ mod tests {
                     params: &params,
                     setter: &setter,
                     text: &mut text,
+                    tempo,
                     display,
                 };
                 tree_checks::card(
