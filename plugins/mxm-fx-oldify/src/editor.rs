@@ -1,4 +1,4 @@
-//! The dynamically paged editor for `mxm-fx-oldify`: six cards in signal order.
+//! The dynamically paged editor for `mxm-fx-oldify`: nine cards in signal order.
 
 pub mod binding;
 pub mod sections;
@@ -17,9 +17,9 @@ use crate::params::MxmFxOldifyParams;
 use crate::telemetry::Telemetry;
 
 // The quarter-4K budget hugged to the cards, held by `the_opening_size_is_the_budget_hugged`.
-const REFERENCE: (u32, u32) = (1882, 599);
+const REFERENCE: (u32, u32) = (1836, 1071);
 // One card wide — the widest computed floor and the gutters — and as tall as
-// the one row every page holds; never narrower than the app bar at its last compact step. Held by
+// the tallest card's row; never narrower than the app bar at its last compact step. Held by
 // `the_window_contract_fits_the_quarter_4k_budget_and_widest_card`,
 // `every_dynamic_page_fits_and_every_card_is_reachable` and `the_app_bar_holds_in_the_minimum_window`.
 const MINIMUM: (u32, u32) = (511, 599);

@@ -4,10 +4,10 @@ Parent: [`../../AGENTS.md`](../../AGENTS.md)
 
 # Purpose
 
-Framework-free DSP for `mxm-fx-oldify`: the chain, the **cassette engine**, and the blocks it is
-built from. The record engine, noise reduction, dropouts and the cassette's remaining faults are to
-come. The design and the measurements behind it are private, `ops:notes/oldify/` (root *The design
-and its measurements are private*).
+Framework-free DSP for `mxm-fx-oldify`: the chain, the **cassette engine**, the **record
+engine**, and the blocks they are built from. Still to come: the cassette's print-through, tape
+stop and High quality; the record's warp, groove echo and skips. The design and the measurements
+behind it are private, `ops:notes/oldify/` (root *The design and its measurements are private*).
 
 # Ownership
 
@@ -19,15 +19,23 @@ Owns `src/` and `Cargo.toml`. Host parameters, presets, telemetry and editor beh
 ## The chain (`lib.rs`)
 
 ```text
-input → Drive → the medium → ÷ Drive (a latency ago) → Width → Output → Mix with the dry, delayed
+input → Drive → [the record] → the cassette engine → ÷ Drive (a latency ago) → [+ hum]
+  → Width → Output → Mix with the dry, delayed
 ```
 
-- **Medium**: `Cassette` and `RecordThenCassette` run the cassette engine; `Record` has no engine
-  yet and passes the input delayed. Switching back into the cassette clears it first.
+- **Medium**: `Cassette` runs the cassette engine; `Record` the record engine, then the cassette
+  engine **neutral**, for its moving read alone; `RecordThenCassette` both. Switching onto the
+  record clears it first.
+- **One moving read for both media.** The record's eccentricity and turntable wobble ride the
+  cassette transport's line (`Cassette::set_record_wobbles`, `Transport::set_extras`): a time-warp
+  passes through the curves and the player almost unchanged and through a memoryless curve exactly,
+  so the record needs no delay line of its own and the latency is one, whatever the Medium. Hum is
+  added after the read and does not wobble.
 - **Drive is compensated** by the drive the sound leaving the medium went in with, one latency
   earlier: dividing by today's drive swung the level by Drive's whole range during a move.
-- **One fixed latency**, `Oldify::latency`: the oversampler's, the transport's base delay and the
-  centre of azimuth's delay between the tracks, the same for every control and Medium; the dry path is delayed by it, so Mix never combs. The plugin
+- **One fixed latency**, `Oldify::latency`: the oversampler's, the transport's base delay (twice
+  the wow's, flutter's, eccentricity's and turntable's reach) and the centre of azimuth's delay
+  between the tracks, about 71 ms, the same for every control and Medium; the dry path is delayed by it, so Mix never combs. The plugin
   reports it.
 - Width works about the mid; Mix is a linear crossfade with the delayed dry.
 - **The noise** is gated by the chain: it holds `NOISE_HOLD_S` after the input falls silent and
@@ -62,6 +70,25 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
 - **Variation** picks the seed (`seed_for`) of every random source: transport, hiss, dropouts.
   A change reseeds from the next draw; a clear goes back to the seed's start.
 
+## The record engine (`record.rs`)
+
+```text
+era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall) → cutting curve
+  → groove (tracing distortion, wear) → + the disc's own sound → pickup → replay curve
+  → player (scratch filter, valves, speaker, horn or radio)
+```
+
+- **The record side and the player side are apart** (`Era`, `Player`): any record meets any
+  player, and a wrong replay curve errs by itself. `cut: None` follows the era, `replay: None` the
+  player.
+- **Era facts** are Copeland's and IASA's (cutter resonances, the 8.5 kHz wall on 1940s US 78s,
+  wider cutters from 1943, limiters, mono before 1957–58); Q values and limiter times are chosen.
+  **The players' speakers, horns and crystal resonance are not sourced**: chosen, the weakest
+  numbers here.
+- Wear raises the surface noise by up to `WEAR_NOISE_DB`; a player's own rumble adds to the
+  disc's. Eccentricity is `d / R` at the turn, R from the disc's size and the side position, held
+  within `ECCENTRIC_REACH_S`; the turntable's wobble within `TABLE_REACH_S`.
+
 ## The blocks
 
 - **`biquad`**: Bristow-Johnson's cookbook sections, kept as what they mean and built at any rate
@@ -89,6 +116,20 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
   depths, each lifting the tape `LIFT_UM_PER_DB` per decibel (the measured treble excess). Amount
   sets the rate (up to `MAX_RATE_HZ`) and depth; Intensity makes them fewer, longer, deeper; Width
   blends a shared stream into two independent ones. Nothing is drawn while the amount is zero.
+- **`curves`**: the period's recording curves by their time constants; replay `(1 + sT₂) /
+  ((1 + sT₁)(1 + sT₃))` normalised at 1 kHz, cut its exact inverse with the cutting amplifier's
+  `CEILING_S` on its lift; a missing low shelf stops at `MISSING_SHELF_S`. Bilinear, so the top
+  octave is squeezed alike in cut and replay.
+- **`disc`**: a disc that turns at its `Speed` and holds its defects at angles: per revolution
+  tables of crackle (Pareto sizes) and clicks (each its own damped ring), `TURNOVER` of them renewed
+  every turn; scratches and cracks at fixed angles, varied a little each time; surface noise
+  swishing with the turn; rumble. Tables allocated in `new` for the busiest revolution.
+- **`groove`**: tracing distortion `x / √(1 + c·x²)` on the lateral motion, `c` from the cited
+  0.8 % (outer) and 4.5 % (inner) for an 18 µm tip, with the pinch effect's second harmonic in the
+  vertical; a treble limit falling with the groove speed and with Wear (`FRESH_TOP_HZ`,
+  `WORN_TOP_HZ`).
+- **`player`**: crystal (amplitude-sensing) or magnetic pickup; scratch filter; single-ended or
+  push-pull valves; speaker, horn or the radio's limiter and 4.5 kHz top. Period players are mono.
 - **`spacing`**: Wallace's spacing loss from two fitted tables (`BASE` at 44.1 and 48 kHz, `HIGH`
   from 88.2 kHz; `ops:oldify/measure/fit_spacing.py`). Between two rows it **crossfades the two
   rows' outputs**; a slot takes a new row only at weight zero, so a moving spacing never clicks.
@@ -105,7 +146,8 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
   after the input falls under `SILENCE`, fades over `NOISE_FADE_S`, and after `Oldify::tail` every
   memory is cleared and the chain is **quiet**. A quiet chain fed silence costs the input scan only
   and gives exact zero; the input returning wakes it, with every seed back at its start.
-- **Mix zero is the dry input delayed by the latency, to the bit**; so is the Record medium.
+- **Mix zero is the dry input delayed by the latency, to the bit.** A clean modern record on a
+  modern deck is the input delayed, at its level.
 - **A neutral cassette** (`Controls::IDENTITY`) is the input delayed, within the oversampler's
   passband; an impulse peaks at exactly the reported latency.
 - **Seeded**: the transport's, the two hiss generators' and the three dropout streams' draws, at
@@ -134,7 +176,7 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
 The smoothing, gain and width bounds, rate range, the transport's leak, reach and `FOLLOW_DEPTH`,
 the depth and Age laws, `EMPHASIS_DB`, `FADE_IN`, `MAX_DRIVE`, the curves' shapes, the hiss's top
 and its 70 µs offset, the silence thresholds and times, the noise follower's, `GENERATION_UM`, the
-dropout laws, `WRONG_EQ_DB` and the noise reduction's thresholds, corners, skew and detector are chosen here, not measured. The tape table, the spacing law, the
+dropout laws, `WRONG_EQ_DB`, the noise reduction's thresholds, corners, skew and detector, the record's era Qs, limiter times, players, `TURNOVER`, crackle and click sizes and the groove's corners are chosen here, not measured. The tape table, the spacing law, the
 dropout statistics and lift, azimuth's geometry and the wow, flutter and saturation extremes come
 from measurement or physics and say so.
 
@@ -154,8 +196,8 @@ cargo +1.87.0 test -p mxm-fx-oldify-dsp
 ```
 
 The chain's tests hold silence → exact zero at every setting, exact zero again after the tail, Mix
-zero and the Record medium → the delayed input to the bit, the neutral cassette → the delayed input
-to −50 dB, an impulse at the latency, blocks of 1, 37 and 512 bit-identical through a quiet stretch
+zero → the delayed input to the bit, a clean record → the delayed input at its level, the neutral
+cassette → the delayed input to −50 dB, an impulse at the latency, blocks of 1, 37 and 512 bit-identical through a quiet stretch
 and a retarget, a reset rendering the same again, finite bounded output at every extreme, Width
 zero → mono, the hiss at its level and silent after its hold, the hiss playing on with Noise stops
 off, following noise at three input levels, the ramps, the latency near 50 ms at 44.1, 48 and
@@ -165,7 +207,10 @@ first, the oversampler's round trip, the transport's depths, reach, seeds, unmov
 following flutter, the spacing loss against Wallace at every common rate and a sweep without a
 jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch and loss, the
 skew's exact split, and the noise reduction's lift, two-band's reach, exact decode, undecoded and
-off paths, mistracking and hiss reduction).
+off paths, mistracking and hiss reduction, the curves' shapes, exact cut-and-replay and the UK 78
+error, the disc's rate, heavy tail, turn-locked renewal, cracks and levels, the groove's cited
+distortion and treble loss, the players' bands, crystal, radio and mono, and the record side's
+brick wall, acoustic band, wrong-curve dullness, eccentricity and gated noise).
 
 # Child DOX Index
 

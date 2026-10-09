@@ -273,6 +273,11 @@ impl Disc {
         self.targets = c.bounded();
     }
 
+    /// Whether the disc, as last set, makes any sound of its own.
+    pub fn sounds(&self) -> bool {
+        self.targets.sounds()
+    }
+
     /// Replaces `share` of this revolution's events with new ones, matches the tables' sizes to
     /// the asked-for rates, and sorts them by angle.
     fn refill(&mut self, c: &DiscControls, share: f64) {

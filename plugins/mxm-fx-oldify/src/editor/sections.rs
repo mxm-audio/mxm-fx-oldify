@@ -1,7 +1,7 @@
-//! Six Effects cards in signal order: Medium, Tape, Transport, Noise, Deck, Output.
+//! Nine Effects cards in signal order, the record's then the cassette's: Medium, Era, Groove,
+//! Surface, Tape, Transport, Noise, Deck, Output.
 //!
-//! Each card keeps the key the brief gives it (`docs/briefs/mxm-fx-oldify.md` §4), so the record
-//! engine's cards can take their places between Medium and Tape without moving these. Each card
+//! Each card keeps the key the brief gives it (`docs/briefs/mxm-fx-oldify.md` §4). Each card
 //! body is a `mxm_ui::tree`: [`card`] describes it once, the paging renderer measures that one
 //! description for the card's floor and height, and [`paint`] draws it leaf by leaf through the
 //! bindings, so the controls, their gestures and their names are the bindings' own. Nothing is typed
@@ -16,14 +16,24 @@ use mxm_ui::tree::{Height, Kind, Node, leaf, row_gap, stack, switch_beside_knob}
 use mxm_ui::visual::{AXIS_STROKE, CANVAS_RADIUS, EMPHASIS_STROKE};
 use nice_plug::prelude::ParamSetter;
 
-use super::binding::{Bound, segmented, segmented_waves, toggle_labelled};
+use super::binding::{Bound, segmented, segmented_waves, selector, toggle_labelled};
 use crate::params::MxmFxOldifyParams;
 
 const KNOB: Size = Size::Standard;
 /// The cards' titles, in paging order.
-pub const TITLES: [&str; 6] = ["Medium", "Tape", "Transport", "Noise", "Deck", "Output"];
+pub const TITLES: [&str; 9] = [
+    "Medium",
+    "Era",
+    "Groove",
+    "Surface",
+    "Tape",
+    "Transport",
+    "Noise",
+    "Deck",
+    "Output",
+];
 /// The cards' stable keys, the brief's: the record engine's cards take 1–3.
-pub const KEYS: [u64; 6] = [0, 4, 5, 6, 7, 8];
+pub const KEYS: [u64; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
 /// The level display's stated size; it fills its card's width.
 pub const LEVELS_MIN: Vec2 = vec2(160.0, 53.0);
@@ -92,6 +102,91 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "variation",
             &params.variation,
             "Picks another take of the wobble, hiss and dropouts; the same number always sounds the same.",
+        ),
+        Bound::new(
+            "disc",
+            &params.disc,
+            "The record's speed and size, from a long-player to a shellac 78.",
+        ),
+        Bound::new(
+            "era",
+            &params.era,
+            "When the record was cut, and so how it was recorded and cut.",
+        ),
+        Bound::new(
+            "player",
+            &params.player,
+            "What the record is played on, from a wind-up gramophone to a modern deck.",
+        ),
+        Bound::new(
+            "cut_curve",
+            &params.cut_curve,
+            "The treble and bass curve the record was cut with.",
+        ),
+        Bound::new(
+            "replay_curve",
+            &params.replay_curve,
+            "The curve it is played back with; a different one from the cut tilts the sound.",
+        ),
+        Bound::new(
+            "wear",
+            &params.wear,
+            "How worn the groove is: a dulled top, more distortion and more surface noise.",
+        ),
+        Bound::new(
+            "side",
+            &params.side,
+            "Where on the side the needle is, from the outer groove to the inner, which is duller and more distorted.",
+        ),
+        Bound::new(
+            "groove_distortion",
+            &params.groove_distortion,
+            "How much the needle distorts tracing the groove; 100 % is what the groove itself gives.",
+        ),
+        Bound::new(
+            "eccentricity",
+            &params.eccentricity,
+            "How far off centre the hole is, so the pitch sways once a turn.",
+        ),
+        Bound::new(
+            "crackle",
+            &params.crackle,
+            "How many tiny crackles a second, from a clean disc to a worn 78.",
+        ),
+        Bound::new(
+            "clicks",
+            &params.clicks,
+            "How many louder clicks a second, from dust and specks in the groove.",
+        ),
+        Bound::new(
+            "surface_noise",
+            &params.surface_noise,
+            "The disc's own hiss and roar, from off to a worn 78's.",
+        ),
+        Bound::new(
+            "scratches",
+            &params.scratches,
+            "How many scratches cross the record, each ticking once a turn.",
+        ),
+        Bound::new(
+            "cracks",
+            &params.cracks,
+            "How many cracks run across the record, each thumping once a turn.",
+        ),
+        Bound::new(
+            "rumble",
+            &params.rumble,
+            "The turntable's low rumble, from off to loud.",
+        ),
+        Bound::new(
+            "hum",
+            &params.hum,
+            "Mains hum, at the frequency of the mains it is played from.",
+        ),
+        Bound::new(
+            "hum_level",
+            &params.hum_level,
+            "How loud the hum is, from off to loud.",
         ),
         Bound::new(
             "tape",
@@ -348,6 +443,8 @@ pub(crate) fn test_floors() -> Vec<f32> {
 #[derive(Clone, Copy, Debug, Hash)]
 pub enum Leaf {
     Knob(&'static str),
+    /// A list too long for a row of buttons.
+    Selector(&'static str),
     Segmented(&'static str),
     Waves(&'static str),
     /// An on/off parameter's switch, labelled with its name.
@@ -411,6 +508,22 @@ fn knobs(ui: &Ui, params: &MxmFxOldifyParams, ids: &[&'static str]) -> Node<Leaf
 /// (design system §7.3: the cells of a row do not share one sentence).
 fn details_of(id: &str) -> &'static [&'static str] {
     match id {
+        "disc" => &[
+            "A long-player turning at 33⅓.",
+            "A seven-inch single turning at 45.",
+            "A shellac disc turning at 78.",
+        ],
+        "cracks" => &[
+            "No cracks across the record.",
+            "One crack, thumping once a turn.",
+            "Two cracks, two thumps a turn.",
+            "Three cracks, three thumps a turn.",
+        ],
+        "hum" => &[
+            "No hum from the mains.",
+            "The hum of 50 Hz mains, as in Europe.",
+            "The hum of 60 Hz mains, as in America.",
+        ],
         "medium" => &[
             "The sound of a cassette tape.",
             "The sound of an old record.",
@@ -454,6 +567,73 @@ fn details_of(id: &str) -> &'static [&'static str] {
         ],
         _ => &[],
     }
+}
+
+/// What each option of a list says, for the selector's hover: one list offers one sentence for the
+/// whole control, so the option chosen adds its own to it (design system §7.3's rule, kept for a
+/// list).
+fn option_sentences(id: &str) -> &'static [&'static str] {
+    match id {
+        "era" => &[
+            "Before 1925: cut through a horn, no microphone, only about 250 Hz to 2.5 kHz.",
+            "1925 to 1935: the first microphones and electrical cutters, with a ringing top near 4.5 kHz.",
+            "American 78s of the 1940s: the top cut off sharply at 8.5 kHz and the peaks held down.",
+            "British 78s of the 1940s: a wider cut reaching about 12 kHz, with the peaks left alone.",
+            "78s of the 1950s, cut with full-range microphones to about 14 kHz.",
+            "The first 45s, 1949 to 1952: bright, with the peaks held down.",
+            "The first long-players, 1948 to 1954, before one curve was agreed.",
+            "Mono long-players of 1955 to 1958 on the standard curve, nearly full range.",
+            "From stereo on: full range, and nothing added by the cut.",
+        ],
+        "player" => &[
+            "A wind-up gramophone: a steel needle, a soundbox and a horn, nothing electrical.",
+            "A 1940s radiogram: a crystal pickup, a scratch filter, valves and a cabinet speaker.",
+            "A 1949 jukebox: a heavy pickup, push-pull valves and a big speaker.",
+            "A 1950s portable: a crystal pickup, valves and a small speaker.",
+            "A 1955 mono hi-fi: a magnetic pickup and a good speaker.",
+            "A record on the 1940s radio: the station's turntable, the broadcast and a table radio.",
+            "A modern deck with a fine cartridge, adding nothing of its own.",
+        ],
+        "cut_curve" => &[
+            "The curve the record's era was cut with.",
+            "No curve at all: the groove as the sound made it.",
+            "British 78s from 1943 to 1953.",
+            "British 78s from 1944 to 1956, with the top lifted.",
+            "American 78s from 1932 to 1949.",
+            "The first American long-players, 1948 to 1954.",
+            "The first 45s, 1949 to 1952.",
+            "Discs cut for broadcast.",
+            "Long-players from the West Coast, from 1950.",
+            "The curve every record has used since the mid-1950s.",
+        ],
+        "replay_curve" => &[
+            "The curve the player plays back with.",
+            "No curve at all: the groove played as it is.",
+            "British 78s from 1943 to 1953.",
+            "British 78s from 1944 to 1956, with the top lifted.",
+            "American 78s from 1932 to 1949.",
+            "The first American long-players, 1948 to 1954.",
+            "The first 45s, 1949 to 1952.",
+            "Discs cut for broadcast.",
+            "Long-players from the West Coast, from 1950.",
+            "The curve every record has used since the mid-1950s.",
+        ],
+        _ => &[],
+    }
+}
+
+/// A list's leaf: the collection's caret selector (§7.4), for a choice too long for a row of
+/// buttons.
+fn selector_leaf(params: &MxmFxOldifyParams, id: &'static str) -> Node<Leaf> {
+    leaf(
+        Leaf::Selector(id),
+        Kind::Selector {
+            label: bound(id, params).painted().to_owned(),
+            options: options(params, id),
+            caption: false,
+            width: None,
+        },
+    )
 }
 
 fn segmented_leaf(params: &MxmFxOldifyParams, id: &'static str) -> Node<Leaf> {
@@ -511,6 +691,24 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             knobs(ui, params, &["age", "variation"]),
         ]),
         1 => stack(vec![
+            segmented_leaf(params, "disc"),
+            selector_leaf(params, "era"),
+            selector_leaf(params, "player"),
+            selector_leaf(params, "cut_curve"),
+            selector_leaf(params, "replay_curve"),
+        ]),
+        2 => stack(vec![
+            knobs(ui, params, &["wear", "side"]),
+            knobs(ui, params, &["groove_distortion", "eccentricity"]),
+        ]),
+        3 => stack(vec![
+            knobs(ui, params, &["crackle", "clicks", "surface_noise"]),
+            knobs(ui, params, &["scratches", "rumble"]),
+            segmented_leaf(params, "cracks"),
+            segmented_leaf(params, "hum"),
+            knobs(ui, params, &["hum_level"]),
+        ]),
+        4 => stack(vec![
             segmented_leaf(params, "tape"),
             segmented_leaf(params, "grade"),
             knobs(ui, params, &["tape_tone", "saturation"]),
@@ -518,7 +716,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             segmented_leaf(params, "generations"),
         ]),
         // Each rate with its tempo sync straight after it, then its shape.
-        2 => stack(vec![
+        5 => stack(vec![
             row_gap(
                 gap,
                 vec![
@@ -538,7 +736,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             toggle_leaf(params, "follow"),
             knobs(ui, params, &["flange"]),
         ]),
-        3 => stack(vec![
+        6 => stack(vec![
             knobs(ui, params, &["hiss"]),
             segmented_leaf(params, "nr"),
             toggle_leaf(params, "nr_decode"),
@@ -553,7 +751,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
                 &["dropouts", "dropout_intensity", "dropout_width"],
             ),
         ]),
-        4 => stack(vec![
+        7 => stack(vec![
             knobs(ui, params, &["azimuth", "crosstalk"]),
             toggle_leaf(params, "wrong_eq"),
         ]),
@@ -612,6 +810,26 @@ pub fn paint(ui: &mut Ui, tokens: &Tokens, leaf: &Leaf, rect: egui::Rect, live: 
                 bound.description,
                 live.setter,
                 0.0,
+            );
+        }
+        Leaf::Selector(id) => {
+            let bound = bound(id, params);
+            let labels = options(params, id);
+            let options: Vec<&str> = labels.iter().map(String::as_str).collect();
+            let chosen = (bound.param.normalised() * (options.len() - 1) as f32).round() as usize;
+            let hover = match option_sentences(id).get(chosen) {
+                Some(sentence) => format!("{} {sentence}", bound.description),
+                None => bound.description.to_owned(),
+            };
+            selector(
+                ui,
+                tokens,
+                id,
+                bound.param,
+                &options,
+                None,
+                &hover,
+                live.setter,
             );
         }
         Leaf::Segmented(id) => {
@@ -713,6 +931,9 @@ mod tests {
             "character",
             "generations",
             "nr",
+            "disc",
+            "cracks",
+            "hum",
             "wow_shape",
             "flutter_shape",
         ] {
@@ -720,6 +941,13 @@ mod tests {
         }
         for id in ["wow_shape", "flutter_shape"] {
             assert_eq!(options(&params, id).len(), waves_of(id).len(), "{id}");
+        }
+        for id in ["era", "player", "cut_curve", "replay_curve"] {
+            assert_eq!(
+                options(&params, id).len(),
+                option_sentences(id).len(),
+                "{id}"
+            );
         }
     }
 

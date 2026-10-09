@@ -260,15 +260,6 @@ mod tests {
         }
     }
 
-    fn set_medium(plugin: &MxmFxOldify, medium: params::MediumChoice) {
-        unsafe {
-            let _ = plugin
-                .params
-                .medium
-                ._internal_set_normalized_value(plugin.params.medium.preview_normalized(medium));
-        }
-    }
-
     fn programme(frames: usize, step: f32) -> Vec<f32> {
         (0..frames).map(|n| (n as f32 * step).sin() * 0.4).collect()
     }
@@ -371,18 +362,48 @@ mod tests {
         assert_eq!(right[latency..], source_r[..8_192 - latency]);
     }
 
+    /// Every cassette control at its neutral setting: the chain is the input, delayed, through
+    /// the oversampler's passband.
+    fn neutral(plugin: &MxmFxOldify) {
+        for (id, normalized) in [
+            ("tape_tone", 0.0),
+            ("saturation", 0.0),
+            ("wow", 0.0),
+            ("flutter", 0.0),
+            ("hiss", 0.0),
+            ("dropouts", 0.0),
+            ("crosstalk", 0.0),
+            ("age", 0.0),
+            ("noise_follows", 0.0),
+        ] {
+            let (_, param, _) = plugin
+                .params
+                .param_map()
+                .into_iter()
+                .find(|(other, _, _)| *other == id)
+                .expect("a parameter");
+            unsafe {
+                let _ = param._internal_set_normalized_value(normalized);
+            }
+        }
+    }
+
     /// **A moved control ramps**, so automation does not step the audio, and is heard: Output up
-    /// 12 dB on the Record medium (the delayed input, until the record engine exists).
+    /// 12 dB on a neutral cassette.
     #[test]
     fn a_moved_control_ramps_and_is_heard() {
         let mut plugin = MxmFxOldify::default();
-        set_medium(&plugin, params::MediumChoice::Record);
+        neutral(&plugin);
         assert!(plugin.prepare(48_000.0, 2));
         // First the delayed input arrives at 0 dB, then Output moves while it plays.
         let frames = 2 * plugin.latency() as usize;
         let (mut left, mut right) = (vec![0.25f32; frames], vec![0.25f32; frames]);
         run(&mut plugin, &mut left, &mut right);
-        assert_eq!(left[frames - 1], 0.25);
+        assert!(
+            (left[frames - 1] - 0.25).abs() < 1e-3,
+            "{}",
+            left[frames - 1]
+        );
         set(&plugin.params.output, mxm_fx_oldify_dsp::db_to_gain(12.0));
         let (mut left, mut right) = (vec![0.25f32; frames], vec![0.25f32; frames]);
         run(&mut plugin, &mut left, &mut right);
@@ -393,27 +414,25 @@ mod tests {
         assert!(left[0] < 0.26, "Output jumped: {}", left[0]);
         assert!(largest_step < 0.01, "Output stepped by {largest_step}");
         let gain = left[frames - 1] / 0.25;
-        assert!((gain - 3.981).abs() < 0.01, "12 dB came out as ×{gain}");
+        assert!((gain - 3.981).abs() < 0.02, "12 dB came out as ×{gain}");
     }
 
-    /// **A reset starts at the controls as they stand**, not ramping to them from wherever the
-    /// previous playback left off.
+    /// **A reset clears every memory and starts at the controls as they stand**: what was playing
+    /// before it leaves nothing behind, so silence after it is exact silence at once.
     #[test]
-    fn a_reset_starts_at_the_controls_as_they_stand() {
+    fn a_reset_leaves_nothing_of_what_played_before_it() {
         let mut plugin = MxmFxOldify::default();
-        set_medium(&plugin, params::MediumChoice::Record);
         assert!(plugin.prepare(48_000.0, 2));
-        let latency = plugin.latency() as usize;
+        let (mut left, mut right) = (programme(4_096, 0.2), programme(4_096, 0.3));
+        run(&mut plugin, &mut left, &mut right);
         set(&plugin.params.output, 0.5);
         plugin.reset();
-        let (mut left, mut right) = (vec![0.5f32; latency + 16], vec![0.5f32; latency + 16]);
-        run(&mut plugin, &mut left, &mut right);
-        let expected = 0.5 * plugin.params.output.value();
-        assert!(
-            left[latency..].iter().all(|sample| *sample == expected),
-            "{:?}",
-            &left[latency..]
-        );
+        let (mut left, mut right) = (vec![0.0f32; 8_192], vec![0.0f32; 8_192]);
+        assert!(matches!(
+            run(&mut plugin, &mut left, &mut right),
+            ProcessStatus::Normal
+        ));
+        assert!(left.iter().chain(&right).all(|sample| *sample == 0.0));
     }
 
     /// **The tail is reported until the output is exact zero, then the effect may sleep**: `Tail`
@@ -549,16 +568,14 @@ mod tests {
     #[test]
     fn levels_reach_the_editor() {
         let mut plugin = MxmFxOldify::default();
-        set_medium(&plugin, params::MediumChoice::Record);
+        set(&plugin.params.mix, 0.0);
         assert!(plugin.prepare(48_000.0, 1));
-        set(&plugin.params.output, mxm_fx_oldify_dsp::db_to_gain(-6.0));
-        plugin.reset();
         let frames = plugin.latency() as usize + 256;
         let (mut left, mut right) = (vec![0.8f32; frames], vec![0.0f32; frames]);
         run(&mut plugin, &mut left, &mut right);
         let [input, output] = plugin.telemetry.take_levels();
         assert_eq!(input, 0.8);
-        assert!((output - 0.4).abs() < 0.01, "{output}");
+        assert_eq!(output, 0.8, "Mix zero is the delayed input");
     }
 }
 

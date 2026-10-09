@@ -42,6 +42,7 @@ use crate::Ramp;
 use crate::biquad::{Biquad, Kind, Section};
 use crate::dropouts::{DropoutControls, Dropouts, LIFT_UM_PER_DB};
 use crate::nr::{Nr, NrControls};
+use crate::record::{ECCENTRIC_REACH_S, TABLE_REACH_S};
 use crate::saturate::{Character, Saturator};
 use crate::spacing::Spacing;
 use crate::tape::{Grade, Tape, TapeResponse};
@@ -443,7 +444,11 @@ impl Cassette {
         Self {
             rate: sample_rate,
             channels: [channel(1), channel(2)],
-            transport: Transport::new(sample_rate, WOW_REACH_S + FLUTTER_REACH_S, seed),
+            transport: Transport::new(
+                sample_rate,
+                WOW_REACH_S + FLUTTER_REACH_S + ECCENTRIC_REACH_S + TABLE_REACH_S,
+                seed,
+            ),
             dropouts: Dropouts::new(sample_rate, seed),
             skew: Skew::new(sample_rate),
             nr: Nr::new(sample_rate),
@@ -471,6 +476,11 @@ impl Cassette {
     /// the transport's base delay and the centre of the delay between the tracks.
     pub fn latency(&self) -> usize {
         Saturator::LATENCY + self.transport.latency() as usize + self.skew.centre as usize
+    }
+
+    /// A record's wobbles, which the tape's read follows too: one moving read for both media.
+    pub fn set_record_wobbles(&mut self, wobbles: [Wobble; 2]) {
+        self.transport.set_extras(wobbles);
     }
 
     /// Whether any hiss is asked for.

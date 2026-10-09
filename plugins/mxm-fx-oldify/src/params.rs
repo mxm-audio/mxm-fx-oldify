@@ -17,8 +17,16 @@ use mxm_fx_oldify_dsp::cassette::{
     CROSSTALK_MAX_DB, CROSSTALK_OFF_DB, CassetteControls, FLUTTER_HZ, HISS_MAX_DB, HISS_OFF_DB,
     MAX_AZIMUTH_ARCMIN, MAX_GENERATIONS, MAX_VARIATION, Motion, WOW_HZ,
 };
+use mxm_fx_oldify_dsp::curves::Curve;
+use mxm_fx_oldify_dsp::disc::{
+    DiscControls, MAX_CLICKS_HZ, MAX_CRACKLE_HZ, MAX_CRACKS, MAX_RUMBLE_DB, MAX_SCRATCHES,
+    MAX_SURFACE_DB, NOISE_OFF_DB, Speed,
+};
 use mxm_fx_oldify_dsp::dropouts::DropoutControls;
+use mxm_fx_oldify_dsp::groove::GrooveControls;
 use mxm_fx_oldify_dsp::nr::{MAX_LEVEL_ERROR_DB, NoiseReduction, NrControls};
+use mxm_fx_oldify_dsp::player::Player;
+use mxm_fx_oldify_dsp::record::{Era, MAX_ECCENTRICITY_MM, Mains, RecordControls};
 use mxm_fx_oldify_dsp::saturate::Character;
 use mxm_fx_oldify_dsp::tape::{Grade, Tape};
 use mxm_fx_oldify_dsp::transport::Shape;
@@ -60,6 +68,248 @@ impl MediumChoice {
             Self::Cassette => Medium::Cassette,
             Self::Record => Medium::Record,
             Self::RecordThenCassette => Medium::RecordThenCassette,
+        }
+    }
+}
+
+/// The disc's speed, and so its size and its noise's pace.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiscChoice {
+    #[id = "lp-33"]
+    #[name = "LP 33⅓"]
+    Lp33,
+    #[id = "single-45"]
+    #[name = "Single 45"]
+    Single45,
+    #[id = "shellac-78"]
+    #[name = "Shellac 78"]
+    Shellac78,
+}
+
+impl DiscChoice {
+    pub const fn dsp(self) -> Speed {
+        match self {
+            Self::Lp33 => Speed::Lp33,
+            Self::Single45 => Speed::Single45,
+            Self::Shellac78 => Speed::Shellac78,
+        }
+    }
+}
+
+/// When the record was cut.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EraChoice {
+    #[id = "acoustic"]
+    #[name = "Acoustic"]
+    Acoustic,
+    #[id = "early-electrical"]
+    #[name = "Early electrical"]
+    EarlyElectrical,
+    #[id = "us-78"]
+    #[name = "US 78, 1940s"]
+    Us78,
+    #[id = "uk-78"]
+    #[name = "UK 78, 1940s"]
+    Uk78,
+    #[id = "late-78"]
+    #[name = "Late 78"]
+    Late78,
+    #[id = "early-single"]
+    #[name = "Early single"]
+    EarlySingle,
+    #[id = "early-lp"]
+    #[name = "Early LP"]
+    EarlyLp,
+    #[id = "mono-lp"]
+    #[name = "Mono LP"]
+    MonoLp,
+    #[id = "modern"]
+    #[name = "Modern"]
+    Modern,
+}
+
+impl EraChoice {
+    pub const fn dsp(self) -> Era {
+        match self {
+            Self::Acoustic => Era::Acoustic,
+            Self::EarlyElectrical => Era::EarlyElectrical,
+            Self::Us78 => Era::Us78,
+            Self::Uk78 => Era::Uk78,
+            Self::Late78 => Era::Late78,
+            Self::EarlySingle => Era::EarlySingle,
+            Self::EarlyLp => Era::EarlyLp,
+            Self::MonoLp => Era::MonoLp,
+            Self::Modern => Era::Modern,
+        }
+    }
+}
+
+/// What the record is played on.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerChoice {
+    #[id = "wind-up"]
+    #[name = "Wind-up gramophone"]
+    WindUp,
+    #[id = "radiogram"]
+    #[name = "Radiogram"]
+    Radiogram,
+    #[id = "jukebox"]
+    #[name = "Jukebox"]
+    Jukebox,
+    #[id = "portable"]
+    #[name = "Portable"]
+    Portable,
+    #[id = "mono-hi-fi"]
+    #[name = "Mono hi-fi"]
+    MonoHiFi,
+    #[id = "on-the-radio"]
+    #[name = "On the radio"]
+    OnTheRadio,
+    #[id = "modern-deck"]
+    #[name = "Modern deck"]
+    ModernDeck,
+}
+
+impl PlayerChoice {
+    pub const fn dsp(self) -> Player {
+        match self {
+            Self::WindUp => Player::WindUp,
+            Self::Radiogram => Player::Radiogram,
+            Self::Jukebox => Player::Jukebox,
+            Self::Portable => Player::Portable,
+            Self::MonoHiFi => Player::MonoHiFi,
+            Self::OnTheRadio => Player::OnTheRadio,
+            Self::ModernDeck => Player::ModernDeck,
+        }
+    }
+}
+
+/// The curve a record was cut with: the era's, or one chosen.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CutCurveChoice {
+    #[id = "follow-era"]
+    #[name = "Follow era"]
+    FollowEra,
+    #[id = "flat"]
+    #[name = "Flat"]
+    Flat,
+    #[id = "uk-78"]
+    #[name = "UK 78"]
+    Uk78,
+    #[id = "uk-78-with-treble-lift"]
+    #[name = "UK 78 with treble lift"]
+    Uk78Treble,
+    #[id = "us-78"]
+    #[name = "US 78"]
+    Us78,
+    #[id = "early-lp"]
+    #[name = "Early LP"]
+    EarlyLp,
+    #[id = "early-45"]
+    #[name = "Early 45"]
+    Early45,
+    #[id = "transcription"]
+    #[name = "Transcription"]
+    Transcription,
+    #[id = "west-coast-lp"]
+    #[name = "West Coast LP"]
+    WestCoastLp,
+    #[id = "standard"]
+    #[name = "Standard"]
+    Standard,
+}
+
+impl CutCurveChoice {
+    /// `None` follows the era.
+    pub const fn dsp(self) -> Option<Curve> {
+        match self {
+            Self::FollowEra => None,
+            Self::Flat => Some(Curve::Flat),
+            Self::Uk78 => Some(Curve::Uk78),
+            Self::Uk78Treble => Some(Curve::Uk78Treble),
+            Self::Us78 => Some(Curve::Us78),
+            Self::EarlyLp => Some(Curve::EarlyLp),
+            Self::Early45 => Some(Curve::Early45),
+            Self::Transcription => Some(Curve::Transcription),
+            Self::WestCoastLp => Some(Curve::WestCoastLp),
+            Self::Standard => Some(Curve::Standard),
+        }
+    }
+}
+
+/// The curve a record is played back with: the player's, or one chosen.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplayCurveChoice {
+    #[id = "follow-player"]
+    #[name = "Follow player"]
+    FollowPlayer,
+    #[id = "flat"]
+    #[name = "Flat"]
+    Flat,
+    #[id = "uk-78"]
+    #[name = "UK 78"]
+    Uk78,
+    #[id = "uk-78-with-treble-lift"]
+    #[name = "UK 78 with treble lift"]
+    Uk78Treble,
+    #[id = "us-78"]
+    #[name = "US 78"]
+    Us78,
+    #[id = "early-lp"]
+    #[name = "Early LP"]
+    EarlyLp,
+    #[id = "early-45"]
+    #[name = "Early 45"]
+    Early45,
+    #[id = "transcription"]
+    #[name = "Transcription"]
+    Transcription,
+    #[id = "west-coast-lp"]
+    #[name = "West Coast LP"]
+    WestCoastLp,
+    #[id = "standard"]
+    #[name = "Standard"]
+    Standard,
+}
+
+impl ReplayCurveChoice {
+    /// `None` follows the player.
+    pub const fn dsp(self) -> Option<Curve> {
+        match self {
+            Self::FollowPlayer => None,
+            Self::Flat => Some(Curve::Flat),
+            Self::Uk78 => Some(Curve::Uk78),
+            Self::Uk78Treble => Some(Curve::Uk78Treble),
+            Self::Us78 => Some(Curve::Us78),
+            Self::EarlyLp => Some(Curve::EarlyLp),
+            Self::Early45 => Some(Curve::Early45),
+            Self::Transcription => Some(Curve::Transcription),
+            Self::WestCoastLp => Some(Curve::WestCoastLp),
+            Self::Standard => Some(Curve::Standard),
+        }
+    }
+}
+
+/// Mains hum's frequency.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HumChoice {
+    #[id = "off"]
+    #[name = "Off"]
+    Off,
+    #[id = "50-hz"]
+    #[name = "50 Hz"]
+    Fifty,
+    #[id = "60-hz"]
+    #[name = "60 Hz"]
+    Sixty,
+}
+
+impl HumChoice {
+    pub const fn dsp(self) -> Mains {
+        match self {
+            Self::Off => Mains::Off,
+            Self::Fifty => Mains::Fifty,
+            Self::Sixty => Mains::Sixty,
         }
     }
 }
@@ -376,6 +626,64 @@ fn rate(name: &'static str, default: f32, range: (f32, f32)) -> FloatParam {
     .with_string_to_value(string_to_rate())
 }
 
+/// The loudest hum, RMS re full scale: the DSP's own bound.
+pub use mxm_fx_oldify_dsp::record::MAX_HUM_DB;
+
+/// Events a second. The precision is chosen from the rounded reading, so the host's text round
+/// trip is idempotent at the switch.
+fn per_second_to_string() -> ValueToString {
+    Arc::new(|value| {
+        if (value * 10.0).round() >= 100.0 {
+            format!("{value:.0}/s")
+        } else {
+            format!("{value:.1}/s")
+        }
+    })
+}
+
+fn string_to_per_second() -> StringToValue {
+    Arc::new(|text| {
+        text.trim()
+            .to_ascii_lowercase()
+            .trim_end_matches("a second")
+            .trim_end_matches("/s")
+            .trim()
+            .parse::<f32>()
+            .ok()
+    })
+}
+
+/// A count of events a second from zero to `max`, skewed by `skew` so the low counts, where the
+/// ear hears each one, get the travel.
+fn per_second(name: &'static str, default: f32, max: f32, skew: f32) -> FloatParam {
+    FloatParam::new(
+        name,
+        default,
+        FloatRange::Skewed {
+            min: 0.0,
+            max,
+            factor: FloatRange::skew_factor(skew),
+        },
+    )
+    .with_value_to_string(per_second_to_string())
+    .with_string_to_value(string_to_per_second())
+}
+
+/// Surface noise's level for the DSP ([`level_db`]).
+pub fn surface_db(gain: f32) -> f32 {
+    level_db(gain, NOISE_OFF_DB, MAX_SURFACE_DB)
+}
+
+/// Rumble's level for the DSP ([`level_db`]).
+pub fn rumble_db(gain: f32) -> f32 {
+    level_db(gain, NOISE_OFF_DB, MAX_RUMBLE_DB)
+}
+
+/// Hum's level for the DSP ([`level_db`]).
+pub fn hum_db(gain: f32) -> f32 {
+    level_db(gain, NOISE_OFF_DB, MAX_HUM_DB)
+}
+
 /// A tempo sync's switch: On/Off, as every sync in the collection reads.
 fn sync(name: &'static str) -> BoolParam {
     BoolParam::new(name, false)
@@ -390,6 +698,49 @@ pub struct MxmFxOldifyParams {
     pub age: FloatParam,
     #[id = "variation"]
     pub variation: IntParam,
+
+    // ---- Era ----
+    #[id = "disc"]
+    pub disc: EnumParam<DiscChoice>,
+    #[id = "era"]
+    pub era: EnumParam<EraChoice>,
+    #[id = "player"]
+    pub player: EnumParam<PlayerChoice>,
+    #[id = "cut_curve"]
+    pub cut_curve: EnumParam<CutCurveChoice>,
+    #[id = "replay_curve"]
+    pub replay_curve: EnumParam<ReplayCurveChoice>,
+
+    // ---- Groove ----
+    #[id = "wear"]
+    pub wear: FloatParam,
+    #[id = "side"]
+    pub side: FloatParam,
+    #[id = "groove_distortion"]
+    pub groove_distortion: FloatParam,
+    #[id = "eccentricity"]
+    pub eccentricity: FloatParam,
+
+    // ---- Surface ----
+    #[id = "crackle"]
+    pub crackle: FloatParam,
+    #[id = "clicks"]
+    pub clicks: FloatParam,
+    /// Stored as linear gain; the bottom of the travel is Off.
+    #[id = "surface_noise"]
+    pub surface_noise: FloatParam,
+    #[id = "scratches"]
+    pub scratches: IntParam,
+    #[id = "cracks"]
+    pub cracks: IntParam,
+    /// Stored as linear gain; the bottom of the travel is Off.
+    #[id = "rumble"]
+    pub rumble: FloatParam,
+    #[id = "hum"]
+    pub hum: EnumParam<HumChoice>,
+    /// Stored as linear gain; the bottom of the travel is Off.
+    #[id = "hum_level"]
+    pub hum_level: FloatParam,
 
     // ---- Tape ----
     #[id = "tape"]
@@ -485,6 +836,7 @@ impl Default for MxmFxOldifyParams {
     fn default() -> Self {
         let init = Controls::INIT;
         let cassette = init.cassette;
+        let record = init.record;
         Self {
             medium: EnumParam::new("Medium", MediumChoice::Cassette),
             age: percent("Age", cassette.age, 1.0),
@@ -496,6 +848,64 @@ impl Default for MxmFxOldifyParams {
                     max: MAX_VARIATION as i32,
                 },
             ),
+
+            disc: EnumParam::new("Disc", DiscChoice::Lp33),
+            era: EnumParam::new("Era", EraChoice::Modern),
+            player: EnumParam::new("Player", PlayerChoice::ModernDeck),
+            cut_curve: EnumParam::new("Cut curve", CutCurveChoice::FollowEra),
+            replay_curve: EnumParam::new("Replay curve", ReplayCurveChoice::FollowPlayer),
+
+            wear: percent("Wear", record.groove.wear, 1.0),
+            side: percent("Side position", record.groove.side, 1.0),
+            groove_distortion: percent("Groove distortion", record.groove.distortion, 2.0),
+            // Skewed so the everyday offsets, a few tenths of a millimetre, get the first half.
+            eccentricity: FloatParam::new(
+                "Eccentricity",
+                record.eccentricity_mm,
+                FloatRange::Skewed {
+                    min: 0.0,
+                    max: MAX_ECCENTRICITY_MM,
+                    factor: FloatRange::skew_factor(-1.0),
+                },
+            )
+            .with_unit(" mm")
+            .with_value_to_string(formatters::v2s_f32_rounded(2))
+            .with_string_to_value(Arc::new(|text| {
+                text.trim()
+                    .to_ascii_lowercase()
+                    .trim_end_matches("mm")
+                    .trim()
+                    .parse::<f32>()
+                    .ok()
+            })),
+
+            crackle: per_second("Crackle", record.disc.crackle, MAX_CRACKLE_HZ, -2.0),
+            clicks: per_second("Clicks", record.disc.clicks, MAX_CLICKS_HZ, -1.5),
+            surface_noise: off_level(
+                "Surface noise",
+                record.disc.surface_db,
+                NOISE_OFF_DB,
+                MAX_SURFACE_DB,
+            ),
+            scratches: IntParam::new(
+                "Scratches",
+                i32::from(record.disc.scratches),
+                IntRange::Linear {
+                    min: 0,
+                    max: MAX_SCRATCHES as i32,
+                },
+            ),
+            cracks: IntParam::new(
+                "Cracks",
+                i32::from(record.disc.cracks),
+                IntRange::Linear {
+                    min: 0,
+                    max: MAX_CRACKS as i32,
+                },
+            ),
+            rumble: off_level("Rumble", record.disc.rumble_db, NOISE_OFF_DB, MAX_RUMBLE_DB),
+            hum: EnumParam::new("Hum", HumChoice::Off),
+            hum_level: off_level("Hum level", record.hum_db, NOISE_OFF_DB, MAX_HUM_DB),
 
             tape: EnumParam::new("Tape", TapeChoice::TypeI),
             grade: EnumParam::new("Grade", GradeChoice::Standard),
@@ -612,6 +1022,31 @@ impl MxmFxOldifyParams {
             mix: self.mix.value(),
             noise_follows: self.noise_follows.value(),
             noise_stops: self.noise_stops.value(),
+            record: RecordControls {
+                disc: DiscControls {
+                    speed: self.disc.value().dsp(),
+                    surface_db: surface_db(self.surface_noise.value()),
+                    crackle: self.crackle.value(),
+                    clicks: self.clicks.value(),
+                    scratches: u8::try_from(self.scratches.value()).unwrap_or(0),
+                    cracks: u8::try_from(self.cracks.value()).unwrap_or(0),
+                    rumble_db: rumble_db(self.rumble.value()),
+                },
+                era: self.era.value().dsp(),
+                player: self.player.value().dsp(),
+                cut: self.cut_curve.value().dsp(),
+                replay: self.replay_curve.value().dsp(),
+                groove: GrooveControls {
+                    side: self.side.value(),
+                    wear: self.wear.value(),
+                    distortion: self.groove_distortion.value(),
+                    // The player sets the tip; the DSP ignores this one.
+                    tip_um: Controls::INIT.record.groove.tip_um,
+                },
+                eccentricity_mm: self.eccentricity.value(),
+                mains: self.hum.value().dsp(),
+                hum_db: hum_db(self.hum_level.value()),
+            },
             cassette: CassetteControls {
                 tape: self.tape.value().dsp(),
                 grade: self.grade.value().dsp(),
@@ -705,7 +1140,7 @@ mod tests {
     #[test]
     fn a_level_reads_off_at_the_bottom_and_off_plays_nothing() {
         let params = MxmFxOldifyParams::default();
-        let levels: [Level<'_>; 2] = [
+        let levels: [Level<'_>; 5] = [
             (&params.hiss, hiss_db, HISS_OFF_DB, "-30.0 dB"),
             (
                 &params.crosstalk,
@@ -713,6 +1148,9 @@ mod tests {
                 CROSSTALK_OFF_DB,
                 "-30.0 dB",
             ),
+            (&params.surface_noise, surface_db, NOISE_OFF_DB, "-15.0 dB"),
+            (&params.rumble, rumble_db, NOISE_OFF_DB, "-35.0 dB"),
+            (&params.hum_level, hum_db, NOISE_OFF_DB, "-20.0 dB"),
         ];
         for (param, to_db, off_db, top) in levels {
             assert_eq!(param.normalized_value_to_string(0.0, true), "Off");
@@ -846,7 +1284,7 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 22] = [
+        let continuous: [&FloatParam; 31] = [
             &params.age,
             &params.tape_tone,
             &params.saturation,
@@ -856,6 +1294,15 @@ mod tests {
             &params.flutter_rate,
             &params.flange,
             &params.hiss,
+            &params.wear,
+            &params.side,
+            &params.groove_distortion,
+            &params.eccentricity,
+            &params.crackle,
+            &params.clicks,
+            &params.surface_noise,
+            &params.rumble,
+            &params.hum_level,
             &params.nr_amount,
             &params.nr_brightness,
             &params.nr_level_error,

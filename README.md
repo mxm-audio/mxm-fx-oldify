@@ -3,11 +3,14 @@
 An MXM effect that makes sound old: cassette tape and old records (vinyl and shellac), from a new
 deck to a battered 78 on a radiogram.
 
-**Pre-alpha.** The cassette engine works: tape type and grade, saturation, generations of
-copies, wow and flutter (tempo-synced if you like, with flange), hiss and noise reduction,
-dropouts, a misaligned deck and age, with drive, width, output and mix around them. The record
-engine is still to come (the Record medium passes the sound through for now), and so are
-print-through and tape stop. The effect has a fixed latency of about 50 ms, which it reports to the host.
+**Pre-alpha.** Both engines work. The record: its era and the player it is played on (from a
+wind-up gramophone to a modern deck), the cutting and replay curves, the groove's wear and
+distortion, an off-centre hole, crackle, clicks, scratches, cracks, surface noise, rumble and hum.
+The cassette: tape type and grade, saturation, generations of copies, wow and flutter
+(tempo-synced if you like, with flange), hiss and noise reduction, dropouts, a misaligned deck and
+age. Drive, width, output and mix sit around them. Still to come: warp, groove echo and skips,
+print-through, tape stop and factory presets. The effect has a fixed latency of about 70 ms,
+which it reports to the host.
 
 Part of the MXM collection: every instrument, effect and tool lives in its own repository under
 [github.com/mxm-audio](https://github.com/mxm-audio), built on

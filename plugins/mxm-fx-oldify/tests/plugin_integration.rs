@@ -40,9 +40,9 @@ fn render(plugin: &mut MxmFxOldify, source: &[f32]) -> [Vec<f32>; 2] {
 
 #[test]
 fn every_rate_and_block_size_stays_finite_at_the_extremes() {
-    // Full scale through the loudest gain, the widest image and the tape's own lift (the DSP's
+    // Full scale through the loudest gain, the widest image and the media's own lift (the DSP's
     // own bound for its extremes).
-    let ceiling = 4.0 * db_to_gain(MAX_GAIN_DB) * MAX_WIDTH + 1.0;
+    let ceiling = 16.0 * db_to_gain(MAX_GAIN_DB) * MAX_WIDTH + 1.0;
     for rate in [1_000.0, 44_100.0, 48_000.0, 192_000.0, 768_000.0] {
         for frames in [1, 63, 1024, 8192] {
             for end in [0.0, 1.0] {
@@ -70,18 +70,24 @@ fn every_rate_and_block_size_stays_finite_at_the_extremes() {
     }
 }
 
-/// **The Record medium passes the input, delayed by the latency, to the bit**: the record engine
-/// is not built yet. When it lands this is the test that changes, on purpose.
+/// **The Record medium plays the record**: its default, a played LP on a modern deck, changes the
+/// sound, and stays finite.
 #[test]
-fn the_record_medium_passes_the_input_delayed_until_its_engine_exists() {
-    let source = programme(8_192, 0.031);
+fn the_record_medium_plays_the_record() {
+    let source = programme(16_384, 0.031);
     let mut plugin = MxmFxOldify::default();
     set_enum(&plugin.params.medium, MediumChoice::Record);
     assert!(plugin.prepare_for_test(48_000.0, 2));
     let latency = plugin.latency() as usize;
     let [left, right] = render(&mut plugin, &source);
-    assert_eq!(left[latency..], source[..8_192 - latency]);
-    assert_eq!(right[latency..], source[..8_192 - latency]);
+    assert!(left.iter().chain(&right).all(|sample| sample.is_finite()));
+    let difference = (latency..source.len())
+        .map(|n| (left[n] - source[n - latency]).abs())
+        .fold(0.0f32, f32::max);
+    assert!(
+        difference > 1e-3,
+        "the record changed nothing: {difference}"
+    );
 }
 
 /// Deterministic noise in −`level`..`level` (a 32-bit LCG): broadband, so a change anywhere in
@@ -185,6 +191,51 @@ fn every_cassette_control_changes_the_sound() {
             ],
         ),
     ];
+    // The record's controls, heard on the Record medium.
+    let record = [("medium", 0.5)];
+    let record_reference = render_moved(&record, LOUD);
+    let on_record: [Move<'_>; 16] = [
+        ("disc", 1.0),
+        ("era", 0.0),
+        ("player", 0.0),
+        ("cut_curve", 0.1),
+        ("replay_curve", 0.1),
+        ("wear", 1.0),
+        ("side", 1.0),
+        ("groove_distortion", 1.0),
+        ("eccentricity", 1.0),
+        ("crackle", 1.0),
+        ("clicks", 1.0),
+        ("surface_noise", 1.0),
+        ("cracks", 1.0),
+        ("rumble", 1.0),
+        ("hum", 0.5),
+        ("variation", 0.5),
+    ];
+    for moved in on_record {
+        let heard = difference(&render_moved(&[record[0], moved], LOUD), &record_reference);
+        assert!(
+            heard > 1e-3,
+            "{} changed nothing on a record: {heard}",
+            moved.0
+        );
+    }
+    // A scratch ticks once a turn at its own angle: on a 78, half a second is more than half a
+    // turn, where on an LP it is a quarter and a seed may put every scratch past it.
+    let shellac = [record[0], ("disc", 1.0)];
+    let scratched = difference(
+        &render_moved(&[shellac[0], shellac[1], ("scratches", 1.0)], LOUD),
+        &render_moved(&shellac, LOUD),
+    );
+    assert!(scratched > 1e-3, "scratches changed nothing: {scratched}");
+    let hum = [record[0], ("hum", 0.5)];
+    let hum_reference = render_moved(&hum, LOUD);
+    let louder = difference(
+        &render_moved(&[hum[0], hum[1], ("hum_level", 1.0)], LOUD),
+        &hum_reference,
+    );
+    assert!(louder > 1e-3, "hum_level changed nothing: {louder}");
+
     for (on, level, threshold, moves) in shaped {
         let base = render_moved(&[on], level);
         for moved in moves {

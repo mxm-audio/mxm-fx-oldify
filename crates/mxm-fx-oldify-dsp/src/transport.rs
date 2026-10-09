@@ -178,6 +178,10 @@ pub struct Transport {
     base: f64,
     wow: Oscillator,
     flutter: Oscillator,
+    /// Two more wobbles the read follows, set from outside: a record's eccentricity and its
+    /// turntable's own wobble.
+    extras: [Wobble; 2],
+    extra: [Oscillator; 2],
     rng: Rng,
     seed: u32,
 }
@@ -199,6 +203,8 @@ impl Transport {
             base,
             wow: Oscillator::default(),
             flutter: Oscillator::default(),
+            extras: [Wobble::NONE; 2],
+            extra: [Oscillator::default(); 2],
             rng: Rng::new(seed),
             seed,
         }
@@ -216,7 +222,14 @@ impl Transport {
         self.write = 0;
         self.wow = Oscillator::default();
         self.flutter = Oscillator::default();
+        self.extra = [Oscillator::default(); 2];
         self.rng = Rng::new(self.seed);
+    }
+
+    /// The two further wobbles the read follows from the next sample on; their reach counts
+    /// against the reach the transport was made with.
+    pub fn set_extras(&mut self, extras: [Wobble; 2]) {
+        self.extras = extras;
     }
 
     /// A new seed for the random shapes, from the next draw on; the line and phases stay.
@@ -257,7 +270,10 @@ impl Transport {
         } else {
             *flutter
         };
-        let offset = wow_offset + self.flutter.next(&flutter, self.rate, &mut self.rng);
+        let mut offset = wow_offset + self.flutter.next(&flutter, self.rate, &mut self.rng);
+        for (oscillator, wobble) in self.extra.iter_mut().zip(&self.extras) {
+            offset += oscillator.next(wobble, self.rate, &mut self.rng);
+        }
         let room = length as f64 - self.base - 6.0;
         let delay = self.base + offset.clamp(-(self.base - 2.0), room);
 

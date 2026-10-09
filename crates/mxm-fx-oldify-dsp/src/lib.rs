@@ -27,14 +27,19 @@ pub mod cassette;
 pub mod curves;
 pub mod disc;
 pub mod dropouts;
+pub mod groove;
 pub mod nr;
 pub mod oversample;
+pub mod player;
+pub mod record;
 pub mod saturate;
 pub mod spacing;
 pub mod tape;
 pub mod transport;
 
-use cassette::{Cassette, CassetteControls};
+use cassette::{Cassette, CassetteControls, seed_for};
+use record::{Hum, Record, RecordControls};
+use transport::Wobble;
 
 /// The lowest sample rate [`Oldify::new`] accepts.
 pub const MIN_SAMPLE_RATE: f32 = 1_000.0;
@@ -77,9 +82,9 @@ pub fn db_to_gain(db: f32) -> f32 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Medium {
     Cassette,
-    /// The record engine is not built yet: the sound passes, delayed by the latency.
+    /// A record on its player.
     Record,
-    /// A record taped to cassette; for now, the cassette alone.
+    /// A record played on its player and taped to cassette.
     RecordThenCassette,
 }
 
@@ -103,6 +108,7 @@ pub struct Controls {
     /// and the chain never goes quiet.
     pub noise_stops: bool,
     pub cassette: CassetteControls,
+    pub record: RecordControls,
 }
 
 impl Controls {
@@ -117,12 +123,14 @@ impl Controls {
         noise_follows: 0.0,
         noise_stops: true,
         cassette: CassetteControls::NEUTRAL,
+        record: RecordControls::CLEAN,
     };
 
     /// The init patch: what the plugin's parameters default to.
     pub const INIT: Self = Self {
         noise_follows: 0.3,
         cassette: CassetteControls::INIT,
+        record: RecordControls::INIT,
         ..Self::IDENTITY
     };
 
@@ -152,6 +160,7 @@ impl Controls {
             noise_follows: within(self.noise_follows, 1.0, 0.0),
             noise_stops: self.noise_stops,
             cassette: self.cassette.bounded(),
+            record: self.record.bounded(),
         }
     }
 }
@@ -277,6 +286,9 @@ pub struct Oldify {
     output: Ramp,
     mix: Ramp,
     cassette: Cassette,
+    record: Record,
+    hum: Hum,
+    rate: f64,
     dry: DryLine,
     /// Drive as it was one latency ago: what the sound leaving the medium was driven by.
     driven: Vec<f32>,
@@ -317,6 +329,9 @@ impl Oldify {
             output: Ramp::settled_at(identity.output, steps),
             mix: Ramp::settled_at(identity.mix, steps),
             cassette,
+            record: Record::new(f64::from(sample_rate), seed_for(0)),
+            hum: Hum::default(),
+            rate: f64::from(sample_rate),
             dry: DryLine::new(latency),
             driven: vec![identity.drive; latency.max(1)],
             driven_head: 0,
@@ -351,18 +366,21 @@ impl Oldify {
 
     /// True while the output never falls silent: noise that plays on in silence.
     pub fn endless(&self) -> bool {
-        !self.noise_stops && self.medium != Medium::Record && self.cassette.hisses()
+        !self.noise_stops
+            && ((self.medium != Medium::Record && self.cassette.hisses())
+                || (self.medium != Medium::Cassette && self.record.sounds()))
     }
 
     /// Asks for new controls; each continuous one that changed ramps there over [`SMOOTHING_S`].
     pub fn set_controls(&mut self, controls: Controls) {
         let controls = controls.bounded();
-        let cassette_was_on = self.medium != Medium::Record;
+        let record_was_on = self.medium != Medium::Cassette;
         self.medium = controls.medium;
-        if self.medium != Medium::Record && !cassette_was_on {
-            // Back into the cassette: it starts from silence, not from where it was left.
-            self.cassette.clear();
-            self.driven.fill(self.drive.value());
+        let record_on = self.medium != Medium::Cassette;
+        if record_on && !record_was_on {
+            // Back onto the record: it starts from silence, not from where it was left.
+            self.record.clear();
+            self.hum.reset();
         }
         self.drive.retarget(controls.drive);
         self.width.retarget(controls.width);
@@ -370,7 +388,24 @@ impl Oldify {
         self.mix.retarget(controls.mix);
         self.noise_follows.retarget(controls.noise_follows);
         self.noise_stops = controls.noise_stops;
-        self.cassette.set_controls(controls.cassette);
+        // A record alone still plays through the tape's read, neutral: one moving read, one
+        // latency, whatever the Medium.
+        self.cassette
+            .set_controls(if self.medium == Medium::Record {
+                CassetteControls {
+                    variation: controls.cassette.variation,
+                    ..CassetteControls::NEUTRAL
+                }
+            } else {
+                controls.cassette
+            });
+        self.record.reseed(seed_for(controls.cassette.variation));
+        self.record.set_controls(controls.record);
+        self.cassette.set_record_wobbles(if record_on {
+            self.record.wobbles()
+        } else {
+            [Wobble::NONE; 2]
+        });
     }
 
     /// Ends every ramp and clears every memory: the chain is quiet, as if long silent.
@@ -388,6 +423,8 @@ impl Oldify {
 
     fn clear(&mut self) {
         self.cassette.clear();
+        self.record.clear();
+        self.hum.reset();
         self.dry.clear();
         self.level = 0.0;
         self.quiet = true;
@@ -500,21 +537,25 @@ impl Oldify {
             gate * (1.0 - follows + follows * (self.level / FOLLOW_REFERENCE).min(FOLLOW_MOST));
 
         let dry = self.dry.exchange(input);
-        let mut wet = match self.medium {
-            Medium::Record => dry,
-            Medium::Cassette | Medium::RecordThenCassette => {
-                let driven = [input[0] * drive, input[1] * drive];
-                let taped = self.cassette.process(driven, noise);
-                // Divided by the drive the sound now leaving was driven by, a latency ago: by
-                // today's, a Drive move would swing the level by up to its whole range.
-                let then = self.driven[self.driven_head];
-                self.driven[self.driven_head] = drive;
-                self.driven_head = (self.driven_head + 1) % self.driven.len();
-                [taped[0] / then, taped[1] / then]
-            }
+        let driven = [input[0] * drive, input[1] * drive];
+        let record_on = self.medium != Medium::Cassette;
+        let played = if record_on {
+            self.record.process(driven, noise)
+        } else {
+            driven
         };
-        if self.medium == Medium::Record {
-            self.cassette.advance(1);
+        let taped = self.cassette.process(played, noise);
+        // Divided by the drive the sound now leaving was driven by, a latency ago: by today's, a
+        // Drive move would swing the level by up to its whole range.
+        let then = self.driven[self.driven_head];
+        self.driven[self.driven_head] = drive;
+        self.driven_head = (self.driven_head + 1) % self.driven.len();
+        let mut wet = [taped[0] / then, taped[1] / then];
+        if record_on {
+            // Hum comes after the read: it does not wobble.
+            let (mains, hum_db) = self.record.mains();
+            let hum = (self.hum.next(mains, hum_db, self.rate) * f64::from(noise)) as f32;
+            wet = [wet[0] + hum, wet[1] + hum];
         }
 
         // Width, about the mid: zero is the mid alone in both channels, 2 doubles the side.
@@ -639,7 +680,36 @@ mod tests {
             },
         };
         let mut all = Vec::new();
-        for medium in [Medium::Cassette, Medium::Record] {
+        let loud_record = RecordControls {
+            disc: crate::disc::DiscControls {
+                speed: crate::disc::Speed::Shellac78,
+                surface_db: crate::disc::MAX_SURFACE_DB,
+                crackle: crate::disc::MAX_CRACKLE_HZ,
+                clicks: crate::disc::MAX_CLICKS_HZ,
+                scratches: crate::disc::MAX_SCRATCHES as u8,
+                cracks: crate::disc::MAX_CRACKS as u8,
+                rumble_db: crate::disc::MAX_RUMBLE_DB,
+            },
+            era: crate::record::Era::Us78,
+            player: crate::player::Player::OnTheRadio,
+            cut: Some(crate::curves::Curve::Uk78),
+            replay: Some(crate::curves::Curve::Standard),
+            groove: crate::groove::GrooveControls {
+                side: 1.0,
+                wear: 1.0,
+                distortion: 2.0,
+                tip_um: 100.0,
+            },
+            eccentricity_mm: crate::record::MAX_ECCENTRICITY_MM,
+            mains: crate::record::Mains::Sixty,
+            hum_db: -20.0,
+        };
+        for (medium, record) in [
+            (Medium::Cassette, RecordControls::CLEAN),
+            (Medium::Record, RecordControls::INIT),
+            (Medium::Record, loud_record),
+            (Medium::RecordThenCassette, loud_record),
+        ] {
             for cassette in [CassetteControls::NEUTRAL, CassetteControls::INIT, loud] {
                 for drive in gains {
                     for output in gains {
@@ -653,6 +723,7 @@ mod tests {
                                 noise_follows: 1.0,
                                 noise_stops: true,
                                 cassette,
+                                record,
                             });
                         }
                     }
@@ -710,16 +781,28 @@ mod tests {
     }
 
     #[test]
-    fn the_record_medium_passes_the_input_delayed_to_the_bit() {
+    fn a_clean_record_on_a_modern_deck_is_the_input_delayed_and_as_loud() {
+        // Cut and replayed through the same curve, no noise, no wobble: the programme comes
+        // back at its level, the latency later.
         let controls = Controls {
             medium: Medium::Record,
-            ..Controls::INIT
+            record: RecordControls::CLEAN,
+            ..Controls::IDENTITY
         };
-        let source = noise(8_192, 4);
+        let n = 24_000;
+        let source: Vec<f32> = (0..n)
+            .map(|i| {
+                let t = i as f32 / RATE;
+                0.3 * (std::f32::consts::TAU * 330.0 * t).sin()
+                    + 0.2 * (std::f32::consts::TAU * 2_500.0 * t).sin()
+            })
+            .collect();
         let mut oldify = settled_at(controls);
         let latency = oldify.latency() as usize;
         let [left, _] = render(&mut oldify, &source, &source, controls);
-        assert_eq!(bits(&left[latency..]), bits(&source[..8_192 - latency]));
+        let rms = |x: &[f32]| (x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32).sqrt();
+        let db = 20.0 * (rms(&left[latency + 4_000..]) / rms(&source[4_000..n - latency])).log10();
+        assert!(db.abs() < 0.5, "{db:.2} dB");
     }
 
     #[test]
@@ -785,6 +868,7 @@ mod tests {
             ..Controls::INIT
         };
         let second = Controls {
+            medium: Medium::RecordThenCassette,
             drive: db_to_gain(-6.0),
             width: 0.3,
             mix: 0.4,
@@ -793,6 +877,16 @@ mod tests {
                 saturation: 0.9,
                 age: 0.8,
                 ..CassetteControls::INIT
+            },
+            record: RecordControls {
+                disc: crate::disc::DiscControls {
+                    scratches: 2,
+                    cracks: 1,
+                    crackle: 400.0,
+                    ..RecordControls::INIT.disc
+                },
+                eccentricity_mm: 1.0,
+                ..RecordControls::INIT
             },
             ..first
         };
@@ -862,8 +956,11 @@ mod tests {
                 ..Controls::INIT
             });
         }
-        // Full scale through the loudest gains, widest image and the tape's own lift.
-        let ceiling = 4.0 * db_to_gain(MAX_GAIN_DB) * MAX_WIDTH + 1.0;
+        // Full scale through the loudest gains, widest image and the media's own lift. The record
+        // lifts most: a square wave at full Drive is clipped by the groove in the cut's
+        // treble-lifted domain, and the replay curve lifts that clipped groove's bass by up to
+        // 20 dB, about eight times full scale. Finite and bounded is what this holds.
+        let ceiling = 16.0 * db_to_gain(MAX_GAIN_DB) * MAX_WIDTH + 1.0;
         for controls in settings {
             let mut oldify = Oldify::new(RATE).unwrap();
             for _ in 0..2 {
@@ -1064,11 +1161,12 @@ mod tests {
     }
 
     #[test]
-    fn the_latency_is_the_same_for_every_control_and_near_fifty_milliseconds() {
+    fn the_latency_is_the_same_for_every_control_and_near_seventy_milliseconds() {
+        // Twice the cassette's and the record's reach (wow, flutter, eccentricity, turntable).
         for rate in [44_100.0, RATE, 96_000.0] {
             let oldify = Oldify::new(rate).unwrap();
             let ms = oldify.latency() as f32 / rate * 1_000.0;
-            assert!((45.0..60.0).contains(&ms), "{rate} Hz: {ms} ms");
+            assert!((68.0..76.0).contains(&ms), "{rate} Hz: {ms} ms");
         }
     }
 
