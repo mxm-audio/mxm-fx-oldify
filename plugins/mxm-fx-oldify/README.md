@@ -11,8 +11,9 @@ off is dimmed but can still be set up.
   from acoustic horns to modern), what it is played on (seven players, from a wind-up gramophone to
   a modern deck), and the cutting and replay curves, which follow the era and the player unless you
   pick others.
-- **Vinyl groove** — wear, where on the side the needle is, groove distortion and an off-centre
-  hole.
+- **Vinyl groove** — wear, and dynamic wear, which wears the loud passages more (loud bass and sharp
+  treble go gritty, distorted and dull); where on the side the needle is, groove distortion and an
+  off-centre hole.
 - **Vinyl surface** — crackle, clicks, surface noise, scratches and cracks that come round once a
   turn, rumble, and mains hum.
 - **Tape** — the Tape switch; Type I, II or IV at four grades (twelve measured responses) and how

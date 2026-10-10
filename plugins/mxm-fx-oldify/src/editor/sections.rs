@@ -148,6 +148,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "How worn the groove is: a dulled top, more distortion and more surface noise.",
         ),
         Bound::new(
+            "dynamic_wear",
+            &params.dynamic_wear,
+            "How much worse the loud passages are worn: loud bass and sharp treble go gritty, distorted and dull.",
+        ),
+        Bound::new(
             "side",
             &params.side,
             "Where on the side the needle is, from the outer groove to the inner, which is duller and more distorted.",
@@ -719,7 +724,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             selector_leaf(params, "replay_curve"),
         ]),
         1 => stack(vec![
-            knobs(ui, params, &["wear", "side"]),
+            knobs(ui, params, &["wear", "dynamic_wear", "side"]),
             knobs(ui, params, &["groove_distortion", "eccentricity"]),
         ]),
         2 => stack(vec![

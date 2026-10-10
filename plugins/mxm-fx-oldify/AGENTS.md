@@ -39,7 +39,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `era` | Era | Acoustic / Early electrical / US 78, 1940s / UK 78, 1940s / Late 78 / Early single / Early LP / Mono LP / Modern (`acoustic`, `early-electrical`, `us-78`, `uk-78`, `late-78`, `early-single`, `early-lp`, `mono-lp`, `modern`) |
 | | `player` | Player | Wind-up gramophone / Radiogram / Jukebox / Portable / Mono hi-fi / On the radio / Modern deck (`wind-up`, `radiogram`, `jukebox`, `portable`, `mono-hi-fi`, `on-the-radio`, `modern-deck`) |
 | | `cut_curve`, `replay_curve` | Cut curve, Replay curve | Follow era (`follow-era`) or Follow player (`follow-player`), then Flat / UK 78 / UK 78 with treble lift / US 78 / Early LP / Early 45 / Transcription / West Coast LP / Standard (`flat`, `uk-78`, `uk-78-with-treble-lift`, `us-78`, `early-lp`, `early-45`, `transcription`, `west-coast-lp`, `standard`) |
-| Vinyl groove | `wear`, `side` | Wear, Side position | 0–100 %, linear; side runs from the outer groove to the inner |
+| Vinyl groove | `wear`, `dynamic_wear`, `side` | Wear, Dynamic wear, Side position | 0–100 %, linear; Dynamic wear wears the loud passages beyond the rest; side runs from the outer groove to the inner |
 | | `groove_distortion` | Groove distortion | 0–200 %, linear; 100 % is the groove's own |
 | | `eccentricity` | Eccentricity | 0…`record::MAX_ECCENTRICITY_MM` mm, skewed so the everyday tenths get the first half |
 | Vinyl surface | `crackle`, `clicks` | Crackle, Clicks | 0…`disc::MAX_CRACKLE_HZ` / `MAX_CLICKS_HZ` a second, read `60/s`, skewed so the low counts get the travel |

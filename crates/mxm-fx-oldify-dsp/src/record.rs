@@ -189,6 +189,7 @@ impl RecordControls {
         groove: GrooveControls {
             side: 0.25,
             wear: 0.2,
+            dynamic: 0.0,
             distortion: 1.0,
             tip_um: 8.0,
         },
@@ -312,7 +313,7 @@ impl Record {
             cut_curve: None,
             replay: curve(false),
             replay_curve: None,
-            groove: Groove::new(sample_rate),
+            groove: Groove::new(sample_rate, seed),
             disc: Disc::new(sample_rate, seed),
             player: PlayerChain::new(sample_rate),
             targets: RecordControls::CLEAN,
@@ -321,6 +322,7 @@ impl Record {
 
     pub fn reseed(&mut self, seed: u32) {
         self.disc.reseed(seed);
+        self.groove.reseed(seed);
     }
 
     /// Whether the record makes any sound of its own: the disc's, or hum.

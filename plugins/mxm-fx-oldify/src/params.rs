@@ -697,6 +697,8 @@ pub struct MxmFxOldifyParams {
     // ---- Groove ----
     #[id = "wear"]
     pub wear: FloatParam,
+    #[id = "dynamic_wear"]
+    pub dynamic_wear: FloatParam,
     #[id = "side"]
     pub side: FloatParam,
     #[id = "groove_distortion"]
@@ -834,6 +836,7 @@ impl Default for MxmFxOldifyParams {
             replay_curve: EnumParam::new("Replay curve", ReplayCurveChoice::FollowPlayer),
 
             wear: percent("Wear", record.groove.wear, 1.0),
+            dynamic_wear: percent("Dynamic wear", record.groove.dynamic, 1.0),
             side: percent("Side position", record.groove.side, 1.0),
             groove_distortion: percent("Groove distortion", record.groove.distortion, 2.0),
             // Skewed so the everyday offsets, a few tenths of a millimetre, get the first half.
@@ -1026,6 +1029,7 @@ impl MxmFxOldifyParams {
                 groove: GrooveControls {
                     side: self.side.value(),
                     wear: self.wear.value(),
+                    dynamic: self.dynamic_wear.value(),
                     distortion: self.groove_distortion.value(),
                     // The player sets the tip; the DSP ignores this one.
                     tip_um: Controls::INIT.record.groove.tip_um,
@@ -1285,7 +1289,7 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 30] = [
+        let continuous: [&FloatParam; 31] = [
             &params.age,
             &params.tape_tone,
             &params.saturation,
@@ -1296,6 +1300,7 @@ mod tests {
             &params.flange,
             &params.hiss,
             &params.wear,
+            &params.dynamic_wear,
             &params.side,
             &params.groove_distortion,
             &params.eccentricity,

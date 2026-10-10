@@ -190,13 +190,14 @@ fn every_cassette_control_changes_the_sound() {
     // The record's controls, heard on the record alone.
     let record = [("record_on", 1.0), ("tape_on", 0.0)];
     let record_reference = render_moved(&record, LOUD);
-    let on_record: [Move<'_>; 15] = [
+    let on_record: [Move<'_>; 16] = [
         ("disc", 1.0),
         ("era", 0.0),
         ("player", 0.0),
         ("cut_curve", 0.1),
         ("replay_curve", 0.1),
         ("wear", 1.0),
+        ("dynamic_wear", 1.0),
         ("side", 1.0),
         ("groove_distortion", 1.0),
         ("eccentricity", 1.0),

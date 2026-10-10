@@ -31,6 +31,7 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("cut_curve", &self.cut_curve),
             ("replay_curve", &self.replay_curve),
             ("wear", &self.wear),
+            ("dynamic_wear", &self.dynamic_wear),
             ("side", &self.side),
             ("groove_distortion", &self.groove_distortion),
             ("eccentricity", &self.eccentricity),

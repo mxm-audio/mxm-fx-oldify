@@ -57,6 +57,10 @@
       "v": 0.08,
       "text": "8 %"
     },
+    "dynamic_wear": {
+      "v": 0.0,
+      "text": "0 %"
+    },
     "eccentricity": {
       "v": 0.31622776,
       "text": "0.20 mm"

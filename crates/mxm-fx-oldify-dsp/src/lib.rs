@@ -685,6 +685,7 @@ mod tests {
             groove: crate::groove::GrooveControls {
                 side: 1.0,
                 wear: 1.0,
+                dynamic: 1.0,
                 distortion: 2.0,
                 tip_um: 100.0,
             },

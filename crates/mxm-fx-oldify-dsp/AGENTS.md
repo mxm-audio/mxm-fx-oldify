@@ -77,7 +77,7 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
 
 ```text
 era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall) → cutting curve
-  → groove (tracing distortion, wear) → + the disc's own sound → pickup → replay curve
+  → groove (dynamic wear, tracing distortion, wear) → + the disc's own sound → pickup → replay curve
   → player (scratch filter, valves, speaker, horn or radio)
 ```
 
@@ -105,18 +105,16 @@ era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall) →
 - **`transport`**: a delay line read by the integral of the speed error. Sine and saw are exact
   centred integrals; a change goes into a drift term that leaks away at an eighth of the rate, so
   the read never jumps. The random shape is Ornstein–Uhlenbeck, its integral a walk of its own
-  leaking at the rate itself (`RANDOM_LEAK`): its speed wanders about the rate, and it needs a
-  third of the reach a slower leak did, so its full depth fits the bounded reach at everyday rates.
-  The base delay is twice the reach. Wow and flutter are the same in both channels, as measured.
+  leaking at the rate itself (`RANDOM_LEAK`; [NOTES.md § The random walk's
+  leak](NOTES.md#the-random-walks-leak)). The base delay is twice the reach. Wow and flutter are the same in both channels, as measured.
 - **`nr`**: noise reduction, a sliding-band compander: `y = x + k · H(x)`, `H` a high-pass whose
   corner slides up and `k` falls with the side chain's own level (previous sample). **The decoder
   is the encoder solved for its input, exactly** (`x = (y − k · pending) / (1 + k · b₀)`), from its
   own side chain, so encode then decode is the identity and a tape between mistracks where the
-  physics does; both sides move their corners on the same `UPDATE` schedule. Single-band: one
-  stage, about 10 dB above its corner for quiet treble. Two-band: a second stage 20 dB lower and an
-  octave lower, inside a top-octave skew. Decode off is the encoded sound; the level error scales
-  what reaches the decoder and puts the level back, so only the tracking changes. On white hiss
-  the whole falls about 6–7 dB single-band and 8–9 dB two-band (its energy below the corners stays).
+  physics does; both sides move their corners on the same `UPDATE` schedule. Decode off is the
+  encoded sound; the level error scales what reaches the decoder and puts the level back, so only
+  the tracking changes. The stages and their reach: [NOTES.md § Noise
+  reduction](NOTES.md#noise-reduction).
 - **`dropouts`**: Poisson events of raised-cosine dips, log-uniform lengths from 3 ms and uniform
   depths, each lifting the tape `LIFT_UM_PER_DB` per decibel (the measured treble excess). Amount
   sets the rate (up to `MAX_RATE_HZ`) and depth; Intensity makes them fewer, longer, deeper; Width
@@ -128,19 +126,18 @@ era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall) →
 - **`disc`**: a disc that turns at its `Speed` and holds its defects at angles: per revolution
   tables of crackle (Pareto sizes) and clicks, `TURNOVER` of them renewed every turn; scratches and
   cracks at fixed angles, varied a little each time; surface noise swishing with the turn; rumble.
-  **A click is a burst of coloured noise behind a sharp edge, never a ring of one pitch**, which
-  is heard as a drop of water (the owner, 2026-10-09: "the scratches… sound like rain drops"):
-  20 µs to 4 ms, darker the longer, **its DC blocked** (the groove holds velocity; a net push
-  through the replay curve's bass lift thumps). A scratch is two such edges of opposite sign a
-  scratch's width apart, the same burst every turn (its seed kept). **A crack is a larger, wider
-  pair of the same edges, and nothing after them**: no ring follows a crack, since any ring
-  through the replay curve's bass lift is heard as a drum machine's bass drum (the owner,
-  2026-10-09 and 2026-10-10; `a_crack_pops_through_the_replay_curve_and_never_thumps`).
-  Tables allocated in `new` for the busiest revolution.
+  **A click is a burst of coloured noise behind a sharp edge, never a ring of one pitch**:
+  20 µs to 4 ms, darker the longer, **its DC blocked**. A scratch is two such edges of opposite
+  sign a scratch's width apart, the same burst every turn (its seed kept). **A crack is a larger,
+  wider pair of the same edges, and nothing after them**
+  (`a_crack_pops_through_the_replay_curve_and_never_thumps`). Why each: [NOTES.md § The disc's
+  sounds](NOTES.md#the-discs-sounds). Tables allocated in `new` for the busiest revolution.
 - **`groove`**: tracing distortion `x / √(1 + c·x²)` on the lateral motion, `c` from the cited
   0.8 % (outer) and 4.5 % (inner) for an 18 µm tip, with the pinch effect's second harmonic in the
   vertical; a treble limit falling with the groove speed and with Wear (`FRESH_TOP_HZ`,
-  `WORN_TOP_HZ`).
+  `WORN_TOP_HZ`). **Dynamic wear wears the loud passages most**, before the tracing, by the
+  force on each wall (`STYLUS_HZ`); below its limit's knee the groove is untouched, exactly
+  ([NOTES.md § Dynamic wear](NOTES.md#dynamic-wear)).
 - **`player`**: crystal (amplitude-sensing) or magnetic pickup; scratch filter; single-ended or
   push-pull valves; speaker, horn or the radio's limiter and 4.5 kHz top. Period players are mono.
 - **`spacing`**: Wallace's spacing loss from two fitted tables (`BASE` at 44.1 and 48 kHz, `HIGH`
