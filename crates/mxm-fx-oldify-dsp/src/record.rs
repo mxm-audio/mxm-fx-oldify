@@ -1,10 +1,13 @@
 //! The record engine: a record side, a disc, a groove and a player.
 //!
 //! ```text
-//! era (mono, the recording's band, the cutting limiter, the cutter, a brick wall)
-//!   → cutting curve → groove (tracing distortion, wear) → + the disc's own sound
-//!   → pickup → replay curve → player (scratch filter, valves, speaker, horn or radio)
+//! the recording horn → era (mono, the recording's band, the cutting limiter, the cutter, a brick
+//!   wall) → cutting curve → groove (dynamic wear, tracing distortion, wear) → + the disc's own
+//!   sound → pickup → replay curve → player (scratch filter, valves, speaker, horn or radio)
+//!   → the gramophone's horn
 //! ```
+//!
+//! The two horns are [`crate::horn`]'s, set by Horn and Horn size on any record and any player.
 //!
 //! The record's read-out (eccentricity, the turntable's wobble) is the chain's one moving read,
 //! shared with the cassette ([`Record::wobbles`]): a time-warp passes through the curves and the
@@ -24,6 +27,7 @@ use crate::biquad::{Biquad, Kind, Section};
 use crate::curves::{Curve, CurveFilter};
 use crate::disc::{Disc, DiscControls, NOISE_OFF_DB, Speed};
 use crate::groove::{Groove, GrooveControls};
+use crate::horn::{Horn, HornControls};
 use crate::player::{Player, PlayerChain};
 use crate::transport::{Shape, Wobble};
 use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2, TAU};
@@ -159,6 +163,8 @@ pub struct RecordControls {
     pub mains: Mains,
     /// RMS re full scale, [`NOISE_OFF_DB`] (off) ..= [`MAX_HUM_DB`].
     pub hum_db: f32,
+    /// The acoustic horns the record was made and played through.
+    pub horn: HornControls,
 }
 
 impl RecordControls {
@@ -173,6 +179,7 @@ impl RecordControls {
         eccentricity_mm: 0.0,
         mains: Mains::Off,
         hum_db: NOISE_OFF_DB,
+        horn: HornControls::OFF,
     };
 
     /// The init patch's record: a played LP on a modern deck.
@@ -213,6 +220,7 @@ impl RecordControls {
             } else {
                 NOISE_OFF_DB
             },
+            horn: self.horn.bounded(),
             ..self
         }
     }
@@ -290,6 +298,7 @@ pub struct Record {
     groove: Groove,
     disc: Disc,
     player: PlayerChain,
+    horn: Horn,
     targets: RecordControls,
 }
 
@@ -316,6 +325,7 @@ impl Record {
             groove: Groove::new(sample_rate, seed),
             disc: Disc::new(sample_rate, seed),
             player: PlayerChain::new(sample_rate),
+            horn: Horn::new(sample_rate),
             targets: RecordControls::CLEAN,
         }
     }
@@ -350,6 +360,7 @@ impl Record {
         self.groove.reset();
         self.disc.clear();
         self.player.reset();
+        self.horn.clear();
     }
 
     pub fn set_controls(&mut self, c: RecordControls) {
@@ -375,6 +386,7 @@ impl Record {
             }
         }
         self.player.set_player(c.player);
+        self.horn.set(c.horn);
         let cut = c.cut.unwrap_or(c.era.model().cut);
         if self.cut_curve != Some(cut) {
             self.cut_curve = Some(cut);
@@ -433,7 +445,11 @@ impl Record {
     pub fn process(&mut self, frame: [f32; 2], noise: f32) -> [f32; 2] {
         let c = self.targets;
         let era = c.era.model();
+        let horned = self.horn.sounds();
         let mut x = [f64::from(frame[0]), f64::from(frame[1])];
+        if horned {
+            x = self.horn.record(x);
+        }
         if era.mono {
             let mid = 0.5 * (x[0] + x[1]);
             x = [mid, mid];
@@ -483,7 +499,10 @@ impl Record {
             self.replay[0].process(picked[0]),
             self.replay[1].process(picked[1]),
         ];
-        let out = self.player.colour(replayed);
+        let mut out = self.player.colour(replayed);
+        if horned {
+            out = self.horn.play(out);
+        }
         [out[0] as f32, out[1] as f32]
     }
 }

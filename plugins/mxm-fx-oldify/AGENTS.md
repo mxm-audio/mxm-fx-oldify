@@ -39,6 +39,8 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `era` | Era | Acoustic / Early electrical / US 78, 1940s / UK 78, 1940s / Late 78 / Early single / Early LP / Mono LP / Modern (`acoustic`, `early-electrical`, `us-78`, `uk-78`, `late-78`, `early-single`, `early-lp`, `mono-lp`, `modern`) |
 | | `player` | Player | Wind-up gramophone / Radiogram / Jukebox / Portable / Mono hi-fi / On the radio / Modern deck (`wind-up`, `radiogram`, `jukebox`, `portable`, `mono-hi-fi`, `on-the-radio`, `modern-deck`) |
 | | `cut_curve`, `replay_curve` | Cut curve, Replay curve | Follow era (`follow-era`) or Follow player (`follow-player`), then Flat / UK 78 / UK 78 with treble lift / US 78 / Early LP / Early 45 / Transcription / West Coast LP / Standard (`flat`, `uk-78`, `uk-78-with-treble-lift`, `us-78`, `early-lp`, `early-45`, `transcription`, `west-coast-lp`, `standard`) |
+| | `horn` | Horn | 0–100 %, linear: the acoustic horns the record was made and played through, on any era and player; 0 is none, exactly |
+| | `horn_size` | Horn size | `horn::HORN_SHORTEST_M`…`HORN_LONGEST_M`, linear, read `0.90 m` (`m` parses too): the horn's length, its fundamental `c / 2L` |
 | Vinyl groove | `wear`, `dynamic_wear`, `side` | Wear, Dynamic wear, Side position | 0–100 %, linear; Dynamic wear wears the loud passages beyond the rest; side runs from the outer groove to the inner |
 | | `groove_distortion` | Groove distortion | 0–200 %, linear; 100 % is the groove's own |
 | | `eccentricity` | Eccentricity | 0…`record::MAX_ECCENTRICITY_MM` mm, skewed so the everyday tenths get the first half |

@@ -30,6 +30,8 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("player", &self.player),
             ("cut_curve", &self.cut_curve),
             ("replay_curve", &self.replay_curve),
+            ("horn", &self.horn),
+            ("horn_size", &self.horn_size),
             ("wear", &self.wear),
             ("dynamic_wear", &self.dynamic_wear),
             ("side", &self.side),

@@ -34,6 +34,7 @@ pub mod curves;
 pub mod disc;
 pub mod dropouts;
 pub mod groove;
+pub mod horn;
 pub mod nr;
 pub mod oversample;
 pub mod player;
@@ -692,6 +693,10 @@ mod tests {
             eccentricity_mm: crate::record::MAX_ECCENTRICITY_MM,
             mains: crate::record::Mains::Sixty,
             hum_db: -20.0,
+            horn: crate::horn::HornControls {
+                amount: 1.0,
+                length_m: crate::horn::HORN_SHORTEST_M,
+            },
         };
         for (record_on, tape_on, record) in [
             (false, true, RecordControls::CLEAN),

@@ -291,13 +291,15 @@ pub const DESIGNS: &[Design] = &[
     (
         "Acoustic 78 on a wind-up",
         Category::Fx,
-        "A horn-recorded 78 from before 1925 on a wind-up gramophone: narrow, loud and crackling.",
+        "A horn-recorded 78 from before 1925 on a wind-up gramophone: tinny, honky, loud and crackling.",
         &[
             ON_RECORD,
             &[
                 ("disc", SHELLAC),
                 ("era", ACOUSTIC),
                 ("player", WIND_UP),
+                ("horn", 0.85),
+                ("dynamic_wear", 0.3),
                 ("surface_noise", -28.0),
                 ("crackle", 900.0),
                 ("clicks", 8.0),

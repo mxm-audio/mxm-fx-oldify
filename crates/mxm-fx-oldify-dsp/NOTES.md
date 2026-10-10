@@ -22,7 +22,8 @@ scratches the same tick every turn, clicks, scratches and cracks with no net pus
 popping through the replay curve with under a tenth of itself below 100 Hz, cracks and levels,
 the groove's cited distortion and treble loss, Dynamic wear leaving a quiet groove exactly as it
 was, wearing a loud one, a loud bass note where a middle one as fast is not, and the two walls
-apart, the players' bands, crystal, radio and mono, and the record side's
+apart, the horn keeping only the middle at full, honking at `c / 2L` and staying bounded at full
+scale, the players' bands, crystal, radio and mono, and the record side's
 brick wall, acoustic band, wrong-curve dullness, eccentricity and gated noise).
 
 ## Chosen constants
@@ -35,12 +36,45 @@ and detector, the record's era Qs, limiter times, players, `TURNOVER`, the crack
 and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S`,
 `CRACK_WIDTH_S`, `BLOCK_BELOW`, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
 from period compliance and tip mass), `STYLUS_Q`, `GIVE`, `KNEE`, `WALL_SPREAD_DB`,
-`WORN_DULL_HZ`, `ROUGH`, `ROUGH_HZ` and `WORN_RELEASE_S` are chosen here, not measured.
+`WORN_DULL_HZ`, `ROUGH`, `ROUGH_HZ` and `WORN_RELEASE_S`, and the horn's feedbacks, mouths,
+heights, corners, `BLAST` and the gramophone's `PLAY_LENGTH` and soundbox are chosen here, not
+measured; the horn's lengths and its diaphragm's place come from Copeland's figures.
 `WORN_FROM_DB` is where our measurement of a vinyl emulation's worn stylus starts to compress.
 `CRACK_SIZE` puts a crack's pop near −16 dBFS peak on an LP played on a modern deck and near
 −12 dBFS on a 78 played on a radiogram (2026-10-10). The tape table, the spacing law, the dropout
 statistics and lift, azimuth's geometry, the wow and flutter laws (linear, as the reference's) and
 the wow, flutter and saturation extremes come from measurement or physics and say so.
+
+## The chain
+
+**Two switches, `record_on` and `tape_on`** (the owner, 2026-10-09: which controls belong to the
+record and which to the tape must be plain).
+
+**One moving read for both media.** The record's eccentricity and turntable wobble ride the
+cassette transport's line (`Cassette::set_record_wobbles`, `Transport::set_extras`): a time-warp
+passes through the curves and the player almost unchanged and through a memoryless curve exactly,
+so the record needs no delay line of its own and the latency is one, whichever are on.
+
+**Drive is compensated** by the drive the sound leaving the media went in with, one latency
+earlier: dividing by today's drive swung the level by Drive's whole range during a move.
+
+**Laws**: wow and flutter depth go as the control, as the reference's do, up to `WOW_MAX` and
+`FLUTTER_MAX` (its extremes), so the whole travel is heard (the owner, 2026-10-09, of a squared
+law: "I dont think the paramaters do much").
+
+## Azimuth
+
+**Azimuth**: across a track, the sinc's main lobe as the spacing losing the same at half its first
+null; between the tracks, `TRACK_PITCH_M` · tan θ / speed of delay, split either side of a fixed
+centre so the latency never moves. 15′ gives the mono notch at 6.1 kHz.
+
+## Subnormals
+
+`Oldify::frame` flushes one to exact zero, so a subnormal input sample comes out of the dry path as
+zero (`no_output_sample_is_subnormal`). Nothing upstream flushes them — nice-plug's flush-to-zero
+is behind its `unsafe_flush_denormals` feature, which the collection leaves off — and
+clap-validator rejects them (`process-sleep-constant-mask` and `param-fuzz-bounds` found them,
+2026-10-09).
 
 ## The random walk's leak
 
@@ -91,3 +125,30 @@ Loud bass wears first, as the owner asked, then the treble, the middle last. At 
 wore before the bass (a quiet 6 kHz tone lost 5 dB at 25 %, a loud 60 Hz one 0.8 dB). Roughness
 and dulling follow what the wear took, not how far the force passed the limit: in the treble the
 latter is huge, and turned a tone into noise at 25 %.
+
+## The horn
+
+The owner, 2026-10-10: "I cannot get this to sound really old. Like I would expect from an
+'oldify' plugin… Like the tinny sound on a real old 78 record", and then "Make sure it is a
+parameter or two. Not just baked in at set level". Measured before the horn, the Acoustic era on
+the wind-up gramophone stayed within about ±4 dB from 250 Hz to 2.5 kHz, smooth: muffled, not
+tinny.
+
+**Fitted to what "tinny" measures.** No source puts a number on tinny, so the research computed it
+from the measured responses (`ops: notes/oldify`, research notes, the acoustic horn): the
+125–250 Hz band's deficit under the 1–2 kHz band, the spectral centroid and the band within 10 dB
+of the peak. Against them, at full Horn (2026-10-10):
+
+| | Deficit | Centroid | Within 10 dB |
+|---|---|---|---|
+| Measured: a 1911 recording alone | 10.7 dB | 1,001 Hz | 310–1,260 Hz |
+| Measured: an old horn machine alone | 11.8 dB | 1,386 Hz | — |
+| Measured: the two together | 22.5–25 dB | 968–1,196 Hz | 630–1,250 Hz |
+| Ours, 0.9 m: the recording half | 13.4 dB | 1,195 Hz | 178–2,263 Hz |
+| Ours, 0.9 m: the playback half | 13.2 dB | 1,282 Hz | 449–2,851 Hz |
+| Ours, 0.9 m: both | 26.0 dB | 1,239 Hz | 713–1,796 Hz |
+| Ours, 0.6 m and 1.4 m: both | 34.9 and 24.4 dB | 1,297 and 1,298 Hz | 800–1,796 and 713–2,016 Hz |
+
+With the diaphragm's peak at the cited +10 dB and the mouth's cut at 800 Hz the whole lost 36 dB
+and kept only 1,131–1,600 Hz: why both sit lower. A short horn is the tinniest; Horn size sweeps
+the measured range.

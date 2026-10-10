@@ -35,7 +35,7 @@ control the tape, and what controls the vinyl"). Key 0, the Medium card, is reti
 
 | Key | Card | Controls (first-reach in bold; to come in italics) |
 |---:|---|---|
-| 1 | Vinyl | **Vinyl**, **Disc**, **Era** (cut), Player, Cut curve, Replay curve |
+| 1 | Vinyl | **Vinyl**, **Disc**, **Era** (cut), Player, Cut curve, Replay curve, **Horn**, Horn size |
 | 2 | Vinyl groove | **Wear**, Dynamic wear, Side position, Groove distortion, Eccentricity, *Warp* |
 | 3 | Vinyl surface | **Crackle**, Clicks, Surface noise, Scratches, Cracks, Rumble, Hum, *Groove echo* |
 | 4 | Tape | **Tape**, **Tape type**, Grade, Tape tone, **Saturation**, Character, Generations, **Age** |

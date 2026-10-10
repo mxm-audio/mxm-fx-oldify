@@ -23,18 +23,15 @@ input → Drive → [the record] → the cassette engine → ÷ Drive (a latency
   → Width → Mix with the dry, delayed
 ```
 
-- **Two switches, `record_on` and `tape_on`** (the owner, 2026-10-09: which controls belong to
-  the record and which to the tape must be plain). Record on plays the record engine; tape on the
+- **Two switches, `record_on` and `tape_on`**. Record on plays the record engine; tape on the
   cassette engine; both, a record taped to cassette; with the tape off the cassette engine still
   runs **neutral**, for its moving read alone; both off leaves Drive, Width and Mix.
   Switching the record on clears it first.
 - **One moving read for both media.** The record's eccentricity and turntable wobble ride the
-  cassette transport's line (`Cassette::set_record_wobbles`, `Transport::set_extras`): a time-warp
-  passes through the curves and the player almost unchanged and through a memoryless curve exactly,
-  so the record needs no delay line of its own and the latency is one, whichever are on. Hum is
-  added after the read and does not wobble.
+  cassette transport's line (`Cassette::set_record_wobbles`, `Transport::set_extras`), so the
+  latency is one, whichever are on. Hum is added after the read and does not wobble.
 - **Drive is compensated** by the drive the sound leaving the media went in with, one latency
-  earlier: dividing by today's drive swung the level by Drive's whole range during a move.
+  earlier. Why these three: [NOTES.md § The chain](NOTES.md#the-chain).
 - **One fixed latency**, `Oldify::latency`: the oversampler's, the transport's base delay (twice
   the wow's, flutter's, eccentricity's and turntable's reach) and the centre of azimuth's delay
   between the tracks, about 71 ms, the same for every control and switch; the dry path is
@@ -56,9 +53,8 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
 
 - The physics' order, not the reference's (which filters before saturating): a known difference.
 - **Laws** (named in `cassette.rs`): wow and flutter depth go as the control, as the reference's
-  do, up to `WOW_MAX` and `FLUTTER_MAX` (its extremes), so the whole travel is heard (the owner,
-  2026-10-09, of a squared law: "I dont think the paramaters do much"); Age, chosen, as a spacing of
-  `AGE_MAX_UM` times the control to the 1.5. **The transport's reach is bounded** (`WOW_REACH_S`,
+  do, up to `WOW_MAX` and `FLUTTER_MAX` (its extremes), so the whole travel is heard; Age, chosen,
+  as a spacing of `AGE_MAX_UM` times the control to the 1.5. **The transport's reach is bounded** (`WOW_REACH_S`,
   `FLUTTER_REACH_S`), so the latency stays near 50 ms; only slow, deep wow is lowered to fit.
 - Hiss is seeded, independent per channel, 4 dB lower on the 70 µs tapes, and gated by the chain.
 - **Generations** (1–4): each dub adds its hiss power, its own uncorrelated wobble (depth × √n)
@@ -66,20 +62,26 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
 - **Flange** mixes the line read at exactly the base delay against the moving read: through-zero
   tape flanging. **Flutter follows wow** moves the flutter's rate by up to `FOLLOW_DEPTH` with the
   wow's shape.
-- **Azimuth**: across a track, the sinc's main lobe as the spacing losing the same at half its
-  first null; between the tracks, `TRACK_PITCH_M` · tan θ / speed of delay, split either side of a
-  fixed centre so the latency never moves. 15′ gives the mono notch at 6.1 kHz. **Crosstalk** bleeds
-  each channel into the other; **Wrong EQ** is the other time constant's ±`WRONG_EQ_DB` shelf.
+- **Azimuth**: across a track, the sinc's main lobe as a spacing loss; between the tracks,
+  `TRACK_PITCH_M` · tan θ / speed of delay about a fixed centre, so the latency never moves
+  ([NOTES.md § Azimuth](NOTES.md#azimuth)). **Crosstalk** bleeds each channel into the other;
+  **Wrong EQ** is the other time constant's ±`WRONG_EQ_DB` shelf.
 - **Variation** picks the seed (`seed_for`) of every random source: transport, hiss, dropouts.
   A change reseeds from the next draw; a clear goes back to the seed's start.
 
 ## The record engine (`record.rs`)
 
 ```text
-era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall) → cutting curve
-  → groove (dynamic wear, tracing distortion, wear) → + the disc's own sound → pickup → replay curve
-  → player (scratch filter, valves, speaker, horn or radio)
+the recording horn → era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall)
+  → cutting curve → groove (dynamic wear, tracing distortion, wear) → + the disc's own sound
+  → pickup → replay curve → player (scratch filter, valves, speaker, horn or radio)
+  → the gramophone's horn
 ```
+
+- **The horns are parameters, on any record and any player** (the owner, 2026-10-10: "Make sure
+  it is a parameter or two. Not just baked in"): Horn and Horn size (`horn.rs`). The recording
+  half colours the music alone, the playback half the disc's own sound too; Horn 0 skips both,
+  exactly.
 
 - **The record side and the player side are apart** (`Era`, `Player`): any record meets any
   player, and a wrong replay curve errs by itself. `cut: None` follows the era, `replay: None` the
@@ -138,6 +140,9 @@ era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall) →
   `WORN_TOP_HZ`). **Dynamic wear wears the loud passages most**, before the tracing, by the
   force on each wall (`STYLUS_HZ`); below its limit's knee the groove is untouched, exactly
   ([NOTES.md § Dynamic wear](NOTES.md#dynamic-wear)).
+- **`horn`**: each horn a digital waveguide, its round trip `2L / c` fed back through its mouth's
+  low-pass (a cone's resonances at every `c / 2L`, fading upward), with the diaphragm or soundbox
+  and a band; Horn moves every part together, Horn size is `L`. Lines allocated in `new`.
 - **`player`**: crystal (amplitude-sensing) or magnetic pickup; scratch filter; single-ended or
   push-pull valves; speaker, horn or the radio's limiter and 4.5 kHz top. Period players are mono.
 - **`spacing`**: Wallace's spacing loss from two fitted tables (`BASE` at 44.1 and 48 kHz, `HIGH`
@@ -160,9 +165,9 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
   modern deck is the input delayed, at its level.
 - **A neutral cassette** (`Controls::IDENTITY`) is the input delayed, within the oversampler's
   passband; an impulse peaks at exactly the reported latency.
-- **Seeded**: the transport's, the two hiss generators' and the three dropout streams' draws, at
-  most one each per sample; how a host cuts
-  its blocks never changes a sample, quiet stretches included.
+- **Seeded**: the transport's, the hiss generators', the dropout streams', the disc's and the
+  worn walls' draws, at most one each per sample; how a host cuts its blocks never changes a
+  sample, quiet stretches included.
 
 ## Realtime and numeric rules
 
@@ -175,11 +180,8 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
   `CassetteControls::bounded`); a non-finite control is its neutral value. Output at every extreme
   stays finite and under the test's stated ceiling.
 - `db_to_gain` is nice-plug's law above its −100 dB floor.
-- **No output sample is subnormal**: `Oldify::frame` flushes one to exact zero, so a subnormal
-  input sample comes out of the dry path as zero (`no_output_sample_is_subnormal`). Nothing upstream
-  flushes them — nice-plug's flush-to-zero is behind its `unsafe_flush_denormals` feature, which the
-  collection leaves off — and clap-validator rejects them (`process-sleep-constant-mask` and
-  `param-fuzz-bounds` found them, 2026-10-09).
+- **No output sample is subnormal**: `Oldify::frame` flushes one to exact zero
+  (`no_output_sample_is_subnormal`; why: [NOTES.md § Subnormals](NOTES.md#subnormals)).
 
 ## Chosen constants
 

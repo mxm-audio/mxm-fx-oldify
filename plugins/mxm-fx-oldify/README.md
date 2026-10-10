@@ -10,7 +10,8 @@ off is dimmed but can still be set up.
 - **Vinyl** — the Vinyl switch; the disc (LP, single or shellac 78), when it was cut (nine eras,
   from acoustic horns to modern), what it is played on (seven players, from a wind-up gramophone to
   a modern deck), and the cutting and replay curves, which follow the era and the player unless you
-  pick others.
+  pick others; Horn and Horn size, the acoustic horns a record was made and played through, for
+  the thin, honky, tinny sound of a real old 78 on any record and player.
 - **Vinyl groove** — wear, and dynamic wear, which wears the loud passages more (loud bass and sharp
   treble go gritty, distorted and dull); where on the side the needle is, groove distortion and an
   off-centre hole.

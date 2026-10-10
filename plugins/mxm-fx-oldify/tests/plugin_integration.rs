@@ -190,12 +190,13 @@ fn every_cassette_control_changes_the_sound() {
     // The record's controls, heard on the record alone.
     let record = [("record_on", 1.0), ("tape_on", 0.0)];
     let record_reference = render_moved(&record, LOUD);
-    let on_record: [Move<'_>; 16] = [
+    let on_record: [Move<'_>; 17] = [
         ("disc", 1.0),
         ("era", 0.0),
         ("player", 0.0),
         ("cut_curve", 0.1),
         ("replay_curve", 0.1),
+        ("horn", 1.0),
         ("wear", 1.0),
         ("dynamic_wear", 1.0),
         ("side", 1.0),
@@ -230,6 +231,14 @@ fn every_cassette_control_changes_the_sound() {
         );
         assert!(heard > 1e-3, "{} changed nothing: {heard}", moved.0);
     }
+    // Horn size is heard through a horn.
+    let horned = [record[0], record[1], ("horn", 1.0)];
+    let horned_reference = render_moved(&horned, LOUD);
+    let longer = difference(
+        &render_moved(&[horned[0], horned[1], horned[2], ("horn_size", 1.0)], LOUD),
+        &horned_reference,
+    );
+    assert!(longer > 1e-3, "horn_size changed nothing: {longer}");
     let hum = [record[0], record[1], ("hum", 0.5)];
     let hum_reference = render_moved(&hum, LOUD);
     let louder = difference(

@@ -24,6 +24,7 @@ use mxm_fx_oldify_dsp::disc::{
 };
 use mxm_fx_oldify_dsp::dropouts::DropoutControls;
 use mxm_fx_oldify_dsp::groove::GrooveControls;
+use mxm_fx_oldify_dsp::horn::{HORN_LONGEST_M, HORN_SHORTEST_M, HornControls};
 use mxm_fx_oldify_dsp::nr::{MAX_LEVEL_ERROR_DB, NoiseReduction, NrControls};
 use mxm_fx_oldify_dsp::player::Player;
 use mxm_fx_oldify_dsp::record::{Era, MAX_ECCENTRICITY_MM, Mains, RecordControls};
@@ -693,6 +694,11 @@ pub struct MxmFxOldifyParams {
     pub cut_curve: EnumParam<CutCurveChoice>,
     #[id = "replay_curve"]
     pub replay_curve: EnumParam<ReplayCurveChoice>,
+    #[id = "horn"]
+    pub horn: FloatParam,
+    /// The horn's length, metres.
+    #[id = "horn_size"]
+    pub horn_size: FloatParam,
 
     // ---- Groove ----
     #[id = "wear"]
@@ -834,6 +840,26 @@ impl Default for MxmFxOldifyParams {
             player: EnumParam::new("Player", PlayerChoice::ModernDeck),
             cut_curve: EnumParam::new("Cut curve", CutCurveChoice::FollowEra),
             replay_curve: EnumParam::new("Replay curve", ReplayCurveChoice::FollowPlayer),
+
+            horn: percent("Horn", record.horn.amount, 1.0),
+            horn_size: FloatParam::new(
+                "Horn size",
+                record.horn.length_m,
+                FloatRange::Linear {
+                    min: HORN_SHORTEST_M,
+                    max: HORN_LONGEST_M,
+                },
+            )
+            .with_unit(" m")
+            .with_value_to_string(formatters::v2s_f32_rounded(2))
+            .with_string_to_value(Arc::new(|text| {
+                text.trim()
+                    .to_ascii_lowercase()
+                    .trim_end_matches('m')
+                    .trim()
+                    .parse::<f32>()
+                    .ok()
+            })),
 
             wear: percent("Wear", record.groove.wear, 1.0),
             dynamic_wear: percent("Dynamic wear", record.groove.dynamic, 1.0),
@@ -1037,6 +1063,10 @@ impl MxmFxOldifyParams {
                 eccentricity_mm: self.eccentricity.value(),
                 mains: self.hum.value().dsp(),
                 hum_db: hum_db(self.hum_level.value()),
+                horn: HornControls {
+                    amount: self.horn.value(),
+                    length_m: self.horn_size.value(),
+                },
             },
             cassette: CassetteControls {
                 tape: self.tape.value().dsp(),
@@ -1289,7 +1319,9 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 31] = [
+        let continuous: [&FloatParam; 33] = [
+            &params.horn,
+            &params.horn_size,
             &params.age,
             &params.tape_tone,
             &params.saturation,

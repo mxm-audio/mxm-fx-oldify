@@ -143,6 +143,16 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "The curve it is played back with; a different one from the cut tilts the sound.",
         ),
         Bound::new(
+            "horn",
+            &params.horn,
+            "How much of the sound went through acoustic horns, into the record and out of the gramophone: thin, honky and tinny, as a real old 78.",
+        ),
+        Bound::new(
+            "horn_size",
+            &params.horn_size,
+            "How long the horn is: a short one honks higher and sounds more tinny, a long one fuller.",
+        ),
+        Bound::new(
             "wear",
             &params.wear,
             "How worn the groove is: a dulled top, more distortion and more surface noise.",
@@ -722,6 +732,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             selector_leaf(params, "player"),
             selector_leaf(params, "cut_curve"),
             selector_leaf(params, "replay_curve"),
+            knobs(ui, params, &["horn", "horn_size"]),
         ]),
         1 => stack(vec![
             knobs(ui, params, &["wear", "dynamic_wear", "side"]),
