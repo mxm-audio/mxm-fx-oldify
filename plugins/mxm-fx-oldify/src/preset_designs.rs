@@ -430,7 +430,7 @@ pub const DESIGNS: &[Design] = &[
     (
         "Cracked shellac",
         Category::Fx,
-        "A British 78 with a crack across it, thumping once every turn.",
+        "A British 78 with a crack across it, popping once every turn.",
         &[
             ON_RECORD,
             &[

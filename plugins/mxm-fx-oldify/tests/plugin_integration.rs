@@ -218,7 +218,7 @@ fn every_cassette_control_changes_the_sound() {
             moved.0
         );
     }
-    // A scratch ticks and a crack thumps once a turn at its own angle: on a 78, half a second is
+    // A scratch ticks and a crack pops once a turn at its own angle: on a 78, half a second is
     // more than half a turn, where on an LP it is a quarter and a seed may put every one past it.
     let shellac = [record[0], record[1], ("disc", 1.0)];
     let shellac_reference = render_moved(&shellac, LOUD);

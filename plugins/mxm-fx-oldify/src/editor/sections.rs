@@ -185,7 +185,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "cracks",
             &params.cracks,
-            "How many cracks run across the record, each thumping once a turn.",
+            "How many cracks run across the record, each popping once a turn.",
         ),
         Bound::new(
             "rumble",
@@ -543,9 +543,9 @@ fn details_of(id: &str) -> &'static [&'static str] {
         ],
         "cracks" => &[
             "No cracks across the record.",
-            "One crack, thumping once a turn.",
-            "Two cracks, two thumps a turn.",
-            "Three cracks, three thumps a turn.",
+            "One crack, popping once a turn.",
+            "Two cracks, two pops a turn.",
+            "Three cracks, three pops a turn.",
         ],
         "hum" => &[
             "No hum from the mains.",

@@ -18,8 +18,9 @@ jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch
 skew's exact split, and the noise reduction's lift, two-band's reach, exact decode, undecoded and
 off paths, mistracking and hiss reduction, the curves' shapes, exact cut-and-replay and the UK 78
 error, the disc's rate, heavy tail, turn-locked renewal, clicks that are noise and not a tone,
-scratches the same tick every turn, clicks and scratches with no net push, a crack's tail at
-the arm's tens of hertz, cracks and levels, the groove's cited
+scratches the same tick every turn, clicks, scratches and cracks with no net push, a crack
+popping through the replay curve with under a tenth of itself below 100 Hz, cracks and levels,
+the groove's cited
 distortion and treble loss, the players' bands, crystal, radio and mono, and the record side's
 brick wall, acoustic band, wrong-curve dullness, eccentricity and gated noise).
 
@@ -31,8 +32,14 @@ the hiss's top and its 70 µs offset, the silence thresholds and times, the nois
 `GENERATION_UM`, the dropout laws, `WRONG_EQ_DB`, the noise reduction's thresholds, corners, skew
 and detector, the record's era Qs, limiter times, players, `TURNOVER`, the crackle, click, scratch
 and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S`,
-`BLOCK_BELOW`, the crack's tail (`CRACK_TAIL`, `TAIL_TOP_HZ`, `TAIL_FALL_S`, `TAIL_DECAY_S`; the
-arm's resonance `ARM_HZ` is the plan's 8–15 Hz, itself a design guess) and the groove's corners are
-chosen here, not measured. The tape table, the spacing law, the dropout
+`CRACK_WIDTH_S`, `BLOCK_BELOW` and the groove's corners are chosen here, not measured.
+`CRACK_SIZE` puts a crack's pop near −16 dBFS peak on an LP played on a modern deck and near
+−12 dBFS on a 78 played on a radiogram (2026-10-10).
+
+**Why a crack has no ring.** Esquef's thump, the tonearm's swing after a crack, is a damped ring
+falling to the arm's resonance at 8–15 Hz. It is real, but it lives below hearing, and the
+replay curve lifts it by 20 dB: measured after the curve, the ring sat 35–40 dB above the crack's
+own pop and peaked at −8 dBFS, and the owner heard it as a drum machine's bass drum, whether it
+started at hundreds of hertz or at tens (2026-10-09, 2026-10-10). The tape table, the spacing law, the dropout
 statistics and lift, azimuth's geometry, the wow and flutter laws (linear, as the reference's) and
 the wow, flutter and saturation extremes come from measurement or physics and say so.

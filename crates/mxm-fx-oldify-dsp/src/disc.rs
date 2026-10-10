@@ -24,12 +24,13 @@
 //! - **Scratches**: at a fixed angle every turn, louder: the stylus drops into the scratch and
 //!   climbs out, two edges of opposite sign a scratch's width apart, the same burst each turn
 //!   with its size varied a little.
-//! - **Cracks**: a thump at a fixed angle every turn: a short burst, then the tonearm's own
-//!   swing, a damped ring whose frequency falls exponentially to the arm's resonance and settles
-//!   there (Esquef's model, as cited there: "damped oscillations of decaying frequency caused by
-//!   the impulse response of the arm, normally lasting longer than 50 ms"). A tail sweeping from a
-//!   few hundred hertz toward nothing is a drum machine's bass drum, not a crack (the owner,
-//!   2026-10-09: "a bass drum with a rather long pitch decay").
+//! - **Cracks**: at a fixed angle every turn, the loudest: the stylus falls across the crack and
+//!   strikes its far side, two edges like a scratch's but larger, longer and further apart, which
+//!   the replay curve turns into a short pop with body. **No ring follows**: the tonearm's own
+//!   swing (Esquef's thump) is at 8–15 Hz, below hearing, and through the replay curve's bass
+//!   lift any ring after a crack is heard as a drum machine's bass drum (the owner, 2026-10-09:
+//!   "a bass drum with a rather long pitch decay"; 2026-10-10: "It is the 'cracks' that sounds
+//!   like bass drums").
 //!
 //! A burst is free of DC: the groove holds velocity, and the velocity across a bump in the groove
 //! sums to nothing; a burst with a net push, through a replay curve that lifts the bass by 20 dB,
@@ -65,16 +66,9 @@ const CRACKLE_ALPHA: f64 = 1.6;
 const CRACKLE_LARGEST: f64 = 30.0;
 /// A click's size.
 const CLICK_SIZE: f64 = 0.03;
-/// A scratch's and a crack's start, and a crack's tail.
+/// A scratch's and a crack's near edge.
 const SCRATCH_SIZE: f64 = 0.12;
-const CRACK_SIZE: f64 = 0.25;
-const CRACK_TAIL: f64 = 0.06;
-/// A crack's tail: where its frequency starts, the arm's resonance it falls to (8–15 Hz, as the
-/// plan's pickup row), how fast it falls and how long it rings. Chosen.
-const TAIL_TOP_HZ: (f64, f64) = (45.0, 80.0);
-const ARM_HZ: (f64, f64) = (8.0, 15.0);
-const TAIL_FALL_S: f64 = 0.02;
-const TAIL_DECAY_S: (f64, f64) = (0.05, 0.09);
+const CRACK_SIZE: f64 = 0.5;
 /// A burst's DC block: a one-pole high-pass this far below its colour's corner. Chosen.
 const BLOCK_BELOW: f64 = 4.0;
 /// A click's shortest and longest (Rayner & Godsill, as cited).
@@ -88,7 +82,9 @@ const GRIT: f64 = 0.35;
 /// A scratch's width, as the time the stylus takes to cross it: 30–300 µm at 0.2–0.5 m/s on an
 /// LP, faster on a 78 (est.).
 const SCRATCH_WIDTH_S: (f64, f64) = (0.000_1, 0.001_5);
-/// Voices sounding at once: clicks, scratch edges and thumps.
+/// A crack's width, the same way: a gap of 0.1–0.5 mm, its far side often higher (est.).
+const CRACK_WIDTH_S: (f64, f64) = (0.000_3, 0.002);
+/// Voices sounding at once: clicks and the edges of scratches and cracks.
 const VOICES: usize = 32;
 
 /// The disc's speed.
@@ -185,7 +181,7 @@ fn unit(rng: &mut Rng) -> f64 {
     0.5 * (rng.bipolar() + 1.0)
 }
 
-/// A burst of coloured noise behind a sharp edge: a click, a scratch's edge, a thump's start.
+/// A burst of coloured noise behind a sharp edge: a click, a scratch's or a crack's edge.
 #[derive(Clone, Copy, Debug, Default)]
 struct Burst {
     /// The edge's height, signed: the click's polarity.
@@ -217,15 +213,15 @@ impl Burst {
     }
 }
 
-/// One sounding event: a burst, a damped ring whose pitch may fall, or both.
+/// One sounding burst.
 #[derive(Clone, Copy, Debug, Default)]
 struct Voice {
     live: bool,
     /// Samples before it starts.
     wait: u32,
-    /// The burst: the edge still to come, the noise's level and its per-sample decay, the noise's
-    /// generator, the colour's coefficient and state, the DC block's coefficient and state, and the
-    /// gain that gives the coloured noise unit RMS.
+    /// The edge still to come, the noise's level and its per-sample decay, the noise's generator,
+    /// the colour's coefficient and state, the DC block's coefficient and state, and the gain that
+    /// gives the coloured noise unit RMS.
     edge: f64,
     grit: f64,
     grit_decay: f64,
@@ -235,36 +231,48 @@ struct Voice {
     block: f64,
     low: f64,
     gain: f64,
-    /// The ring: its level and per-sample decay; its phase step above the floor it falls to, the
-    /// per-sample fall of that excess, the floor; and its phase.
-    amp: f64,
-    decay: f64,
-    step: f64,
-    fall: f64,
-    floor: f64,
-    phase: f64,
 }
 
-/// A scratch: where it sits, its near edge's burst, and the far edge's size against the near
-/// one's and its delay.
+/// A gap the stylus crosses, a scratch or a crack: where it sits, its near edge's burst, and the
+/// far edge's size against the near one's and its delay.
 #[derive(Clone, Copy, Debug, Default)]
-struct Scratch {
+struct Gap {
     angle: f64,
     near: Burst,
     far: f64,
     width_s: f64,
 }
 
-/// A crack: where it sits, its thump's start, and its tail: level, top and bottom frequencies,
-/// and how long it rings.
-#[derive(Clone, Copy, Debug, Default)]
-struct Crack {
-    angle: f64,
-    start: Burst,
-    amp: f64,
-    top_hz: f64,
-    arm_hz: f64,
-    decay_s: f64,
+impl Gap {
+    /// A gap at a random angle: its near edge's size within `sizes`, its bursts' lengths within
+    /// `lengths` of the clicks' range (as shares of its logarithm), its far edge within `far` of
+    /// the near one, and its width within `widths`.
+    fn new(
+        sizes: (f64, f64),
+        lengths: (f64, f64),
+        far: (f64, f64),
+        widths: (f64, f64),
+        rng: &mut Rng,
+    ) -> Self {
+        let within = |(lo, hi): (f64, f64), rng: &mut Rng| lo + (hi - lo) * unit(rng);
+        let angle = unit(rng);
+        let sign = if rng.bipolar() < 0.0 { -1.0 } else { 1.0 };
+        let size = sign * within(sizes, rng);
+        let seconds =
+            CLICK_SHORTEST_S * (CLICK_LONGEST_S / CLICK_SHORTEST_S).powf(within(lengths, rng));
+        let (narrowest, widest) = widths;
+        Self {
+            angle,
+            near: Burst {
+                size,
+                seconds,
+                hz: Burst::colour(seconds),
+                seed: seed(rng),
+            },
+            far: within(far, rng),
+            width_s: narrowest * (widest / narrowest).powf(unit(rng)),
+        }
+    }
 }
 
 /// A fresh seed for a burst.
@@ -286,8 +294,8 @@ pub struct Disc {
     clicks: Vec<(f64, Burst)>,
     next_crackle: usize,
     next_click: usize,
-    scratches: [Scratch; MAX_SCRATCHES],
-    cracks: [Crack; MAX_CRACKS],
+    scratches: [Gap; MAX_SCRATCHES],
+    cracks: [Gap; MAX_CRACKS],
     voices: [Voice; VOICES],
     /// The swish: three harmonics of the turn, amplitude and phase each.
     swish: [(f64, f64); 3],
@@ -313,8 +321,8 @@ impl Disc {
             clicks: Vec::with_capacity(most_clicks),
             next_crackle: 0,
             next_click: 0,
-            scratches: [Scratch::default(); MAX_SCRATCHES],
-            cracks: [Crack::default(); MAX_CRACKS],
+            scratches: [Gap::default(); MAX_SCRATCHES],
+            cracks: [Gap::default(); MAX_CRACKS],
             voices: [Voice::default(); VOICES],
             swish: [(0.0, 0.0); 3],
             tilt: 0.0,
@@ -346,43 +354,25 @@ impl Disc {
             *phase = TAU * unit(&mut self.rng);
         }
         let rng = &mut self.rng;
+        // A scratch's edges are short, the clicks' middle third, and its far edge lower; a
+        // crack's are longer, its far side as high or nearly.
         for scratch in self.scratches.iter_mut() {
-            let angle = unit(rng);
-            let sign = if rng.bipolar() < 0.0 { -1.0 } else { 1.0 };
-            let size = sign * SCRATCH_SIZE * (0.5 + unit(rng));
-            // An edge is short: the first third of the clicks' range.
-            let seconds = CLICK_SHORTEST_S
-                * (CLICK_LONGEST_S / CLICK_SHORTEST_S).powf(0.33 * unit(rng) + 0.33);
-            let (narrowest, widest) = SCRATCH_WIDTH_S;
-            *scratch = Scratch {
-                angle,
-                near: Burst {
-                    size,
-                    seconds,
-                    hz: Burst::colour(seconds),
-                    seed: seed(rng),
-                },
-                far: 0.3 + 0.6 * unit(rng),
-                width_s: narrowest * (widest / narrowest).powf(unit(rng)),
-            };
+            *scratch = Gap::new(
+                (0.5 * SCRATCH_SIZE, 1.5 * SCRATCH_SIZE),
+                (0.33, 0.66),
+                (0.3, 0.9),
+                SCRATCH_WIDTH_S,
+                rng,
+            );
         }
-        let within = |(lo, hi): (f64, f64), rng: &mut Rng| lo + (hi - lo) * unit(rng);
         for crack in self.cracks.iter_mut() {
-            let angle = unit(rng);
-            let size = 0.6 + 0.8 * unit(rng);
-            *crack = Crack {
-                angle,
-                start: Burst {
-                    size: CRACK_SIZE * size,
-                    seconds: 0.0015,
-                    hz: DARKEST_HZ,
-                    seed: seed(rng),
-                },
-                amp: CRACK_TAIL * size,
-                top_hz: within(TAIL_TOP_HZ, rng),
-                arm_hz: within(ARM_HZ, rng),
-                decay_s: within(TAIL_DECAY_S, rng),
-            };
+            *crack = Gap::new(
+                (0.6 * CRACK_SIZE, 1.4 * CRACK_SIZE),
+                (0.5, 0.9),
+                (0.7, 1.0),
+                CRACK_WIDTH_S,
+                rng,
+            );
         }
         self.crackle.clear();
         self.clicks.clear();
@@ -443,7 +433,7 @@ impl Disc {
         self.next_click = 0;
     }
 
-    /// A voice playing `burst` at `scale` of its size, after `wait_s`, with no ring.
+    /// A voice playing `burst` at `scale` of its size, after `wait_s`.
     fn voice(&self, burst: &Burst, scale: f64, wait_s: f64) -> Voice {
         let corner = burst.hz.min(0.45 * self.rate);
         let colour = (-TAU * corner / self.rate).exp();
@@ -462,24 +452,31 @@ impl Disc {
             low: 0.0,
             // A one-pole's output variance is (1 − a) / (1 + a) of white's.
             gain: ((1.0 + colour) / (1.0 - colour)).sqrt(),
-            amp: 0.0,
-            decay: 0.0,
-            step: 0.0,
-            fall: 1.0,
-            floor: 0.0,
-            phase: 0.0,
         }
     }
 
     /// Starts a voice, stealing the quietest when all are busy.
     fn start(&mut self, voice: Voice) {
-        let loudness = |v: &Voice| v.grit.abs().max(v.amp.abs()).max(v.edge.abs());
+        let loudness = |v: &Voice| v.grit.abs().max(v.edge.abs());
         let slot = self.voices.iter().position(|v| !v.live).unwrap_or_else(|| {
             (0..VOICES)
                 .min_by(|&a, &b| loudness(&self.voices[a]).total_cmp(&loudness(&self.voices[b])))
                 .unwrap_or(0)
         });
         self.voices[slot] = voice;
+    }
+
+    /// The stylus crosses `gap`: into it, then out of it, the far edge the other way a width
+    /// later, both varied alike by `vary`.
+    fn cross(&mut self, gap: Gap, vary: f64) {
+        let near = self.voice(&gap.near, vary, 0.0);
+        let far_burst = Burst {
+            seed: gap.near.seed.wrapping_add(1),
+            ..gap.near
+        };
+        let far = self.voice(&far_burst, -gap.far * vary, gap.width_s);
+        self.start(near);
+        self.start(far);
     }
 
     /// One sample of the disc's own sound, in the groove.
@@ -507,32 +504,15 @@ impl Disc {
         for i in 0..usize::from(c.scratches) {
             let s = self.scratches[i];
             if s.angle >= before && s.angle < now {
-                // Into the scratch, then out of it: the far edge the other way, a width later.
                 let vary = 0.85 + 0.3 * unit(&mut self.rng);
-                let near = self.voice(&s.near, vary, 0.0);
-                let far_burst = Burst {
-                    seed: s.near.seed.wrapping_add(1),
-                    ..s.near
-                };
-                let far = self.voice(&far_burst, -s.far * vary, s.width_s);
-                self.start(near);
-                self.start(far);
+                self.cross(s, vary);
             }
         }
         for i in 0..usize::from(c.cracks) {
             let k = self.cracks[i];
             if k.angle >= before && k.angle < now {
                 let vary = 0.9 + 0.2 * unit(&mut self.rng);
-                // A burst, then the arm's swing: Esquef's tail, its frequency
-                // (top − arm)·e^(−t/τf) + arm, its phase starting at −π/4.
-                let mut voice = self.voice(&k.start, vary, 0.0);
-                voice.amp = k.amp * vary;
-                voice.decay = (-1.0 / (k.decay_s * self.rate)).exp();
-                voice.step = TAU * (k.top_hz - k.arm_hz) / self.rate;
-                voice.fall = (-1.0 / (TAIL_FALL_S * self.rate)).exp();
-                voice.floor = TAU * k.arm_hz / self.rate;
-                voice.phase = -std::f64::consts::FRAC_PI_4;
-                self.start(voice);
+                self.cross(k, vary);
             }
         }
         if wrapped {
@@ -547,36 +527,23 @@ impl Disc {
                 voice.wait -= 1;
                 continue;
             }
-            // The burst: the edge and the noise behind it, through the burst's colour, its DC
-            // taken out; it plays on until its filters have emptied.
-            let bursting =
-                voice.grit != 0.0 || voice.edge != 0.0 || voice.tone.abs() + voice.low.abs() > 1e-9;
-            if bursting {
-                let white = if voice.grit != 0.0 {
-                    voice.noise.bipolar() * 3f64.sqrt()
-                } else {
-                    0.0
-                };
-                let drive = voice.edge + voice.grit * white;
-                voice.edge = 0.0;
-                voice.tone = voice.colour * voice.tone + (1.0 - voice.colour) * drive;
-                voice.low = voice.block * voice.low + (1.0 - voice.block) * voice.tone;
-                out += voice.gain * (voice.tone - voice.low);
-                voice.grit *= voice.grit_decay;
-                if voice.grit.abs() < 1e-7 {
-                    voice.grit = 0.0;
-                }
+            // The edge and the noise behind it, through the burst's colour, its DC taken out; it
+            // plays on until its filters have emptied.
+            let white = if voice.grit != 0.0 {
+                voice.noise.bipolar() * 3f64.sqrt()
+            } else {
+                0.0
+            };
+            let drive = voice.edge + voice.grit * white;
+            voice.edge = 0.0;
+            voice.tone = voice.colour * voice.tone + (1.0 - voice.colour) * drive;
+            voice.low = voice.block * voice.low + (1.0 - voice.block) * voice.tone;
+            out += voice.gain * (voice.tone - voice.low);
+            voice.grit *= voice.grit_decay;
+            if voice.grit.abs() < 1e-7 {
+                voice.grit = 0.0;
             }
-            if voice.amp != 0.0 {
-                out += voice.amp * voice.phase.sin();
-                voice.phase += voice.floor + voice.step;
-                voice.step *= voice.fall;
-                voice.amp *= voice.decay;
-                if voice.amp.abs() < 1e-7 {
-                    voice.amp = 0.0;
-                }
-            }
-            voice.live = bursting || voice.amp != 0.0;
+            voice.live = voice.grit != 0.0 || voice.tone.abs() + voice.low.abs() > 1e-9;
         }
 
         // Surface noise, swishing with the turn.
@@ -693,7 +660,7 @@ mod tests {
     }
 
     #[test]
-    fn a_crack_thumps_once_every_turn() {
+    fn a_crack_pops_once_every_turn() {
         let c = DiscControls {
             speed: Speed::Shellac78,
             cracks: 1,
@@ -806,30 +773,10 @@ mod tests {
         );
     }
 
-    /// **A crack is a burst and the arm's low swing, not a falling tone**: after its burst the
-    /// tail sits at tens of hertz, where a drum machine's bass drum sweeps down from hundreds.
-    #[test]
-    fn a_crack_is_a_burst_and_the_arms_low_swing_not_a_falling_tone() {
-        let c = DiscControls {
-            speed: Speed::Shellac78,
-            cracks: 1,
-            ..DiscControls::SILENT
-        };
-        let out = render(c, 1.6, 4);
-        let onset = out.iter().position(|v| *v != 0.0).expect("a crack");
-        let tail = &out[onset + (0.005 * RATE) as usize..onset + (0.1 * RATE) as usize];
-        let crossings = tail
-            .windows(2)
-            .filter(|p| p[0] <= 0.0 && p[1] > 0.0)
-            .count();
-        let hz = crossings as f64 / 0.095;
-        assert!(hz < 60.0, "the tail sits at {hz:.0} Hz");
-    }
-
     /// **A click has no net push**: the groove holds velocity, which across a bump sums to
     /// nothing, so the replay curve's bass lift has nothing to make a thump of.
     #[test]
-    fn a_click_and_a_scratch_have_no_net_push() {
+    fn a_click_a_scratch_and_a_crack_have_no_net_push() {
         for c in [
             DiscControls {
                 clicks: 5.0,
@@ -837,6 +784,10 @@ mod tests {
             },
             DiscControls {
                 scratches: 3,
+                ..DiscControls::SILENT
+            },
+            DiscControls {
+                cracks: 3,
                 ..DiscControls::SILENT
             },
         ] {

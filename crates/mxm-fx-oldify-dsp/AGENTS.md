@@ -132,10 +132,10 @@ era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall) →
   is heard as a drop of water (the owner, 2026-10-09: "the scratches… sound like rain drops"):
   20 µs to 4 ms, darker the longer, **its DC blocked** (the groove holds velocity; a net push
   through the replay curve's bass lift thumps). A scratch is two such edges of opposite sign a
-  scratch's width apart, the same burst every turn (its seed kept). **A crack is a burst and the
-  arm's swing**: Esquef's tail, falling from `TAIL_TOP_HZ` to the arm's resonance (`ARM_HZ`) and
-  settling there, never a tone sweeping down from hundreds of hertz (a drum machine's bass drum,
-  the owner, 2026-10-09).
+  scratch's width apart, the same burst every turn (its seed kept). **A crack is a larger, wider
+  pair of the same edges, and nothing after them**: no ring follows a crack, since any ring
+  through the replay curve's bass lift is heard as a drum machine's bass drum (the owner,
+  2026-10-09 and 2026-10-10; `a_crack_pops_through_the_replay_curve_and_never_thumps`).
   Tables allocated in `new` for the busiest revolution.
 - **`groove`**: tracing distortion `x / √(1 + c·x²)` on the lateral motion, `c` from the cited
   0.8 % (outer) and 4.5 % (inner) for an 18 µm tip, with the pinch effect's second harmonic in the
