@@ -5,8 +5,8 @@ Parent: [`../../AGENTS.md`](../../AGENTS.md)
 # Purpose
 
 Framework-free DSP for `mxm-fx-oldify`: the chain, the **cassette engine**, the **record
-engine**, and the blocks they are built from. Still to come: the cassette's print-through, tape
-stop and High quality; the record's skips. The design and the measurements
+engine**, and the blocks they are built from. Still to come: the cassette's tape stop and High
+quality; the record's skips. The design and the measurements
 behind it are private, `ops:notes/oldify/` (root *The design and its measurements are private*).
 
 # Ownership
@@ -46,7 +46,7 @@ input → Drive → [the record] → the cassette engine → ÷ Drive (a latency
 
 ```text
 NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape response × Tape tone
-  → transport (wow, flutter; Flange against the unmoved read) → crosstalk → + hiss
+  → + print-through → transport (wow, flutter; Flange against the unmoved read) → crosstalk → + hiss
   → spacing loss (Age, generations, azimuth, a dropout's lift) → a dropout's dip
   → wrong playback EQ → azimuth's delay between the tracks → NR decode
 ```
@@ -60,6 +60,10 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
   reference, with copies, is lowered to fit. The fit: [NOTES.md § The modulations,
   fitted](NOTES.md#the-modulations-fitted).
 - Hiss is seeded, independent per channel, 4 dB lower on the 70 µs tapes, and gated by the chain.
+- **Print-through** (`print.rs`): the recorded tape a wrap of the reel later (`print::wrap_s`,
+  halfway through a C60), through the band a layer's thickness prints (`print::peak_hz`), up to
+  `MAX_PRINT_DB`; only the echo after. Before the transport, so it plays back as the music does
+  ([NOTES.md § Print-through](NOTES.md#print-through)).
 - **Generations** (1–4): each dub adds its hiss power, its own uncorrelated wobble (depth × √n)
   and `GENERATION_UM` of spacing.
 - **Flange** mixes the line read at exactly the base delay against the moving read: through-zero
@@ -174,8 +178,8 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
 
 - **Silence in is exact zero out once the tails have run out**: the noise holds `NOISE_HOLD_S`
   after the input falls under `SILENCE`, fades over `NOISE_FADE_S`, and after `Oldify::tail` (the
-  hold, or the groove echo's turn on the slowest disc if longer) every memory is cleared and the
-  chain is **quiet**. A quiet chain fed silence costs the input scan only
+  hold, or the longest echo if longer: the groove's turn on the slowest disc, the print-through's
+  wrap) every memory is cleared and the chain is **quiet**. A quiet chain fed silence costs the input scan only
   and gives exact zero; the input returning wakes it, with every seed back at its start.
 - **Mix zero is the dry input delayed by the latency, to the bit.** A clean modern record on a
   modern deck is the input delayed, at its level.

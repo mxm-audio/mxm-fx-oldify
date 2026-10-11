@@ -28,6 +28,7 @@ use mxm_fx_oldify_dsp::groove::GrooveControls;
 use mxm_fx_oldify_dsp::horn::{HORN_LONGEST_M, HORN_SHORTEST_M, HornControls};
 use mxm_fx_oldify_dsp::nr::{MAX_LEVEL_ERROR_DB, NoiseReduction, NrControls};
 use mxm_fx_oldify_dsp::player::Player;
+use mxm_fx_oldify_dsp::print::{MAX_PRINT_DB, PRINT_OFF_DB};
 use mxm_fx_oldify_dsp::record::{Era, MAX_ECCENTRICITY_MM, MAX_WARP, Mains, RecordControls};
 use mxm_fx_oldify_dsp::saturate::Character;
 use mxm_fx_oldify_dsp::tape::{Grade, Tape};
@@ -527,6 +528,11 @@ pub fn crosstalk_db(gain: f32) -> f32 {
     level_db(gain, CROSSTALK_OFF_DB, CROSSTALK_MAX_DB)
 }
 
+/// Print-through's level for the DSP ([`level_db`]).
+pub fn print_db(gain: f32) -> f32 {
+    level_db(gain, PRINT_OFF_DB, MAX_PRINT_DB)
+}
+
 /// A level from `off_db` (read "Off") to `max_db`, **stored as linear gain** (the collection's
 /// rule for a level), its decibels spread evenly across the travel.
 fn off_level(name: &'static str, default_db: f32, off_db: f32, max_db: f32) -> FloatParam {
@@ -794,6 +800,9 @@ pub struct MxmFxOldifyParams {
     /// Stored as linear gain; the bottom of the travel is Off.
     #[id = "hiss"]
     pub hiss: FloatParam,
+    /// Stored as linear gain; the bottom of the travel is Off.
+    #[id = "print_through"]
+    pub print_through: FloatParam,
     #[id = "nr"]
     pub nr: EnumParam<NoiseReductionChoice>,
     #[id = "nr_decode"]
@@ -976,6 +985,12 @@ impl Default for MxmFxOldifyParams {
             flange: percent("Flange", cassette.flange, 1.0),
 
             hiss: off_level("Hiss", cassette.hiss_db, HISS_OFF_DB, HISS_MAX_DB),
+            print_through: off_level(
+                "Print-through",
+                cassette.print_db,
+                PRINT_OFF_DB,
+                MAX_PRINT_DB,
+            ),
             nr: EnumParam::new("Noise reduction", NoiseReductionChoice::Off),
             nr_decode: BoolParam::new("Decode", cassette.nr.decode),
             nr_amount: percent("NR amount", cassette.nr.amount, 1.0),
@@ -1139,6 +1154,7 @@ impl MxmFxOldifyParams {
                 },
                 azimuth: self.azimuth.value(),
                 crosstalk_db: crosstalk_db(self.crosstalk.value()),
+                print_db: print_db(self.print_through.value()),
                 wrong_eq: self.wrong_eq.value(),
                 age: self.age.value(),
                 variation: u32::try_from(self.variation.value()).unwrap_or(0),
@@ -1212,7 +1228,7 @@ mod tests {
     #[test]
     fn a_level_reads_off_at_the_bottom_and_off_plays_nothing() {
         let params = MxmFxOldifyParams::default();
-        let levels: [Level<'_>; 6] = [
+        let levels: [Level<'_>; 7] = [
             (&params.hiss, hiss_db, HISS_OFF_DB, "-30.0 dB"),
             (
                 &params.crosstalk,
@@ -1224,6 +1240,7 @@ mod tests {
             (&params.rumble, rumble_db, NOISE_OFF_DB, "-35.0 dB"),
             (&params.hum_level, hum_db, NOISE_OFF_DB, "-20.0 dB"),
             (&params.groove_echo, echo_db, NOISE_OFF_DB, "-12.0 dB"),
+            (&params.print_through, print_db, PRINT_OFF_DB, "-12.0 dB"),
         ];
         for (param, to_db, off_db, top) in levels {
             assert_eq!(param.normalized_value_to_string(0.0, true), "Off");
@@ -1357,10 +1374,11 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 36] = [
+        let continuous: [&FloatParam; 37] = [
             &params.horn,
             &params.horn_size,
             &params.age,
+            &params.print_through,
             &params.tape_tone,
             &params.saturation,
             &params.wow,

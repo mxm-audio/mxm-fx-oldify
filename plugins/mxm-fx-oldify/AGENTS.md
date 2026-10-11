@@ -68,6 +68,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `nr_decode` | Decode | On / Off: Off plays the tape without its decoder |
 | | `nr_amount`, `nr_brightness` | NR amount, NR brightness | 0–100 %, linear: half is the period's 10 dB a stage; the band's corner across `nr::CORNER_HZ` |
 | | `nr_level_error` | NR level error | ±`nr::MAX_LEVEL_ERROR_DB`, stored as linear gain, 0 dB mid-travel, read in dB; `params::level_error_db` gives the DSP its decibels to a hundredth, so 0 dB arrives as zero |
+| | `print_through` | Print-through | `print::PRINT_OFF_DB` (Off)…`MAX_PRINT_DB`, as Hiss: the music a wrap of the reel later, under it |
 | | `dropouts`, `dropout_intensity`, `dropout_width` | Dropouts, Dropout intensity, Dropout width | 0–100 %, linear |
 | Deck | `azimuth` | Azimuth | 0…`MAX_AZIMUTH_ARCMIN` arc-minutes, read `15.0′` (`'` and `arcmin` parse too), skewed so 15′ is mid-travel |
 | | `crosstalk` | Crosstalk | `CROSSTALK_OFF_DB`…`CROSSTALK_MAX_DB`, as Hiss |
@@ -128,7 +129,7 @@ takes a switch or a count as it comes ([NOTES.md § Smoothing](NOTES.md#smoothin
 
 ## Still to come
 
-- The record's skips; the cassette's print-through, tape stop and High quality. None is a parameter yet: each id is fixed when its control arrives.
+- The record's skips; the cassette's tape stop and High quality. None is a parameter yet: each id is fixed when its control arrives.
 
 ## Presets
 

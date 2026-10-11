@@ -320,6 +320,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         ),
         Bound::new("hiss", &params.hiss, "The tape's own hiss, from off to loud."),
         Bound::new(
+            "print_through",
+            &params.print_through,
+            "A faint, muffled ghost of the music a couple of seconds later, printed through from the tape wound next to it on the reel. Real tapes sit low on the knob; higher is for effect.",
+        ),
+        Bound::new(
             "nr",
             &params.nr,
             "Lowers the hiss by lifting quiet treble on the way onto the tape and taking it back off on the way out.",
@@ -791,7 +796,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             knobs(ui, params, &["flange"]),
         ]),
         5 => stack(vec![
-            knobs(ui, params, &["hiss"]),
+            knobs(ui, params, &["hiss", "print_through"]),
             segmented_leaf(params, "nr"),
             toggle_leaf(params, "nr_decode"),
             knobs(

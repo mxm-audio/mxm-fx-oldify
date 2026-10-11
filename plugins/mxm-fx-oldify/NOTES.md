@@ -20,7 +20,7 @@ runs past `Span::LFO`'s.
 ## Levels
 
 A level with an Off stores linear gain (the collection's rule for a level): Hiss, Crosstalk,
-Surface noise, Rumble and Hum level alike. `params::level_db` converts it, giving the DSP its off
+Print-through, Surface noise, Rumble, Hum level and Groove echo alike. `params::level_db` converts it, giving the DSP its off
 level wherever the reading rounds to Off — so the knob never reads Off while the level plays — and
 its decibels to a hundredth otherwise, so a whole-decibel default reaches the DSP exactly. NR level
 error is a gain too, stored the same way (`params::level_error_db`).
@@ -54,7 +54,7 @@ and Replay curve as lists; Horn, Horn size), **Vinyl groove** (Wear, Dynamic wea
 distortion, Eccentricity, Warp), **Vinyl surface** (Crackle, Crackle level, Clicks; Surface noise, Scratches, Rumble; Cracks; Hum;
 Hum level, Groove echo), **Tape** (the Tape switch; Tape type; Grade; Tape tone, Saturation; Character;
 Generations; Age), **Tape transport** (Wow, Wow rate and its sync; Wow shape; Flutter, Flutter rate
-and its sync; Flutter shape; Flutter follows wow; Flange), **Tape noise** (Hiss; Noise reduction;
+and its sync; Flutter shape; Flutter follows wow; Flange), **Tape noise** (Hiss, Print-through; Noise reduction;
 Decode; NR amount, NR brightness, NR level error; Dropouts, Dropout intensity, Dropout width),
 **Tape deck** (Azimuth, Crosstalk; Wrong EQ) and **Output** (the In and Out levels; Drive, Width,
 Mix; Noise follows, Variation; Noise stops in silence). Noise follows and Variation share a knob row

@@ -165,6 +165,10 @@
       "v": 0.0,
       "text": "Wind-up gramophone"
     },
+    "print_through": {
+      "v": 0.0,
+      "text": "Off"
+    },
     "record_on": {
       "v": 1.0,
       "text": "On"

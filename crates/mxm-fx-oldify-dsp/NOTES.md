@@ -5,7 +5,7 @@ The reasoning and detail behind [`AGENTS.md`](AGENTS.md) that is still in force.
 ## What the tests hold
 
 The chain's tests hold silence → exact zero at every setting, exact zero again after the tail and
-after the groove echo's turn, Mix
+after both echoes, the groove's turn and the print-through's wrap, Mix
 zero → the delayed input to the bit, a clean record → the delayed input at its level, the neutral
 cassette → the delayed input to −50 dB, an impulse at the latency, blocks of 1, 37 and 512 bit-identical
 through a quiet stretch and a retarget, a reset rendering the same again, finite bounded output at every extreme, Width
@@ -23,7 +23,8 @@ error, the disc's rate, heavy tail, turn-locked renewal, a swish of a few decibe
 scratches the same tick every turn, scratches and cracks moving on after `GAP_LIFE_S`, clicks, scratches and cracks with no net push, a crack
 popping through the replay curve with under a tenth of itself below 100 Hz whatever the seed, cracks and levels,
 the groove echo exactly a turn late on every disc at its level, the bass of it, exact when off and
-forgotten after a clear,
+forgotten after a clear, the print-through's wrap and band a C60's, its copy exactly a wrap late
+at its level in its band and far under it outside, exact when off and forgotten after a clear,
 the groove's cited distortion and treble loss, Dynamic wear leaving a quiet groove exactly as it
 was, wearing a loud one, a loud bass note where a middle one as fast is not, and the two walls
 apart, the horn keeping only the middle at full, honking at `c / 2L` and staying bounded at full
@@ -41,7 +42,8 @@ the hiss's top and its 70 µs offset, the silence thresholds and times, the nois
 `GENERATION_UM`, the dropout laws, `WRONG_EQ_DB`, the noise reduction's thresholds, corners, skew
 and detector, the record's era Qs, limiter times, players, `TURNOVER`, the crackle, click, scratch
 and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S`,
-`CRACK_WIDTH_S`, `BLOCK_BELOW`, `SWISH`, `CRACKLE_LEVEL_DB`, `MAX_ECHO_DB`, `ECHO_TOP_HZ`, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
+`CRACK_WIDTH_S`, `BLOCK_BELOW`, `SWISH`, `CRACKLE_LEVEL_DB`, `MAX_ECHO_DB`, `ECHO_TOP_HZ`, `MAX_PRINT_DB`, the print-through's tape (a C60's
+length and thickness, the plan's hub), the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
 from period compliance and tip mass), `STYLUS_Q`, `GIVE`, `KNEE`, `WALL_SPREAD_DB`,
 `WORN_DULL_HZ`, `ROUGH`, `ROUGH_HZ` and `WORN_RELEASE_S`, and the horn's feedbacks, mouths,
 heights, corners, `BLAST` and the gramophone's `PLAY_LENGTH` and soundbox are chosen here, not
@@ -282,10 +284,34 @@ the echo taken as the render less the same render with it off): below 500 Hz the
 −50 to −12 dB, and in all 2–8 dB under it, its treble cut. The cited −60 to −35 dB is a real
 disc's; the rest of the travel, to `MAX_ECHO_DB`, is for effect.
 
-**Why the tail did not grow.** The tail covers the noise's hold or the slowest disc's turn,
-whichever is longer, then the filters'. The hold (`NOISE_HOLD_S`) is the longer, so the tail is as it
-was (`the_tail_outlasts_the_groove_echo`).
+**Why the tail covers it.** The tail covers the noise's hold or the longest echo, whichever is
+longer, then the filters'. The slowest disc's turn is shorter than the hold (`NOISE_HOLD_S`); the
+print-through's wrap is the longer (`the_tail_outlasts_both_echoes`).
 
 **Why a clear only forgets.** The line holds 1.8 s, 11 MB at the top rate; a clear on the audio
 thread, as the chain going quiet makes, sets the count of samples written to zero, and anything
-older reads as silence.
+older reads as silence. The print-through's line forgets the same way.
+
+## Print-through
+
+**Why a wrap halfway through a C60.** The echo's distance is one wrap of the reel the tape was
+stored on, from 1.45 s at the hub to about 3.2 s at full pack (`ops: notes/oldify/reports`, the
+cassette physics); which wrap depends on where in the tape the music sits, which this effect does
+not know. Halfway through the tape stands for all of it: the pack's radius where half its length is
+wound on, `√(r₀² + L·d / 2π)`, about 2.4 s round. A C60 because its geometry is the one the plan's
+figures give (`the_wrap_and_the_band_are_a_c60s`).
+
+**Why its band.** A recorded wavelength's field outside the coating goes as k·e^(−kd) across a gap
+d (the playback-loss physics the spacing filter rests on), so a layer prints its neighbour most at
+λ = 2πd, rising 6 dB an octave below and falling exponentially above: (f/f₀)·e^(1 − f/f₀) at
+cassette speed, f₀ near 470 Hz for a C60's 16 µm (the plan's 470 Hz). The band is a first-order
+high-pass and two low-pass sections fitted to that curve (0.7 dB RMS above −50 dB), not a band-pass
+of one Q, whose sides would fall alike. The level is the copy's at f₀, within the fit.
+
+**Why only the echo after.** A cassette is wound coating out, so the layer outside, the music
+played a wrap before, prints louder than the one inside; the echo before would need a wrap of
+look-ahead. The plan's ruling for the groove echo, kept.
+
+**Why its range.** No measured cassette print-through level exists (the plan's own note); real
+tapes are put at −60 to −45 dB, worse on thin ones. The travel goes on to `MAX_PRINT_DB`, the
+groove echo's, for effect. The worn pocket tape carries −50 dB, the plan's value for it.

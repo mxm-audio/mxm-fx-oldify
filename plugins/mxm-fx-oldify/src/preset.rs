@@ -67,6 +67,7 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("follow", &self.follow),
             ("flange", &self.flange),
             ("hiss", &self.hiss),
+            ("print_through", &self.print_through),
             ("nr", &self.nr),
             ("nr_decode", &self.nr_decode),
             ("nr_amount", &self.nr_amount),

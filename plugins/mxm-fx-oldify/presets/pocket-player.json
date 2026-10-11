@@ -165,6 +165,10 @@
       "v": 1.0,
       "text": "Modern deck"
     },
+    "print_through": {
+      "v": 0.0,
+      "text": "Off"
+    },
     "record_on": {
       "v": 0.0,
       "text": "Off"

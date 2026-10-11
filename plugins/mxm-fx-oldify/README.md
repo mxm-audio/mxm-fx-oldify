@@ -25,7 +25,8 @@ off is dimmed but can still be set up.
 - **Tape transport** — wow and flutter (depth, rate, shape), each rate syncable to the host's tempo
   and each depth going far past any real tape; flutter that follows the wow, its rate swung by
   it; Flange, a steady copy of the tape mixed against the moving one.
-- **Tape noise** — hiss; noise reduction, single- or two-band, with its amount, brightness, a level
+- **Tape noise** — hiss; print-through, a faint muffled copy of the music a wrap of the reel later;
+  noise reduction, single- or two-band, with its amount, brightness, a level
   error that makes it mistrack, and Decode off for the tape played without its decoder; and
   dropouts (how many, how deep and long, how differently left and right).
 - **Tape deck** — azimuth (a tilted head), crosstalk between the tracks, and the wrong playback EQ.

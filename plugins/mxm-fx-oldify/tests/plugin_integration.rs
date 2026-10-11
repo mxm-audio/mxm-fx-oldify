@@ -167,6 +167,13 @@ fn every_cassette_control_changes_the_sound() {
         let heard = difference(&render_moved(&[moved], LOUD), &reference);
         assert!(heard > 1e-3, "{} changed nothing: {heard}", moved.0);
     }
+    // Print-through is heard a wrap of the reel late.
+    let late = mxm_fx_oldify_dsp::print::wrap_samples(48_000.0) + 9_600;
+    let printed = difference(
+        &render_moved_for(&[("print_through", 1.0)], LOUD, late),
+        &render_moved_for(&[], LOUD, late),
+    );
+    assert!(printed > 1e-3, "print_through changed nothing: {printed}");
     // (what must be on, its programme's level, the threshold, the controls it shapes)
     let shaped: [(Move<'_>, f32, f32, [Move<'_>; 4]); 2] = [
         (

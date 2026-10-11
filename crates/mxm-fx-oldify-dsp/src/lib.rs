@@ -39,6 +39,7 @@ pub mod horn;
 pub mod nr;
 pub mod oversample;
 pub mod player;
+pub mod print;
 pub mod record;
 pub mod saturate;
 pub mod spacing;
@@ -72,8 +73,8 @@ pub const SILENCE: f32 = 1e-6;
 pub const NOISE_HOLD_S: f32 = 2.0;
 /// The noise's fade in and out.
 pub const NOISE_FADE_S: f32 = 0.05;
-/// What the filters' tails need after the transport's line has emptied, and after the groove's
-/// echo of the last sound. Chosen, generous.
+/// What the filters' tails need after the transport's line has emptied, and after the echoes of
+/// the last sound, the groove's and the print-through's. Chosen, generous.
 const FILTER_TAIL_S: f32 = 0.2;
 /// Noise follows the input's level about this: −20 dBFS of input leaves it as set. Chosen.
 const FOLLOW_REFERENCE: f32 = 0.1;
@@ -348,10 +349,12 @@ impl Oldify {
             level: 0.0,
             attack: 1.0 - (-1.0 / (sample_rate * FOLLOW_ATTACK_S)).exp(),
             release: 1.0 - (-1.0 / (sample_rate * FOLLOW_RELEASE_S)).exp(),
-            // The noise's hold, or the groove echo's turn on the slowest disc, if that is longer.
+            // The noise's hold, or the longest echo if that is longer: the groove's turn on the
+            // slowest disc, or the print-through's wrap.
             quiet_after: 2 * latency as u64
                 + seconds(NOISE_HOLD_S + NOISE_FADE_S)
                     .max(echo::turn_samples(disc::Speed::Lp33, f64::from(sample_rate)) as u64)
+                    .max(print::wrap_samples(f64::from(sample_rate)) as u64)
                 + seconds(FILTER_TAIL_S),
             quiet: true,
         })
@@ -674,6 +677,7 @@ mod tests {
             },
             azimuth: crate::cassette::MAX_AZIMUTH_ARCMIN,
             crosstalk_db: crate::cassette::CROSSTALK_MAX_DB,
+            print_db: crate::print::MAX_PRINT_DB,
             wrong_eq: true,
             variation: crate::cassette::MAX_VARIATION,
             nr: crate::nr::NrControls {
@@ -775,11 +779,12 @@ mod tests {
         assert!(left[tail..].iter().chain(&right[tail..]).all(|s| *s == 0.0));
     }
 
-    /// **The tail outlasts the groove echo**: on the slowest disc, at the loudest echo, the last
-    /// sound's echo is heard a turn later, inside the tail, and nothing after it.
+    /// **The tail outlasts both echoes**: the groove's on the slowest disc and the print-through's,
+    /// each at its loudest, are heard a turn or a wrap after the last sound, inside the tail, and
+    /// nothing after it.
     #[test]
-    fn the_tail_outlasts_the_groove_echo() {
-        let controls = Controls {
+    fn the_tail_outlasts_both_echoes() {
+        let groove = Controls {
             record_on: true,
             tape_on: false,
             record: RecordControls {
@@ -788,18 +793,31 @@ mod tests {
             },
             ..Controls::IDENTITY
         };
-        let mut oldify = settled_at(controls);
-        let source = noise(9_600, 1);
-        render(&mut oldify, &source, &source, controls);
-        let tail = oldify.tail() as usize;
-        let silence = vec![0.0; tail + 512];
-        let [left, right] = render(&mut oldify, &silence, &silence, controls);
-        let turn = crate::echo::turn_samples(crate::disc::Speed::Lp33, f64::from(RATE));
-        let latency = oldify.latency() as usize;
-        let echo = &left[turn - 9_600 + latency..turn + latency];
-        assert!(echo.iter().any(|s| s.abs() > 1e-3), "no echo");
-        assert!(turn + latency < tail);
-        assert!(left[tail..].iter().chain(&right[tail..]).all(|s| *s == 0.0));
+        let print = Controls {
+            cassette: CassetteControls {
+                print_db: crate::print::MAX_PRINT_DB,
+                ..CassetteControls::NEUTRAL
+            },
+            ..Controls::IDENTITY
+        };
+        let rate = f64::from(RATE);
+        let groove_turn = crate::echo::turn_samples(crate::disc::Speed::Lp33, rate);
+        for (controls, late) in [
+            (groove, groove_turn),
+            (print, crate::print::wrap_samples(rate)),
+        ] {
+            let mut oldify = settled_at(controls);
+            let source = noise(9_600, 1);
+            render(&mut oldify, &source, &source, controls);
+            let tail = oldify.tail() as usize;
+            let silence = vec![0.0; tail + 512];
+            let [left, right] = render(&mut oldify, &silence, &silence, controls);
+            let latency = oldify.latency() as usize;
+            let echo = &left[late - 9_600 + latency..late + latency];
+            assert!(echo.iter().any(|s| s.abs() > 1e-3), "no echo");
+            assert!(late + latency < tail);
+            assert!(left[tail..].iter().chain(&right[tail..]).all(|s| *s == 0.0));
+        }
     }
 
     #[test]
@@ -970,6 +988,7 @@ mod tests {
                 tape: Tape::IV,
                 saturation: 0.9,
                 age: 0.8,
+                print_db: -30.0,
                 ..CassetteControls::INIT
             },
             record: RecordControls {

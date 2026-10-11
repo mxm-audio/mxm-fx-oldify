@@ -2,7 +2,8 @@
 //!
 //! ```text
 //! noise-reduction encode → saturator (pre-emphasis → 2× curve → de-emphasis)
-//!   → tape response, by Tape tone → transport (wow and flutter; Flange against the unmoved read)
+//!   → tape response, by Tape tone → + print-through
+//!   → transport (wow and flutter; Flange against the unmoved read)
 //!   → crosstalk → + hiss → spacing loss (Age, generations, azimuth, a dropout's lift)
 //!   → a dropout's dip → wrong playback EQ → azimuth's delay between the tracks
 //!   → noise-reduction decode
@@ -36,6 +37,10 @@
 //! tracks it is a delay, [`TRACK_PITCH_M`] · tan θ / speed: summed to mono, 15′ puts a notch at
 //! 6.1 kHz (`ops: notes/oldify/reports`, the physics).
 //!
+//! **Print-through** ([`crate::print`]) is the recorded tape a wrap of the reel later, printed
+//! onto the layer wound against it on the shelf: added before the transport, it plays back as the
+//! music does.
+//!
 //! Hiss is Gaussian-like and seeded, independent per channel, a little darker on the 70 µs tapes
 //! (4 dB less, as the time constant moving from 120 µs to 70 µs gives), and it stops in silence:
 //! the caller passes the gate.
@@ -44,6 +49,7 @@ use crate::Ramp;
 use crate::biquad::{Biquad, Kind, Section};
 use crate::dropouts::{DropoutControls, Dropouts, LIFT_UM_PER_DB};
 use crate::nr::{Nr, NrControls};
+use crate::print::{MAX_PRINT_DB, PRINT_OFF_DB, PrintThrough};
 use crate::record::{ECCENTRIC_REACH_S, TABLE_REACH_S, WARP_REACH_S};
 use crate::saturate::{Character, Saturator};
 use crate::spacing::Spacing;
@@ -91,7 +97,7 @@ const TRACK_WIDTH_M: f64 = 0.6e-3;
 /// Between the two tracks' centres, in metres: what puts 15′'s mono notch at 6.1 kHz.
 pub const TRACK_PITCH_M: f64 = 0.9e-3;
 /// Cassette speed, metres a second.
-const SPEED_M_S: f64 = 0.0476;
+pub const SPEED_M_S: f64 = 0.0476;
 /// The 70 µs tapes' hiss, re ferric's.
 const HISS_70US_DB: f32 = -4.0;
 /// The hiss's top: tape noise is not flat to the Nyquist of a 96 kHz session.
@@ -135,6 +141,9 @@ pub struct CassetteControls {
     pub azimuth: f32,
     /// [`CROSSTALK_OFF_DB`]..=[`CROSSTALK_MAX_DB`].
     pub crosstalk_db: f32,
+    /// The copy a wrap later, dB under the music at its band's peak: [`PRINT_OFF_DB`] (off)
+    /// ..= [`MAX_PRINT_DB`].
+    pub print_db: f32,
     /// The tape played back with the other time constant.
     pub wrong_eq: bool,
     /// 0–1.
@@ -170,6 +179,7 @@ impl CassetteControls {
         dropouts: DropoutControls::NONE,
         azimuth: 0.0,
         crosstalk_db: CROSSTALK_OFF_DB,
+        print_db: PRINT_OFF_DB,
         wrong_eq: false,
         age: 0.0,
         variation: 0,
@@ -240,6 +250,7 @@ impl CassetteControls {
                 (CROSSTALK_OFF_DB, CROSSTALK_MAX_DB),
                 CROSSTALK_OFF_DB,
             ),
+            print_db: within(self.print_db, (PRINT_OFF_DB, MAX_PRINT_DB), PRINT_OFF_DB),
             age: unit(self.age),
             variation: self.variation.min(MAX_VARIATION),
             nr: self.nr.bounded(),
@@ -263,6 +274,15 @@ fn crosstalk_gain(crosstalk_db: f32) -> f32 {
         0.0
     } else {
         crate::db_to_gain(crosstalk_db)
+    }
+}
+
+/// Print-through's linear gain; zero when off.
+fn print_gain(print_db: f32) -> f32 {
+    if print_db <= PRINT_OFF_DB {
+        0.0
+    } else {
+        crate::db_to_gain(print_db)
     }
 }
 
@@ -428,6 +448,7 @@ pub struct Cassette {
     channels: [Channel; 2],
     transport: Transport,
     dropouts: Dropouts,
+    print: PrintThrough,
     skew: Skew,
     nr: Nr,
     tape: Option<(Tape, Grade)>,
@@ -443,6 +464,7 @@ pub struct Cassette {
     hiss: Ramp,
     azimuth: Ramp,
     crosstalk: Ramp,
+    print_gain: Ramp,
     age: Ramp,
     nr_amount: Ramp,
     nr_brightness: Ramp,
@@ -471,6 +493,7 @@ impl Cassette {
                 seed,
             ),
             dropouts: Dropouts::new(sample_rate, seed),
+            print: PrintThrough::new(sample_rate),
             skew: Skew::new(sample_rate),
             nr: Nr::new(sample_rate),
             tape: None,
@@ -486,6 +509,7 @@ impl Cassette {
             hiss: ramp(hiss_gain(init.hiss_db)),
             azimuth: ramp(init.azimuth),
             crosstalk: ramp(crosstalk_gain(init.crosstalk_db)),
+            print_gain: ramp(print_gain(init.print_db)),
             age: ramp(init.age),
             nr_amount: ramp(init.nr.amount),
             nr_brightness: ramp(init.nr.brightness),
@@ -555,13 +579,14 @@ impl Cassette {
         self.hiss.retarget(hiss_gain(c.hiss_db));
         self.azimuth.retarget(c.azimuth);
         self.crosstalk.retarget(crosstalk_gain(c.crosstalk_db));
+        self.print_gain.retarget(print_gain(c.print_db));
         self.age.retarget(c.age);
         self.nr_amount.retarget(c.nr.amount);
         self.nr_brightness.retarget(c.nr.brightness);
         self.nr_error.retarget(c.nr.level_error_db);
     }
 
-    fn ramps(&mut self) -> [&mut Ramp; 14] {
+    fn ramps(&mut self) -> [&mut Ramp; 15] {
         [
             &mut self.tone,
             &mut self.saturation,
@@ -573,6 +598,7 @@ impl Cassette {
             &mut self.hiss,
             &mut self.azimuth,
             &mut self.crosstalk,
+            &mut self.print_gain,
             &mut self.age,
             &mut self.nr_amount,
             &mut self.nr_brightness,
@@ -602,6 +628,7 @@ impl Cassette {
             &self.hiss,
             &self.azimuth,
             &self.crosstalk,
+            &self.print_gain,
             &self.age,
             &self.nr_amount,
             &self.nr_brightness,
@@ -622,6 +649,7 @@ impl Cassette {
         }
         self.transport.reset();
         self.dropouts.clear(self.seed);
+        self.print.clear();
         self.skew.clear();
         self.nr.reset();
     }
@@ -663,6 +691,7 @@ impl Cassette {
             };
         let azimuth = f64::from(self.azimuth.next());
         let crosstalk = self.crosstalk.next();
+        let printed = self.print_gain.next();
         let spacing = AGE_MAX_UM * f64::from(self.age.next()).powf(1.5)
             + GENERATION_UM * (generations - 1.0)
             + if azimuth > 0.0 {
@@ -690,6 +719,7 @@ impl Cassette {
             let shaped = channel.response.process(f64::from(saturated)) as f32;
             *y = saturated + tone * (shaped - saturated);
         }
+        let recorded = self.print.process(recorded, printed);
         let (moving, still) = self
             .transport
             .process_full(recorded, &wow, &flutter, follow);

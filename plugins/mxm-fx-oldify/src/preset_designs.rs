@@ -187,6 +187,7 @@ pub const DESIGNS: &[Design] = &[
                 ("dropout_intensity", 0.5),
                 ("dropout_width", 0.4),
                 ("age", 0.8),
+                ("print_through", -50.0),
                 ("azimuth", 30.0),
                 ("crosstalk", -38.0),
             ],
@@ -492,6 +493,7 @@ const IN_DECIBELS: &[&str] = &[
     "rumble",
     "hum_level",
     "groove_echo",
+    "print_through",
     "drive",
     "nr_level_error",
 ];
