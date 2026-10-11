@@ -300,7 +300,7 @@ pub const DESIGNS: &[Design] = &[
                 ("player", WIND_UP),
                 ("horn", 0.85),
                 ("dynamic_wear", 0.3),
-                ("surface_noise", -28.0),
+                ("surface_noise", -34.0),
                 ("crackle", 900.0),
                 ("clicks", 8.0),
                 ("scratches", 1.0),

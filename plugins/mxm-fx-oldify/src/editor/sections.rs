@@ -390,7 +390,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "noise_stops",
             &params.noise_stops,
-            "Stops the noise a moment after the sound does; off, it plays on in silence.",
+            "Stops the noise a couple of seconds after the sound does, never in the gaps between hits; off, it plays on in silence.",
         ),
         Bound::new(
             "variation",

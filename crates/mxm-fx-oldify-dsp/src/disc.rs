@@ -13,7 +13,7 @@
 //! tick and leaves a 78's crackle bright) and before the read-out (so it shares the music's wow):
 //!
 //! - **Surface noise**: noise rising about 3 dB an octave above 500 Hz, swishing with the turn
-//!   (a smooth level change fixed to the angle, a little different each revolution).
+//!   (a smooth level change fixed to the angle, up to [`SWISH`] in each of three harmonics).
 //! - **Crackle**: a dense bed of single-sample impulses with heavy-tailed (Pareto) sizes, up to
 //!   2,000 a second on a 78, where they fuse into the familiar fry.
 //! - **Clicks**: sparser, larger, each a burst of noise behind a sharp edge, 20 µs to 4 ms long,
@@ -57,6 +57,10 @@ pub const NOISE_OFF_DB: f32 = -80.0;
 pub const MAX_SURFACE_DB: f32 = -15.0;
 /// The loudest rumble.
 pub const MAX_RUMBLE_DB: f32 = -35.0;
+/// The swish's depth: each of its three harmonics of the turn moves the surface noise's level by
+/// up to this share, so the swing never passes 5.4 dB peak to peak, under the 6 dB estimated at
+/// most. Chosen.
+pub const SWISH: f64 = 0.1;
 /// The longest revolution, at 33⅓ rpm, in seconds: what the event tables are sized for.
 const LONGEST_TURN_S: f64 = 1.8;
 /// Crackle's size: the smallest impulse, and the tail's shape (Pareto α).
@@ -350,7 +354,7 @@ impl Disc {
         self.tilt = 0.0;
         self.rumble = [0.0; 2];
         for (amp, phase) in &mut self.swish {
-            *amp = 0.4 * unit(&mut self.rng);
+            *amp = SWISH * unit(&mut self.rng);
             *phase = TAU * unit(&mut self.rng);
         }
         let rng = &mut self.rng;
@@ -822,6 +826,32 @@ mod tests {
         );
         let db = 20.0 * rms(&rumble[RATE as usize..]).log10();
         assert!((db + 40.0).abs() < 3.0, "rumble at {db:.1} dB");
+    }
+
+    /// The surface noise's level by where the turn is, over many turns, swings by less than the
+    /// 6 dB estimated at most, whatever the seed.
+    #[test]
+    fn surface_noise_swishes_with_the_turn_by_a_few_decibels() {
+        let c = DiscControls {
+            speed: Speed::Shellac78,
+            surface_db: -40.0,
+            ..DiscControls::SILENT
+        };
+        let turn = RATE / Speed::Shellac78.hz();
+        for seed in 1..=4 {
+            let out = render(c, 16.0 * turn / RATE, seed);
+            let mut power = [(0.0, 0usize); 32];
+            for (i, v) in out.iter().enumerate() {
+                let bin = &mut power[((i as f64 / turn).fract() * 32.0) as usize];
+                bin.0 += v * v;
+                bin.1 += 1;
+            }
+            let mean: Vec<f64> = power.iter().map(|(p, n)| p / *n as f64).collect();
+            let high = mean.iter().copied().fold(0.0, f64::max);
+            let low = mean.iter().copied().fold(f64::MAX, f64::min);
+            let swing = 10.0 * (high / low).log10();
+            assert!((0.5..6.0).contains(&swing), "seed {seed}: {swing:.1} dB");
+        }
     }
 
     #[test]

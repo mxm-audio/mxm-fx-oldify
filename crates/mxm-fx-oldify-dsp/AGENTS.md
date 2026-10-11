@@ -136,7 +136,8 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   octave is squeezed alike in cut and replay.
 - **`disc`**: a disc that turns at its `Speed` and holds its defects at angles: per revolution
   tables of crackle (Pareto sizes) and clicks, `TURNOVER` of them renewed every turn; scratches and
-  cracks at fixed angles, varied a little each time; surface noise swishing with the turn; rumble.
+  cracks at fixed angles, varied a little each time; surface noise swishing with the turn
+  (`SWISH`); rumble.
   **A click is a burst of coloured noise behind a sharp edge, never a ring of one pitch**:
   20 µs to 4 ms, darker the longer, **its DC blocked**. A scratch is two such edges of opposite
   sign a scratch's width apart, the same burst every turn (its seed kept). **A crack is a larger,

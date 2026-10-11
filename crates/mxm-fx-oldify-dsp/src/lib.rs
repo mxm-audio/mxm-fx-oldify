@@ -66,8 +66,9 @@ pub const SMOOTHING_S: f32 = 0.010;
 /// An input sample at or under this counts as silence: −120 dBFS.
 pub const SILENCE: f32 = 1e-6;
 /// How long the noise keeps going after the input falls silent, then fades over
-/// [`NOISE_FADE_S`]. Chosen: long enough that a gap between notes keeps its hiss.
-pub const NOISE_HOLD_S: f32 = 0.25;
+/// [`NOISE_FADE_S`]. Chosen: longer than a beat at any usual tempo, so the exact silence a drum
+/// machine leaves between its hits keeps its noise, and the noise stops when the music does.
+pub const NOISE_HOLD_S: f32 = 2.0;
 /// The noise's fade in and out.
 pub const NOISE_FADE_S: f32 = 0.05;
 /// What the filters' tails need after the transport's line has emptied. Chosen, generous.
@@ -76,9 +77,10 @@ const FILTER_TAIL_S: f32 = 0.2;
 const FOLLOW_REFERENCE: f32 = 0.1;
 /// Following, the noise rises at most this many times its set level. Chosen.
 const FOLLOW_MOST: f32 = 2.0;
-/// The level follower's attack and release. Chosen.
+/// The level follower's attack and release. Chosen: it rises with a hit and falls over a
+/// passage, so it follows loud and quiet passages and does not pump with each hit.
 const FOLLOW_ATTACK_S: f32 = 0.010;
-const FOLLOW_RELEASE_S: f32 = 0.300;
+const FOLLOW_RELEASE_S: f32 = 1.0;
 
 /// Decibels to a linear gain, the same law as nice-plug's `util::db_to_gain` above its −100 dB
 /// floor, so a plugin's range and this crate's bounds are the same numbers.
@@ -1134,6 +1136,48 @@ mod tests {
         assert!((hiss_under(FOLLOW_REFERENCE / 10.0) + 60.0).abs() < 1.5);
         let most = -40.0 + 20.0 * FOLLOW_MOST.log10();
         assert!((hiss_under(0.9) - most).abs() < 1.5);
+    }
+
+    /// A drum machine leaves exact silence between its hits: the noise, following as Init does,
+    /// neither stops in the gaps nor pumps with each hit, within a decibel across the beat.
+    #[test]
+    fn noise_holds_steady_under_a_drum_machine() {
+        let beat = (RATE * 0.5) as usize;
+        let hit = (RATE * 0.05) as usize;
+        let drums: Vec<f32> = (0..8 * beat)
+            .map(|i| {
+                let t = (i % beat) as f32 / RATE;
+                if i % beat < hit {
+                    0.5 * (std::f32::consts::TAU * 100.0 * t).sin()
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+        let out = |hiss_db: f32| {
+            let controls = Controls {
+                noise_follows: Controls::INIT.noise_follows,
+                cassette: CassetteControls {
+                    hiss_db,
+                    ..CassetteControls::NEUTRAL
+                },
+                ..Controls::IDENTITY
+            };
+            let mut oldify = settled_at(controls);
+            let [left, _] = render(&mut oldify, &drums, &drums, controls);
+            left
+        };
+        let (hissed, clean) = (out(-40.0), out(CassetteControls::NEUTRAL.hiss_db));
+        // The hiss alone, by where in the beat it is, over the last six beats.
+        let mut power = [0.0f64; 8];
+        for i in 2 * beat..8 * beat {
+            let hiss = f64::from(hissed[i] - clean[i]);
+            power[(i % beat) * 8 / beat] += hiss * hiss;
+        }
+        let high = power.iter().copied().fold(0.0, f64::max);
+        let low = power.iter().copied().fold(f64::MAX, f64::min);
+        let swing = 10.0 * (high / low).log10();
+        assert!(swing < 1.0, "the hiss swings {swing:.1} dB across the beat");
     }
 
     #[test]

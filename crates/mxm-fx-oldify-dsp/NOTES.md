@@ -9,7 +9,7 @@ zero → the delayed input to the bit, a clean record → the delayed input at i
 cassette → the delayed input to −50 dB, an impulse at the latency, blocks of 1, 37 and 512 bit-identical
 through a quiet stretch and a retarget, a reset rendering the same again, finite bounded output at every extreme, Width
 zero → mono, the hiss at its level and silent after its hold, the hiss playing on with Noise stops
-off, following noise at three input levels, the ramps, the latency near 90 ms at 44.1, 48 and
+off, following noise at three input levels, noise steady through a drum machine's gaps, the ramps, the latency near 90 ms at 44.1, 48 and
 96 kHz, a warp's dip in step with its speed at the read, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
 tape table against the measurement, the curves' slope, bounds and asymmetry, treble saturating
 first, the oversampler's round trip, the transport's depths (the saw's, the random's and the
@@ -18,7 +18,7 @@ following flutter swung by a wow that moves no read, and its floor, the spacing 
 jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch and loss, the
 skew's exact split, and the noise reduction's lift, two-band's reach, exact decode, undecoded and
 off paths, mistracking and hiss reduction, the curves' shapes, exact cut-and-replay and the UK 78
-error, the disc's rate, heavy tail, turn-locked renewal, clicks that are noise and not a tone,
+error, the disc's rate, heavy tail, turn-locked renewal, a swish of a few decibels, clicks that are noise and not a tone,
 scratches the same tick every turn, clicks, scratches and cracks with no net push, a crack
 popping through the replay curve with under a tenth of itself below 100 Hz, cracks and levels,
 the groove's cited distortion and treble loss, Dynamic wear leaving a quiet groove exactly as it
@@ -38,7 +38,7 @@ the hiss's top and its 70 µs offset, the silence thresholds and times, the nois
 `GENERATION_UM`, the dropout laws, `WRONG_EQ_DB`, the noise reduction's thresholds, corners, skew
 and detector, the record's era Qs, limiter times, players, `TURNOVER`, the crackle, click, scratch
 and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S`,
-`CRACK_WIDTH_S`, `BLOCK_BELOW`, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
+`CRACK_WIDTH_S`, `BLOCK_BELOW`, `SWISH`, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
 from period compliance and tip mass), `STYLUS_Q`, `GIVE`, `KNEE`, `WALL_SPREAD_DB`,
 `WORN_DULL_HZ`, `ROUGH`, `ROUGH_HZ` and `WORN_RELEASE_S`, and the horn's feedbacks, mouths,
 heights, corners, `BLAST` and the gramophone's `PLAY_LENGTH` and soundbox are chosen here, not
@@ -100,6 +100,26 @@ falling to the arm's resonance at 8–15 Hz. It is real, but it lives below hear
 replay curve lifts it by 20 dB: measured after the curve, the ring sat 35–40 dB above the crack's
 own pop and peaked at −8 dBFS, and the owner heard it as a drum machine's bass drum, whether it
 started at hundreds of hertz or at tens (2026-10-09, 2026-10-10).
+
+## Noise that holds steady
+
+The owner, 2026-10-11, of drums through the acoustic 78 preset: "this preset is just pulsation
+noise". Measured on a drum machine's loop at 120 BPM, its samples ending in exact zero, three things
+pulsed, and each is now held by a test:
+
+- **The gate's hold outlasts a beat.** A hold shorter than the gap between hits (250 ms was tried)
+  stops the noise in every gap and brings it back with the next hit: a 65 dB swing each beat.
+  `NOISE_HOLD_S` stops the noise when the music stops, not between its hits.
+- **The follower falls over a passage.** Falling over 300 ms, Noise follows at Init's 30 % pumped
+  the noise by 3 dB with each hit; over `FOLLOW_RELEASE_S` it moves 0.3 dB, and still lifts a loud
+  passage and lowers a quiet one (`noise_holds_steady_under_a_drum_machine`).
+- **The swish is shallow.** The research estimates a swish of 0–6 dB a turn (`ops:
+  notes/oldify/research_notes`, the wear and noise). Each harmonic drawn up to 0.4 swung a median
+  9 dB and through silence on some seeds; on a 78 it pulses at 1.3 Hz and its harmonics. `SWISH`
+  keeps the swing under 5.4 dB, a median of 2 (`surface_noise_swishes_with_the_turn_by_a_few_decibels`).
+
+Through the acoustic band a drum kit loses its kick and its cymbals, and sat 4–7 dB under that
+preset's noise, so the preset's surface noise came down 6 dB.
 
 ## Dynamic wear
 
