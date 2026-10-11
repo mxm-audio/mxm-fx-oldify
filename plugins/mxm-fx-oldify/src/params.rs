@@ -32,6 +32,7 @@ use mxm_fx_oldify_dsp::player::Player;
 use mxm_fx_oldify_dsp::print::{MAX_PRINT_DB, PRINT_OFF_DB};
 use mxm_fx_oldify_dsp::record::{Era, MAX_ECCENTRICITY_MM, MAX_WARP, Mains, RecordControls};
 use mxm_fx_oldify_dsp::saturate::Character;
+use mxm_fx_oldify_dsp::skip::MAX_SKIPS;
 use mxm_fx_oldify_dsp::tape::{Grade, Tape};
 use mxm_fx_oldify_dsp::transport::Shape;
 use mxm_fx_oldify_dsp::{Controls, MAX_GAIN_DB, MAX_WIDTH, MIN_GAIN_DB, db_to_gain};
@@ -519,6 +520,18 @@ fn string_to_time() -> StringToValue {
     })
 }
 
+/// A chance in percent: to a tenth under ten, whole from it. The precision is chosen from the
+/// rounded reading, so the host's text round trip is idempotent at the switch.
+fn chance_to_string() -> ValueToString {
+    Arc::new(|value| {
+        if (value * 1_000.0).round() < 100.0 {
+            format!("{:.1} %", value * 100.0)
+        } else {
+            format!("{:.0} %", value * 100.0)
+        }
+    })
+}
+
 /// An angle in arc-minutes, read with the minute's own sign.
 fn arcmin_to_string() -> ValueToString {
     Arc::new(|value| format!("{value:.1}′"))
@@ -757,6 +770,12 @@ pub struct MxmFxOldifyParams {
     pub eccentricity: FloatParam,
     #[id = "warp"]
     pub warp: FloatParam,
+    /// The chance a turn that the stylus jumps back a groove.
+    #[id = "skips"]
+    pub skips: FloatParam,
+    /// Held, the stylus goes round one groove.
+    #[id = "stuck_groove"]
+    pub stuck_groove: BoolParam,
 
     // ---- Surface ----
     #[id = "crackle"]
@@ -962,6 +981,19 @@ impl Default for MxmFxOldifyParams {
             )
             .with_value_to_string(percent_to_string())
             .with_string_to_value(string_to_percent()),
+            // Skewed so a real record's few in a hundred turns get the first half of the travel.
+            skips: FloatParam::new(
+                "Skips",
+                record.skips,
+                FloatRange::Skewed {
+                    min: 0.0,
+                    max: MAX_SKIPS,
+                    factor: 0.5f32.ln() / (0.05 / MAX_SKIPS).ln(),
+                },
+            )
+            .with_value_to_string(chance_to_string())
+            .with_string_to_value(string_to_percent()),
+            stuck_groove: BoolParam::new("Stuck groove", record.stuck),
 
             crackle: per_second("Crackle", record.disc.crackle, MAX_CRACKLE_HZ, -2.0),
             crackle_level: gain_within(
@@ -1173,6 +1205,8 @@ impl MxmFxOldifyParams {
                 },
                 eccentricity_mm: self.eccentricity.value(),
                 warp: self.warp.value(),
+                skips: self.skips.value(),
+                stuck: self.stuck_groove.value(),
                 mains: self.hum.value().dsp(),
                 hum_db: hum_db(self.hum_level.value()),
                 horn: HornControls {
@@ -1473,7 +1507,7 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 38] = [
+        let continuous: [&FloatParam; 39] = [
             &params.horn,
             &params.horn_size,
             &params.age,
@@ -1493,6 +1527,7 @@ mod tests {
             &params.groove_distortion,
             &params.eccentricity,
             &params.warp,
+            &params.skips,
             &params.crackle,
             &params.crackle_level,
             &params.clicks,

@@ -13,7 +13,8 @@ zero → mono, the hiss at its level and silent after its hold, the hiss playing
 off, following noise at three input levels, noise steady through a drum machine's gaps, the ramps, the latency near 90 ms at 44.1, 48 and
 96 kHz, a warp's dip in step with its speed at the read, a tape stop falling in pitch to silence and
 starting again where an unstopped tape would be, its tail kept until its read has played out, a
-stop and a start the same at any block size, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
+stop and a start the same at any block size, a locked groove playing on while held and a skip keeping
+the tail, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
 tape table against the measurement, the curves' slope, bounds and asymmetry, treble saturating
 first, the oversampler's round trip, the transport's depths (the saw's, the random's and the
 warp's as the reference's), reach, the phase an extra wobble will have at the read, the random's straight reads between its points, seeds, unmoved read, a
@@ -27,7 +28,9 @@ popping through the replay curve with under a tenth of itself below 100 Hz whate
 the groove echo exactly a turn late on every disc at its level, the bass of it, exact when off and
 forgotten after a clear, the print-through's wrap and band a C60's, its copy exactly a wrap late
 at its level in its band and far under it outside, exact when off and forgotten after a clear,
-the groove's cited distortion and treble loss, Dynamic wear leaving a quiet groove exactly as it
+a stuck groove going round as heard and let go back in the music to the bit, skips at their
+chance only while the music plays, exact when off and forgotten after a clear, the groove's cited
+distortion and treble loss, Dynamic wear leaving a quiet groove exactly as it
 was, wearing a loud one, a loud bass note where a middle one as fast is not, and the two walls
 apart, the horn keeping only the middle at full, honking at `c / 2L` and staying bounded at full
 scale, the players' bands, crystal, radio and mono, and the record side's
@@ -45,7 +48,8 @@ the hiss's top and its 70 µs offset, the silence thresholds and times, the nois
 and detector, the record's era Qs, limiter times, players, `TURNOVER`, the crackle, click, scratch
 and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S`,
 `CRACK_WIDTH_S`, `BLOCK_BELOW`, `SWISH`, `CRACKLE_LEVEL_DB`, `MAX_ECHO_DB`, `ECHO_TOP_HZ`, `MAX_PRINT_DB`, the print-through's tape (a C60's
-length and thickness, the plan's hub), `BRAKE_S`, the stop's constant brake and the start's length, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
+length and thickness, the plan's hub), `BRAKE_S`, the stop's constant brake and the start's length, `MAX_SKIPS`, `JUMP_S`, `TICK_SIZE`,
+`RELOCK`, `MAX_REPEATS`, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
 from period compliance and tip mass), `STYLUS_Q`, `GIVE`, `KNEE`, `WALL_SPREAD_DB`,
 `WORN_DULL_HZ`, `ROUGH`, `ROUGH_HZ` and `WORN_RELEASE_S`, and the horn's feedbacks, mouths,
 heights, corners, `BLAST` and the gramophone's `PLAY_LENGTH` and soundbox are chosen here, not
@@ -293,6 +297,31 @@ print-through's wrap is the longer (`the_tail_outlasts_both_echoes`).
 **Why a clear only forgets.** The line holds 1.8 s, 11 MB at the top rate; a clear on the audio
 thread, as the chain going quiet makes, sets the count of samples written to zero, and anything
 older reads as silence. The print-through's line forgets the same way.
+
+## Skips
+
+**Why only back.** A stylus thrown forward a groove skips the turn ahead, which has not arrived;
+thrown back, it plays the last turn again, which has. So a skip is the jump back, and its end is
+the jump forward to where the record has got to, losing what it repeated, which a real skip loses
+too. The music is never late, and the latency never moves.
+
+**Why the line holds what was heard.** A repeated turn is the groove just played, its crackle,
+clicks and its own earlier skips included, and a locked groove goes round on itself: the line is
+written with the output, and going round is reading it a turn back. Physically the same groove
+gives the same sound, a little worn; here exactly the same, as a locked groove is heard.
+
+**Why a tick and a crossover.** The stylus lands with a click: one of the disc's own (the same
+burst, colour and DC block), not a new sound, written into the turn so a locked groove ticks once
+round. The crossover keeps the jump itself from clicking twice.
+
+**Why only while the music plays.** A skip repeats what is in the line; after the music stops it
+would repeat it into the silence. No skip starts in silence, a skip under way extends the tail by
+its turns to go, and the tail ends where the last one does
+(`a_locked_groove_plays_on_and_a_skip_keeps_the_tail`). A locked groove has no end: held, the chain
+is endless.
+
+**Why its range.** The plan's 0–5 % a turn is a battered record's; the travel goes on to one a turn
+for effect, skewed so 5 % is its middle.
 
 ## Tape stop
 

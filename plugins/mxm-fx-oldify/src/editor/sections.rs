@@ -185,6 +185,16 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "How warped the disc is, so the pitch lurches once a turn and the level dips with it. Real warps sit low on the knob; higher is for effect.",
         ),
         Bound::new(
+            "skips",
+            &params.skips,
+            "How often the stylus jumps back a groove, plays the last turn again and jumps on to where the record has got to. Real records skip a few times in a hundred turns at most; higher is for effect.",
+        ),
+        Bound::new(
+            "stuck_groove",
+            &params.stuck_groove,
+            "Locks the stylus in one groove: the last turn goes round and round while this is on. Off, it jumps on to where the record has got to.",
+        ),
+        Bound::new(
             "crackle",
             &params.crackle,
             "How many tiny crackles a second, from a clean disc to a worn 78.",
@@ -774,6 +784,8 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
         1 => stack(vec![
             knobs(ui, params, &["wear", "dynamic_wear", "side"]),
             knobs(ui, params, &["groove_distortion", "eccentricity", "warp"]),
+            knobs(ui, params, &["skips"]),
+            toggle_leaf(params, "stuck_groove"),
         ]),
         2 => stack(vec![
             knobs(ui, params, &["crackle", "crackle_level", "clicks"]),

@@ -5,7 +5,7 @@ Parent: [`../../AGENTS.md`](../../AGENTS.md)
 # Purpose
 
 Framework-free DSP for `mxm-fx-oldify`: the chain, the **cassette engine**, the **record
-engine**, and the blocks they are built from. Still to come: High quality; the record's skips. The design and the measurements
+engine**, and the blocks they are built from. Still to come: High quality. The design and the measurements
 behind it are private, `ops:notes/oldify/` (root *The design and its measurements are private*).
 
 # Ownership
@@ -39,7 +39,8 @@ input → Drive → [the record] → the cassette engine → ÷ Drive (a latency
 - **The noise** is gated by the chain: it holds `NOISE_HOLD_S` after the input falls silent and
   fades over `NOISE_FADE_S`. **Noise follows** scales it by the input's level against
   `FOLLOW_REFERENCE` (up to `FOLLOW_MOST` times), from a fast-up, slow-down follower. **Noise stops
-  in silence** off keeps it playing: the chain is then `endless`, never quiet, its tail `u32::MAX`.
+  in silence** off keeps it playing: the chain is then `endless`, never quiet, its tail `u32::MAX`;
+  so is a locked groove, going round while Stuck groove is held.
 
 ## The cassette engine (`cassette.rs`)
 
@@ -87,7 +88,7 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
 ```text
 the recording horn → era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall)
   → cutting curve → + the groove echo → groove (dynamic wear, tracing distortion, wear)
-  → + the disc's own sound
+  → + the disc's own sound → the stylus's skips
   → pickup → replay curve → player (scratch filter, valves, speaker, horn or radio)
   → the gramophone's horn
 ```
@@ -160,6 +161,12 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   bass (`ECHO_TOP_HZ` times the groove speed's share), up to `MAX_ECHO_DB`; only the echo after.
   The line is allocated in `new` for the slowest disc's turn, and a clear forgets it at no cost
   ([NOTES.md § The groove echo](NOTES.md#the-groove-echo)).
+- **`skip`**: the stylus jumping back a groove: the last turn as heard, from a line one turn of
+  the slowest disc long written with what was played, goes round again, then the stylus jumps on to
+  where the record has got to, so **nothing falls behind**. Skips is a chance a turn, drawn only
+  while the music plays; each repeats one turn, more with `RELOCK`, up to `MAX_REPEATS`. Stuck
+  groove, held, locks it. Each jump crosses over in `JUMP_S` and lands with one of the disc's
+  clicks (`disc::Voice`); a clear forgets the line at no cost ([NOTES.md § Skips](NOTES.md#skips)).
 - **`groove`**: tracing distortion `x / √(1 + c·x²)` on the lateral motion, `c` from the cited
   0.8 % (outer) and 4.5 % (inner) for an 18 µm tip, with the pinch effect's second harmonic in the
   vertical; a treble limit falling with the groove speed and with Wear (`FRESH_TOP_HZ`,
@@ -186,8 +193,8 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
 - **Silence in is exact zero out once the tails have run out**: the noise holds `NOISE_HOLD_S`
   after the input falls under `SILENCE`, fades over `NOISE_FADE_S`, and after `Oldify::tail` (the
   hold, or the longest echo if longer: the groove's turn on the slowest disc, the print-through's
-  wrap; and while a tape stop is under way, what its read will have fallen behind) every memory is
-  cleared and the chain is **quiet**. A quiet chain fed silence costs the input scan only
+  wrap; while a tape stop is under way, what its read will have fallen behind; while a skip goes
+  round, its turns to go) every memory is cleared and the chain is **quiet**. A quiet chain fed silence costs the input scan only
   and gives exact zero; the input returning wakes it, with every seed back at its start.
 - **Mix zero is the dry input delayed by the latency, to the bit.** A clean modern record on a
   modern deck is the input delayed, at its level.

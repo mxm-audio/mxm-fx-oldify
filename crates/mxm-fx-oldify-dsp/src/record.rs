@@ -3,13 +3,14 @@
 //! ```text
 //! the recording horn → era (mono, the recording's band, the cutting limiter, the cutter, a brick
 //!   wall) → cutting curve → + the groove echo → groove (dynamic wear, tracing distortion, wear)
-//!   → + the disc's own sound → pickup → replay curve → player (scratch filter, valves, speaker,
-//!   horn or radio) → the gramophone's horn
+//!   → + the disc's own sound → the stylus's skips → pickup → replay curve → player (scratch
+//!   filter, valves, speaker, horn or radio) → the gramophone's horn
 //! ```
 //!
 //! The two horns are [`crate::horn`]'s, set by Horn and Horn size on any record and any player.
 //! The groove echo, the music a turn before, is [`crate::echo`]'s: cut into the groove, it is worn
-//! and read as the music is.
+//! and read as the music is. The skips are [`crate::skip`]'s: the stylus jumping back a groove,
+//! the groove and its own sound with it, before the pickup.
 //!
 //! The record's read-out (eccentricity, the turntable's wobble, the warp) is the chain's one moving
 //! read, shared with the cassette ([`Record::wobbles`]): a time-warp passes through the curves and
@@ -34,6 +35,7 @@ use crate::echo::{GrooveEcho, MAX_ECHO_DB};
 use crate::groove::{Groove, GrooveControls};
 use crate::horn::{Horn, HornControls};
 use crate::player::{Player, PlayerChain};
+use crate::skip::{MAX_SKIPS, Skips};
 use crate::transport::{Shape, Wobble, random_rms_share};
 use crate::{Ramp, SMOOTHING_S, warp};
 use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2, TAU};
@@ -182,6 +184,10 @@ pub struct RecordControls {
     pub horn: HornControls,
     /// The groove echo's level under the music, [`NOISE_OFF_DB`] (off) ..= [`MAX_ECHO_DB`].
     pub echo_db: f32,
+    /// The chance a turn that the stylus jumps back a groove, 0 ..= [`MAX_SKIPS`].
+    pub skips: f32,
+    /// Stuck groove held: the stylus goes round the last turn until it is let go.
+    pub stuck: bool,
 }
 
 impl RecordControls {
@@ -199,6 +205,8 @@ impl RecordControls {
         hum_db: NOISE_OFF_DB,
         horn: HornControls::OFF,
         echo_db: NOISE_OFF_DB,
+        skips: 0.0,
+        stuck: false,
     };
 
     /// The init patch's record: a played LP on a modern deck.
@@ -250,6 +258,11 @@ impl RecordControls {
                 self.echo_db.clamp(NOISE_OFF_DB, MAX_ECHO_DB)
             } else {
                 NOISE_OFF_DB
+            },
+            skips: if self.skips.is_finite() {
+                self.skips.clamp(0.0, MAX_SKIPS)
+            } else {
+                0.0
             },
             ..self
         }
@@ -332,6 +345,7 @@ pub struct Record {
     echo: GrooveEcho,
     /// The echo's gain, ramped.
     echo_gain: Ramp,
+    skips: Skips,
     /// The warp, ramped: the level's dip follows it.
     warp: Ramp,
     targets: RecordControls,
@@ -364,6 +378,7 @@ impl Record {
             horn: Horn::new(sample_rate),
             echo: GrooveEcho::new(sample_rate),
             echo_gain: Ramp::settled_at(0.0, steps),
+            skips: Skips::new(sample_rate, seed),
             warp: Ramp::settled_at(0.0, steps),
             targets: RecordControls::CLEAN,
         }
@@ -372,6 +387,17 @@ impl Record {
     pub fn reseed(&mut self, seed: u32) {
         self.disc.reseed(seed);
         self.groove.reseed(seed);
+        self.skips.reseed(seed);
+    }
+
+    /// True while the groove is locked: Stuck groove held, the stylus going round.
+    pub fn locked(&self) -> bool {
+        self.skips.locked()
+    }
+
+    /// How much longer a skip under way sounds, samples ([`Skips::left`]).
+    pub fn skip_left(&self) -> u64 {
+        self.skips.left()
     }
 
     /// Whether the record makes any sound of its own: the disc's, or hum.
@@ -417,6 +443,7 @@ impl Record {
         self.player.reset();
         self.horn.clear();
         self.echo.clear();
+        self.skips.clear();
     }
 
     pub fn set_controls(&mut self, c: RecordControls) {
@@ -575,10 +602,17 @@ impl Record {
         } else {
             1.0
         };
-        let picked = self.player.pickup([
-            (f64::from(grooved[0]) + own) * lift,
-            (f64::from(grooved[1]) + own) * lift,
-        ]);
+        // The stylus finds the groove, or jumps it, the disc's own sound with it; only music
+        // playing starts a skip.
+        let playing = frame[0].abs() > crate::SILENCE || frame[1].abs() > crate::SILENCE;
+        let found = self.skips.process(
+            [f64::from(grooved[0]) + own, f64::from(grooved[1]) + own],
+            c.skips,
+            c.stuck,
+            c.disc.speed,
+            playing,
+        );
+        let picked = self.player.pickup([found[0] * lift, found[1] * lift]);
         let replayed = [
             self.replay[0].process(picked[0]),
             self.replay[1].process(picked[1]),

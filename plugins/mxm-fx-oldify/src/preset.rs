@@ -38,6 +38,8 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("groove_distortion", &self.groove_distortion),
             ("eccentricity", &self.eccentricity),
             ("warp", &self.warp),
+            ("skips", &self.skips),
+            ("stuck_groove", &self.stuck_groove),
             ("crackle", &self.crackle),
             ("crackle_level", &self.crackle_level),
             ("clicks", &self.clicks),

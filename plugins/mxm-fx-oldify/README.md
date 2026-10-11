@@ -15,7 +15,8 @@ off is dimmed but can still be set up.
 - **Vinyl groove** — wear, and dynamic wear, which wears the loud passages more (loud bass and sharp
   treble go gritty, distorted and dull); where on the side the needle is, groove distortion, an
   off-centre hole, and a warp that lurches the pitch and dips the level once a turn, going far past
-  any real record.
+  any real record; skips, the needle jumping back a groove to play the last turn again, and Stuck
+  groove, which locks it there until let go.
 - **Vinyl surface** — crackle, as dense and as loud as you like, clicks, surface noise, scratches
   and cracks that come round once a turn and move on after half a minute or so, rumble, mains
   hum, and the groove's echo of the music a turn later.

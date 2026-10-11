@@ -193,6 +193,10 @@
       "v": 0.4,
       "text": "40 %"
     },
+    "skips": {
+      "v": 0.0,
+      "text": "0.0 %"
+    },
     "stop_sync": {
       "v": 0.0,
       "text": "Off"
@@ -200,6 +204,10 @@
     "stop_time": {
       "v": 0.611851,
       "text": "1.50 s"
+    },
+    "stuck_groove": {
+      "v": 0.0,
+      "text": "Off"
     },
     "surface_noise": {
       "v": 0.5277962,

@@ -265,13 +265,25 @@ fn every_cassette_control_changes_the_sound() {
     // music a turn late: a second on a 78 holds a whole turn after the latency, so each is heard.
     let shellac = [record[0], record[1], ("disc", 1.0)];
     let shellac_reference = render_moved_for(&shellac, LOUD, 48_000);
-    for moved in [("scratches", 1.0), ("cracks", 1.0), ("groove_echo", 1.0)] {
+    for moved in [
+        ("scratches", 1.0),
+        ("cracks", 1.0),
+        ("groove_echo", 1.0),
+        ("stuck_groove", 1.0),
+    ] {
         let heard = difference(
             &render_moved_for(&[shellac[0], shellac[1], shellac[2], moved], LOUD, 48_000),
             &shellac_reference,
         );
         assert!(heard > 1e-3, "{} changed nothing: {heard}", moved.0);
     }
+    // Skips, at their most about one a turn, are heard within a few turns of a 78.
+    let skipping = [shellac[0], shellac[1], shellac[2], ("skips", 1.0)];
+    let skipped = difference(
+        &render_moved_for(&skipping, LOUD, 240_000),
+        &render_moved_for(&shellac, LOUD, 240_000),
+    );
+    assert!(skipped > 1e-3, "skips changed nothing: {skipped}");
     // Horn size is heard through a horn.
     let horned = [record[0], record[1], ("horn", 1.0)];
     let horned_reference = render_moved(&horned, LOUD);

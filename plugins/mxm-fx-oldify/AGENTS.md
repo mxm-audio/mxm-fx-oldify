@@ -44,6 +44,8 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | Vinyl groove | `wear`, `dynamic_wear`, `side` | Wear, Dynamic wear, Side position | 0–100 %, linear; Dynamic wear wears the loud passages beyond the rest; side runs from the outer groove to the inner |
 | | `groove_distortion` | Groove distortion | 0–200 %, linear; 100 % is the groove's own |
 | | `eccentricity` | Eccentricity | 0…`record::MAX_ECCENTRICITY_MM` mm, skewed so the everyday tenths get the first half |
+| | `skips` | Skips | 0…`skip::MAX_SKIPS` a turn, read in % (a tenth under 10 %), skewed so 5 % is mid-travel: the chance a turn the stylus jumps back a groove |
+| | `stuck_groove` | Stuck groove | Off / On: on, the stylus goes round the last turn; off, it jumps on |
 | | `warp` | Warp | 0…`record::MAX_WARP`, read in %: 100 % is the measured reference's full warp, past it for effect; skewed as Eccentricity, so real warps get the first half |
 | Vinyl surface | `crackle`, `clicks` | Crackle, Clicks | 0…`disc::MAX_CRACKLE_HZ` / `MAX_CLICKS_HZ` a second, read `60/s`, skewed so the low counts get the travel |
 | | `crackle_level` | Crackle level | ±`disc::CRACKLE_LEVEL_DB`, stored as linear gain, 0 dB mid-travel, read in dB: the crackle's size against a typical record's |
@@ -118,7 +120,7 @@ them Off (`preset::TEMPO_SYNC_IDS`, `mxm_preset::add_switches_off` in `filter_st
   (`activation_reports_the_chains_latency_at_the_hosts_rate`). Mix zero is the dry input delayed by
   it (`mix_zero_is_the_dry_input_delayed_by_the_latency`).
 - **The tail is the DSP's.** While `Oldify::endless()` — Noise stops in silence off, with the
-  medium's own noise on — the status is **`KeepAlive`** ([NOTES.md §
+  medium's own noise on, or a groove locked — the status is **`KeepAlive`** ([NOTES.md §
   KeepAlive](NOTES.md#keepalive)). Otherwise the shell counts the samples since the input was last
   above the DSP's `SILENCE`, as the DSP counts them, and reports `Tail(n)` with what is left of
   `Oldify::tail()` until the output is exact zero, then `Normal`, so a host may sleep the effect
@@ -133,7 +135,7 @@ takes a switch or a count as it comes ([NOTES.md § Smoothing](NOTES.md#smoothin
 
 ## Still to come
 
-- The record's skips; High quality. None is a parameter yet: each id is fixed when its control arrives.
+- High quality. None is a parameter yet: each id is fixed when its control arrives.
 
 ## Presets
 

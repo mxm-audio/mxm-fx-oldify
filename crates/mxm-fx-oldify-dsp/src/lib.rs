@@ -42,6 +42,7 @@ pub mod player;
 pub mod print;
 pub mod record;
 pub mod saturate;
+pub mod skip;
 pub mod spacing;
 pub mod tape;
 pub mod transport;
@@ -376,16 +377,29 @@ impl Oldify {
         }
     }
 
-    /// The silence after which every memory is cleared: the fixed tail, and a stop's lag to come.
+    /// The silence after which every memory is cleared: the fixed tail and a stop's lag to come,
+    /// or, while a skip goes round, its turns to go and the chain's own tail after them.
     fn quiet_after(&self) -> u64 {
-        self.quiet_after + self.cassette.stop_lag_to_come()
+        let tail = self.quiet_after + self.cassette.stop_lag_to_come();
+        let skipping = if self.record_on {
+            self.record.skip_left()
+        } else {
+            0
+        };
+        if skipping == 0 {
+            return tail;
+        }
+        let after = 2 * self.latency as u64 + (f64::from(FILTER_TAIL_S) * self.rate).ceil() as u64;
+        tail.max(self.silent_for.saturating_add(skipping + after))
     }
 
-    /// True while the output never falls silent: noise that plays on in silence.
+    /// True while the output never falls silent: noise that plays on in silence, or a locked
+    /// groove going round.
     pub fn endless(&self) -> bool {
-        !self.noise_stops
-            && ((self.tape_on && self.cassette.hisses())
-                || (self.record_on && self.record.sounds()))
+        (self.record_on && self.record.locked())
+            || (!self.noise_stops
+                && ((self.tape_on && self.cassette.hisses())
+                    || (self.record_on && self.record.sounds())))
     }
 
     /// Asks for new controls; each continuous one that changed ramps there over [`SMOOTHING_S`].
@@ -731,6 +745,8 @@ mod tests {
             mains: crate::record::Mains::Sixty,
             hum_db: -20.0,
             echo_db: crate::echo::MAX_ECHO_DB,
+            skips: crate::skip::MAX_SKIPS,
+            stuck: false,
             horn: crate::horn::HornControls {
                 amount: 1.0,
                 length_m: crate::horn::HORN_SHORTEST_M,
@@ -1021,6 +1037,7 @@ mod tests {
                 },
                 eccentricity_mm: 1.0,
                 echo_db: -30.0,
+                skips: 0.5,
                 ..RecordControls::INIT
             },
             ..first
@@ -1103,6 +1120,49 @@ mod tests {
             .map(|i| (out[i] - unstopped[i]).abs())
             .fold(0.0f32, f32::max);
         assert!(apart < 1e-4, "{apart} from the unstopped tape");
+    }
+
+    /// **A locked groove plays on while it is held, and a skip under way keeps the tail**: held,
+    /// the chain is endless and the last turn goes round in silence; let go, and with the record
+    /// skipping all it can, the output is exact zero after the tail.
+    #[test]
+    fn a_locked_groove_plays_on_and_a_skip_keeps_the_tail() {
+        let playing = Controls {
+            record_on: true,
+            tape_on: false,
+            record: RecordControls {
+                disc: crate::disc::DiscControls {
+                    speed: crate::disc::Speed::Shellac78,
+                    ..crate::disc::DiscControls::SILENT
+                },
+                skips: crate::skip::MAX_SKIPS,
+                ..RecordControls::CLEAN
+            },
+            ..Controls::IDENTITY
+        };
+        let locked = Controls {
+            record: RecordControls {
+                stuck: true,
+                ..playing.record
+            },
+            ..playing
+        };
+        let mut oldify = settled_at(playing);
+        let source = noise(2 * RATE as usize, 6);
+        render(&mut oldify, &source, &source, locked);
+        assert!(oldify.endless() && oldify.tail() == u32::MAX);
+        let quiet = vec![0.0; 4 * RATE as usize];
+        let [left, _] = render(&mut oldify, &quiet, &quiet, locked);
+        assert!(
+            left[3 * RATE as usize..].iter().any(|s| s.abs() > 1e-3),
+            "it stopped"
+        );
+        let source = noise(2 * RATE as usize, 7);
+        render(&mut oldify, &source, &source, playing);
+        let tail = oldify.tail() as usize;
+        let silence = vec![0.0; tail + 512];
+        let [left, right] = render(&mut oldify, &silence, &silence, playing);
+        assert!(left[tail..].iter().chain(&right[tail..]).all(|s| *s == 0.0));
     }
 
     /// **A stop under way keeps the tail until its read has played out**: the read falls behind,

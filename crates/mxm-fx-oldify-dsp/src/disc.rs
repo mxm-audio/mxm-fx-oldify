@@ -207,7 +207,7 @@ fn unit(rng: &mut Rng) -> f64 {
 
 /// A burst of coloured noise behind a sharp edge: a click, a scratch's or a crack's edge.
 #[derive(Clone, Copy, Debug, Default)]
-struct Burst {
+pub(crate) struct Burst {
     /// The edge's height, signed: the click's polarity.
     size: f64,
     seconds: f64,
@@ -219,7 +219,7 @@ struct Burst {
 
 impl Burst {
     /// A click: its length log-uniform across Rayner & Godsill's range, darker the longer it is.
-    fn click(size: f64, rng: &mut Rng) -> Self {
+    pub(crate) fn click(size: f64, rng: &mut Rng) -> Self {
         let seconds = CLICK_SHORTEST_S * (CLICK_LONGEST_S / CLICK_SHORTEST_S).powf(unit(rng));
         Self {
             size,
@@ -239,8 +239,8 @@ impl Burst {
 
 /// One sounding burst.
 #[derive(Clone, Copy, Debug, Default)]
-struct Voice {
-    live: bool,
+pub(crate) struct Voice {
+    pub(crate) live: bool,
     /// Samples before it starts.
     wait: u32,
     /// The edge still to come, the noise's level and its per-sample decay, the noise's generator,
@@ -255,6 +255,56 @@ struct Voice {
     block: f64,
     low: f64,
     gain: f64,
+}
+
+impl Voice {
+    /// A voice playing `burst` at `scale` of its size, after `wait_s`, at `rate`.
+    pub(crate) fn new(rate: f64, burst: &Burst, scale: f64, wait_s: f64) -> Self {
+        let corner = burst.hz.min(0.45 * rate);
+        let colour = (-TAU * corner / rate).exp();
+        let size = burst.size * scale;
+        Self {
+            live: true,
+            wait: (wait_s * rate) as u32,
+            edge: size,
+            grit: GRIT * size.abs(),
+            // Down by e three times over its length.
+            grit_decay: (-3.0 / (burst.seconds * rate).max(1.0)).exp(),
+            noise: Rng::new(burst.seed),
+            colour,
+            tone: 0.0,
+            block: (-TAU * corner / BLOCK_BELOW / rate).exp(),
+            low: 0.0,
+            // A one-pole's output variance is (1 − a) / (1 + a) of white's.
+            gain: ((1.0 + colour) / (1.0 - colour)).sqrt(),
+        }
+    }
+
+    /// The voice's next sample: nothing while it waits, then the edge and the noise behind it,
+    /// through the burst's colour, its DC taken out; it plays on until its filters have emptied.
+    #[inline]
+    pub(crate) fn play(&mut self) -> f64 {
+        if self.wait > 0 {
+            self.wait -= 1;
+            return 0.0;
+        }
+        let white = if self.grit != 0.0 {
+            self.noise.bipolar() * 3f64.sqrt()
+        } else {
+            0.0
+        };
+        let drive = self.edge + self.grit * white;
+        self.edge = 0.0;
+        self.tone = self.colour * self.tone + (1.0 - self.colour) * drive;
+        self.low = self.block * self.low + (1.0 - self.block) * self.tone;
+        let out = self.gain * (self.tone - self.low);
+        self.grit *= self.grit_decay;
+        if self.grit.abs() < 1e-7 {
+            self.grit = 0.0;
+        }
+        self.live = self.grit != 0.0 || self.tone.abs() + self.low.abs() > 1e-9;
+        out
+    }
 }
 
 /// A gap the stylus crosses, a scratch or a crack: where it sits, its near edge's burst, the far
@@ -495,24 +545,7 @@ impl Disc {
 
     /// A voice playing `burst` at `scale` of its size, after `wait_s`.
     fn voice(&self, burst: &Burst, scale: f64, wait_s: f64) -> Voice {
-        let corner = burst.hz.min(0.45 * self.rate);
-        let colour = (-TAU * corner / self.rate).exp();
-        let size = burst.size * scale;
-        Voice {
-            live: true,
-            wait: (wait_s * self.rate) as u32,
-            edge: size,
-            grit: GRIT * size.abs(),
-            // Down by e three times over its length.
-            grit_decay: (-3.0 / (burst.seconds * self.rate).max(1.0)).exp(),
-            noise: Rng::new(burst.seed),
-            colour,
-            tone: 0.0,
-            block: (-TAU * corner / BLOCK_BELOW / self.rate).exp(),
-            low: 0.0,
-            // A one-pole's output variance is (1 − a) / (1 + a) of white's.
-            gain: ((1.0 + colour) / (1.0 - colour)).sqrt(),
-        }
+        Voice::new(self.rate, burst, scale, wait_s)
     }
 
     /// Starts a voice, stealing the quietest when all are busy.
@@ -584,27 +617,7 @@ impl Disc {
 
         // The voices.
         for voice in self.voices.iter_mut().filter(|v| v.live) {
-            if voice.wait > 0 {
-                voice.wait -= 1;
-                continue;
-            }
-            // The edge and the noise behind it, through the burst's colour, its DC taken out; it
-            // plays on until its filters have emptied.
-            let white = if voice.grit != 0.0 {
-                voice.noise.bipolar() * 3f64.sqrt()
-            } else {
-                0.0
-            };
-            let drive = voice.edge + voice.grit * white;
-            voice.edge = 0.0;
-            voice.tone = voice.colour * voice.tone + (1.0 - voice.colour) * drive;
-            voice.low = voice.block * voice.low + (1.0 - voice.block) * voice.tone;
-            out += voice.gain * (voice.tone - voice.low);
-            voice.grit *= voice.grit_decay;
-            if voice.grit.abs() < 1e-7 {
-                voice.grit = 0.0;
-            }
-            voice.live = voice.grit != 0.0 || voice.tone.abs() + voice.low.abs() > 1e-9;
+            out += voice.play();
         }
 
         // Surface noise, swishing with the turn.
