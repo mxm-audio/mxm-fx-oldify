@@ -23,6 +23,7 @@ use mxm_fx_oldify_dsp::disc::{
     MAX_SCRATCHES, MAX_SURFACE_DB, NOISE_OFF_DB, Speed,
 };
 use mxm_fx_oldify_dsp::dropouts::DropoutControls;
+use mxm_fx_oldify_dsp::echo::MAX_ECHO_DB;
 use mxm_fx_oldify_dsp::groove::GrooveControls;
 use mxm_fx_oldify_dsp::horn::{HORN_LONGEST_M, HORN_SHORTEST_M, HornControls};
 use mxm_fx_oldify_dsp::nr::{MAX_LEVEL_ERROR_DB, NoiseReduction, NrControls};
@@ -673,6 +674,11 @@ pub fn hum_db(gain: f32) -> f32 {
     level_db(gain, NOISE_OFF_DB, MAX_HUM_DB)
 }
 
+/// The groove echo's level for the DSP ([`level_db`]).
+pub fn echo_db(gain: f32) -> f32 {
+    level_db(gain, NOISE_OFF_DB, MAX_ECHO_DB)
+}
+
 /// A tempo sync's switch: On/Off, as every sync in the collection reads.
 fn sync(name: &'static str) -> BoolParam {
     BoolParam::new(name, false)
@@ -737,6 +743,9 @@ pub struct MxmFxOldifyParams {
     /// Stored as linear gain; the bottom of the travel is Off.
     #[id = "hum_level"]
     pub hum_level: FloatParam,
+    /// Stored as linear gain; the bottom of the travel is Off.
+    #[id = "groove_echo"]
+    pub groove_echo: FloatParam,
 
     // ---- Tape ----
     /// The tape's switch: off, its cards are dimmed and it is out of the chain.
@@ -937,6 +946,7 @@ impl Default for MxmFxOldifyParams {
             rumble: off_level("Rumble", record.disc.rumble_db, NOISE_OFF_DB, MAX_RUMBLE_DB),
             hum: EnumParam::new("Hum", HumChoice::Off),
             hum_level: off_level("Hum level", record.hum_db, NOISE_OFF_DB, MAX_HUM_DB),
+            groove_echo: off_level("Groove echo", record.echo_db, NOISE_OFF_DB, MAX_ECHO_DB),
 
             tape_on: BoolParam::new("Tape", init.tape_on),
             tape: EnumParam::new("Tape type", TapeChoice::TypeI),
@@ -1093,6 +1103,7 @@ impl MxmFxOldifyParams {
                     amount: self.horn.value(),
                     length_m: self.horn_size.value(),
                 },
+                echo_db: echo_db(self.groove_echo.value()),
             },
             cassette: CassetteControls {
                 tape: self.tape.value().dsp(),
@@ -1196,12 +1207,12 @@ mod tests {
         assert_eq!(params.width.normalized_value_to_string(1.0, true), "200 %");
     }
 
-    /// **The bottom of Hiss and of Crosstalk is Off, and Off plays nothing**; wherever the knob
+    /// **The bottom of every level with an Off is Off, and Off plays nothing**; wherever the knob
     /// reads Off, the DSP gets its off level, and nowhere else.
     #[test]
     fn a_level_reads_off_at_the_bottom_and_off_plays_nothing() {
         let params = MxmFxOldifyParams::default();
-        let levels: [Level<'_>; 5] = [
+        let levels: [Level<'_>; 6] = [
             (&params.hiss, hiss_db, HISS_OFF_DB, "-30.0 dB"),
             (
                 &params.crosstalk,
@@ -1212,6 +1223,7 @@ mod tests {
             (&params.surface_noise, surface_db, NOISE_OFF_DB, "-15.0 dB"),
             (&params.rumble, rumble_db, NOISE_OFF_DB, "-35.0 dB"),
             (&params.hum_level, hum_db, NOISE_OFF_DB, "-20.0 dB"),
+            (&params.groove_echo, echo_db, NOISE_OFF_DB, "-12.0 dB"),
         ];
         for (param, to_db, off_db, top) in levels {
             assert_eq!(param.normalized_value_to_string(0.0, true), "Off");
@@ -1345,7 +1357,7 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 35] = [
+        let continuous: [&FloatParam; 36] = [
             &params.horn,
             &params.horn_size,
             &params.age,
@@ -1369,6 +1381,7 @@ mod tests {
             &params.surface_noise,
             &params.rumble,
             &params.hum_level,
+            &params.groove_echo,
             &params.nr_amount,
             &params.nr_brightness,
             &params.nr_level_error,

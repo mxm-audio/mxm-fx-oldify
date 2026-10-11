@@ -112,4 +112,4 @@ clap-validator validate "target/bundled/mxm-fx-oldify.clap"
 
 | Doc | Scope |
 |---|---|
-| [`mxm-fx-oldify/AGENTS.md`](mxm-fx-oldify/AGENTS.md) | Identity, the fifty-nine permanent parameters and the retired `medium` and `output`, Init as the DSP's init patch, tempo sync, latency and the endless tail, what is still to come, the factory bank, the empty control map, telemetry and the eight-card editor with its two group switches |
+| [`mxm-fx-oldify/AGENTS.md`](mxm-fx-oldify/AGENTS.md) | Identity, the sixty permanent parameters and the retired `medium` and `output`, Init as the DSP's init patch, tempo sync, latency and the endless tail, what is still to come, the factory bank, the empty control map, telemetry and the eight-card editor with its two group switches |

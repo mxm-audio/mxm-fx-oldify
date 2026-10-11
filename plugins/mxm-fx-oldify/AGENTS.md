@@ -50,6 +50,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `surface_noise`, `rumble` | Surface noise, Rumble | `disc::NOISE_OFF_DB` (Off)…`MAX_SURFACE_DB` / `MAX_RUMBLE_DB`, as Hiss |
 | | `scratches`, `cracks` | Scratches, Cracks | Integers 0…`disc::MAX_SCRATCHES` / `MAX_CRACKS`; Cracks drawn as buttons |
 | | `hum`, `hum_level` | Hum, Hum level | Off / 50 Hz / 60 Hz (`off`, `50-hz`, `60-hz`); the level `NOISE_OFF_DB` (Off)…`params::MAX_HUM_DB`, as Hiss |
+| | `groove_echo` | Groove echo | `NOISE_OFF_DB` (Off)…`echo::MAX_ECHO_DB`, as Hiss: the music a turn of the disc later, under it |
 | Tape | `tape_on` | Tape | Off / On: the tape in the chain |
 | | `tape` | Tape type | Type I / Type II / Type IV (`type-1`, `type-2`, `type-4`) |
 | | `grade` | Grade | Economy / Standard / High / Reference (`economy`, `standard`, `high`, `reference`) |
@@ -127,7 +128,7 @@ takes a switch or a count as it comes ([NOTES.md § Smoothing](NOTES.md#smoothin
 
 ## Still to come
 
-- The record's groove echo and skips; the cassette's print-through, tape stop and High quality. None is a parameter yet: each id is fixed when its control arrives.
+- The record's skips; the cassette's print-through, tape stop and High quality. None is a parameter yet: each id is fixed when its control arrives.
 
 ## Presets
 

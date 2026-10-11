@@ -17,8 +17,8 @@ off is dimmed but can still be set up.
   off-centre hole, and a warp that lurches the pitch and dips the level once a turn, going far past
   any real record.
 - **Vinyl surface** — crackle, as dense and as loud as you like, clicks, surface noise, scratches
-  and cracks that come round once a turn and move on after half a minute or so, rumble, and mains
-  hum.
+  and cracks that come round once a turn and move on after half a minute or so, rumble, mains
+  hum, and the groove's echo of the music a turn later.
 - **Tape** — the Tape switch; Type I, II or IV at four grades (twelve measured responses) and how
   much of it is heard; saturation, Soft or Hard; up to four generations of copies, each adding its
   own hiss, wobble and dullness; Age, worn from new to battered.

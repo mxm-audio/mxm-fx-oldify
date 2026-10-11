@@ -227,11 +227,11 @@ fn every_cassette_control_changes_the_sound() {
             moved.0
         );
     }
-    // A scratch ticks and a crack pops once a turn at its own angle: a second on a 78 holds a
-    // whole turn after the latency, so wherever one sits it is heard.
+    // A scratch ticks and a crack pops once a turn at its own angle, and the groove echoes the
+    // music a turn late: a second on a 78 holds a whole turn after the latency, so each is heard.
     let shellac = [record[0], record[1], ("disc", 1.0)];
     let shellac_reference = render_moved_for(&shellac, LOUD, 48_000);
-    for moved in [("scratches", 1.0), ("cracks", 1.0)] {
+    for moved in [("scratches", 1.0), ("cracks", 1.0), ("groove_echo", 1.0)] {
         let heard = difference(
             &render_moved_for(&[shellac[0], shellac[1], shellac[2], moved], LOUD, 48_000),
             &shellac_reference,

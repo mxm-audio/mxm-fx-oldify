@@ -52,7 +52,7 @@ scratches and cracks share one, so turning one of those off reshuffles the rest.
 Eight Effects cards in signal order: **Vinyl** (the Vinyl switch; Disc; Era, Player, Cut curve
 and Replay curve as lists; Horn, Horn size), **Vinyl groove** (Wear, Dynamic wear, Side position; Groove
 distortion, Eccentricity, Warp), **Vinyl surface** (Crackle, Crackle level, Clicks; Surface noise, Scratches, Rumble; Cracks; Hum;
-Hum level), **Tape** (the Tape switch; Tape type; Grade; Tape tone, Saturation; Character;
+Hum level, Groove echo), **Tape** (the Tape switch; Tape type; Grade; Tape tone, Saturation; Character;
 Generations; Age), **Tape transport** (Wow, Wow rate and its sync; Wow shape; Flutter, Flutter rate
 and its sync; Flutter shape; Flutter follows wow; Flange), **Tape noise** (Hiss; Noise reduction;
 Decode; NR amount, NR brightness, NR level error; Dropouts, Dropout intensity, Dropout width),

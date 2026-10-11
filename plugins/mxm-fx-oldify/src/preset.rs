@@ -47,6 +47,7 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("rumble", &self.rumble),
             ("hum", &self.hum),
             ("hum_level", &self.hum_level),
+            ("groove_echo", &self.groove_echo),
             ("tape_on", &self.tape_on),
             ("tape", &self.tape),
             ("grade", &self.grade),

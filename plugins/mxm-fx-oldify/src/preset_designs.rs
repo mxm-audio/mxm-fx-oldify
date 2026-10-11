@@ -491,6 +491,7 @@ const IN_DECIBELS: &[&str] = &[
     "surface_noise",
     "rumble",
     "hum_level",
+    "groove_echo",
     "drive",
     "nr_level_error",
 ];

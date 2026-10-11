@@ -6,7 +6,7 @@ Parent: [`../../AGENTS.md`](../../AGENTS.md)
 
 Framework-free DSP for `mxm-fx-oldify`: the chain, the **cassette engine**, the **record
 engine**, and the blocks they are built from. Still to come: the cassette's print-through, tape
-stop and High quality; the record's groove echo and skips. The design and the measurements
+stop and High quality; the record's skips. The design and the measurements
 behind it are private, `ops:notes/oldify/` (root *The design and its measurements are private*).
 
 # Ownership
@@ -76,7 +76,8 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
 
 ```text
 the recording horn → era (mono, the acoustic band, the cutting limiter, the cutter, a brick wall)
-  → cutting curve → groove (dynamic wear, tracing distortion, wear) → + the disc's own sound
+  → cutting curve → + the groove echo → groove (dynamic wear, tracing distortion, wear)
+  → + the disc's own sound
   → pickup → replay curve → player (scratch filter, valves, speaker, horn or radio)
   → the gramophone's horn
 ```
@@ -144,6 +145,10 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   wider pair of the same edges, and nothing after them**
   (`a_crack_pops_through_the_replay_curve_and_never_thumps`). Why each: [NOTES.md § The disc's
   sounds](NOTES.md#the-discs-sounds). Tables allocated in `new` for the busiest revolution.
+- **`echo`**: the groove echo, the cut music a turn of the disc late (`turn_samples`), mostly its
+  bass (`ECHO_TOP_HZ` times the groove speed's share), up to `MAX_ECHO_DB`; only the echo after.
+  The line is allocated in `new` for the slowest disc's turn, and a clear forgets it at no cost
+  ([NOTES.md § The groove echo](NOTES.md#the-groove-echo)).
 - **`groove`**: tracing distortion `x / √(1 + c·x²)` on the lateral motion, `c` from the cited
   0.8 % (outer) and 4.5 % (inner) for an 18 µm tip, with the pinch effect's second harmonic in the
   vertical; a treble limit falling with the groove speed and with Wear (`FRESH_TOP_HZ`,
@@ -168,8 +173,9 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
 ## Silence, seeds and exact paths
 
 - **Silence in is exact zero out once the tails have run out**: the noise holds `NOISE_HOLD_S`
-  after the input falls under `SILENCE`, fades over `NOISE_FADE_S`, and after `Oldify::tail` every
-  memory is cleared and the chain is **quiet**. A quiet chain fed silence costs the input scan only
+  after the input falls under `SILENCE`, fades over `NOISE_FADE_S`, and after `Oldify::tail` (the
+  hold, or the groove echo's turn on the slowest disc if longer) every memory is cleared and the
+  chain is **quiet**. A quiet chain fed silence costs the input scan only
   and gives exact zero; the input returning wakes it, with every seed back at its start.
 - **Mix zero is the dry input delayed by the latency, to the bit.** A clean modern record on a
   modern deck is the input delayed, at its level.

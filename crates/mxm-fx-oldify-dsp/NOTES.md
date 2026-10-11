@@ -4,7 +4,8 @@ The reasoning and detail behind [`AGENTS.md`](AGENTS.md) that is still in force.
 
 ## What the tests hold
 
-The chain's tests hold silence → exact zero at every setting, exact zero again after the tail, Mix
+The chain's tests hold silence → exact zero at every setting, exact zero again after the tail and
+after the groove echo's turn, Mix
 zero → the delayed input to the bit, a clean record → the delayed input at its level, the neutral
 cassette → the delayed input to −50 dB, an impulse at the latency, blocks of 1, 37 and 512 bit-identical
 through a quiet stretch and a retarget, a reset rendering the same again, finite bounded output at every extreme, Width
@@ -21,6 +22,8 @@ off paths, mistracking and hiss reduction, the curves' shapes, exact cut-and-rep
 error, the disc's rate, heavy tail, turn-locked renewal, a swish of a few decibels, clicks that are noise and not a tone,
 scratches the same tick every turn, scratches and cracks moving on after `GAP_LIFE_S`, clicks, scratches and cracks with no net push, a crack
 popping through the replay curve with under a tenth of itself below 100 Hz whatever the seed, cracks and levels,
+the groove echo exactly a turn late on every disc at its level, the bass of it, exact when off and
+forgotten after a clear,
 the groove's cited distortion and treble loss, Dynamic wear leaving a quiet groove exactly as it
 was, wearing a loud one, a loud bass note where a middle one as fast is not, and the two walls
 apart, the horn keeping only the middle at full, honking at `c / 2L` and staying bounded at full
@@ -38,7 +41,7 @@ the hiss's top and its 70 µs offset, the silence thresholds and times, the nois
 `GENERATION_UM`, the dropout laws, `WRONG_EQ_DB`, the noise reduction's thresholds, corners, skew
 and detector, the record's era Qs, limiter times, players, `TURNOVER`, the crackle, click, scratch
 and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S`,
-`CRACK_WIDTH_S`, `BLOCK_BELOW`, `SWISH`, `CRACKLE_LEVEL_DB`, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
+`CRACK_WIDTH_S`, `BLOCK_BELOW`, `SWISH`, `CRACKLE_LEVEL_DB`, `MAX_ECHO_DB`, `ECHO_TOP_HZ`, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
 from period compliance and tip mass), `STYLUS_Q`, `GIVE`, `KNEE`, `WALL_SPREAD_DB`,
 `WORN_DULL_HZ`, `ROUGH`, `ROUGH_HZ` and `WORN_RELEASE_S`, and the horn's feedbacks, mouths,
 heights, corners, `BLAST` and the gramophone's `PLAY_LENGTH` and soundbox are chosen here, not
@@ -258,3 +261,31 @@ modulations above (`ops: notes/oldify/measurements`, the modulations):
   200 % on an LP, the slowest disc: the latency grew by 16 ms for it.
 - **Presets**: the early single on a portable (20 %) and the worn LP (15 %) carry a warp; Init has
   none.
+
+## The groove echo
+
+**Why only the echo after.** The echo before, the louder of the two on a lacquer, needs the music a
+turn ahead: 1.8 s of look-ahead on an LP, where the chain's one fixed latency is under a tenth of
+that. The plan's ruling: the echo after only, in real time (`ops: notes/oldify/reports`, the record
+half).
+
+**Why it is the bass.** The neighbour's push reaches this groove through the land between them,
+which passes a long wavelength better than a short one; the same note is a shorter wavelength
+toward the middle of the side, so the corner falls with the groove speed's share, as the groove's
+own treble limit does. No source gives the echo's spectrum: `ECHO_TOP_HZ` is chosen.
+
+**Why a fixed share of the music.** On a lacquer the echo grows faster than the music, a "byproduct
+of heavy modulation" (AV Artifact Atlas); here it is a fixed share, so the knob reads what is
+heard. Measured through the plugin (2026-10-11: a second of drums, then silence, the noises off,
+the echo taken as the render less the same render with it off): below 500 Hz the echo sat within
+0.5 dB of the knob on a 1955 LP, a worn LP, a 1952 single and a wartime 78, at every setting from
+−50 to −12 dB, and in all 2–8 dB under it, its treble cut. The cited −60 to −35 dB is a real
+disc's; the rest of the travel, to `MAX_ECHO_DB`, is for effect.
+
+**Why the tail did not grow.** The tail covers the noise's hold or the slowest disc's turn,
+whichever is longer, then the filters'. The hold (`NOISE_HOLD_S`) is the longer, so the tail is as it
+was (`the_tail_outlasts_the_groove_echo`).
+
+**Why a clear only forgets.** The line holds 1.8 s, 11 MB at the top rate; a clear on the audio
+thread, as the chain going quiet makes, sets the count of samples written to zero, and anything
+older reads as silence.

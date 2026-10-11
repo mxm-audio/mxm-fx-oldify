@@ -2,12 +2,14 @@
 //!
 //! ```text
 //! the recording horn → era (mono, the recording's band, the cutting limiter, the cutter, a brick
-//!   wall) → cutting curve → groove (dynamic wear, tracing distortion, wear) → + the disc's own
-//!   sound → pickup → replay curve → player (scratch filter, valves, speaker, horn or radio)
-//!   → the gramophone's horn
+//!   wall) → cutting curve → + the groove echo → groove (dynamic wear, tracing distortion, wear)
+//!   → + the disc's own sound → pickup → replay curve → player (scratch filter, valves, speaker,
+//!   horn or radio) → the gramophone's horn
 //! ```
 //!
 //! The two horns are [`crate::horn`]'s, set by Horn and Horn size on any record and any player.
+//! The groove echo, the music a turn before, is [`crate::echo`]'s: cut into the groove, it is worn
+//! and read as the music is.
 //!
 //! The record's read-out (eccentricity, the turntable's wobble, the warp) is the chain's one moving
 //! read, shared with the cassette ([`Record::wobbles`]): a time-warp passes through the curves and
@@ -28,6 +30,7 @@
 use crate::biquad::{Biquad, Kind, Section};
 use crate::curves::{Curve, CurveFilter};
 use crate::disc::{Disc, DiscControls, NOISE_OFF_DB, Speed};
+use crate::echo::{GrooveEcho, MAX_ECHO_DB};
 use crate::groove::{Groove, GrooveControls};
 use crate::horn::{Horn, HornControls};
 use crate::player::{Player, PlayerChain};
@@ -177,6 +180,8 @@ pub struct RecordControls {
     pub hum_db: f32,
     /// The acoustic horns the record was made and played through.
     pub horn: HornControls,
+    /// The groove echo's level under the music, [`NOISE_OFF_DB`] (off) ..= [`MAX_ECHO_DB`].
+    pub echo_db: f32,
 }
 
 impl RecordControls {
@@ -193,6 +198,7 @@ impl RecordControls {
         mains: Mains::Off,
         hum_db: NOISE_OFF_DB,
         horn: HornControls::OFF,
+        echo_db: NOISE_OFF_DB,
     };
 
     /// The init patch's record: a played LP on a modern deck.
@@ -240,6 +246,11 @@ impl RecordControls {
                 NOISE_OFF_DB
             },
             horn: self.horn.bounded(),
+            echo_db: if self.echo_db.is_finite() {
+                self.echo_db.clamp(NOISE_OFF_DB, MAX_ECHO_DB)
+            } else {
+                NOISE_OFF_DB
+            },
             ..self
         }
     }
@@ -318,14 +329,18 @@ pub struct Record {
     disc: Disc,
     player: PlayerChain,
     horn: Horn,
+    echo: GrooveEcho,
+    /// The echo's gain, ramped.
+    echo_gain: Ramp,
     /// The warp, ramped: the level's dip follows it.
     warp: Ramp,
     targets: RecordControls,
 }
 
 impl Record {
-    /// Allocates the disc's tables: call outside the audio thread.
+    /// Allocates the disc's tables and the echo's turn: call outside the audio thread.
     pub fn new(sample_rate: f64, seed: u32) -> Self {
+        let steps = ((sample_rate * f64::from(SMOOTHING_S)).round() as u32).max(1);
         let curve = |cut| {
             [
                 CurveFilter::new(Curve::Flat, cut, sample_rate),
@@ -347,10 +362,9 @@ impl Record {
             disc: Disc::new(sample_rate, seed),
             player: PlayerChain::new(sample_rate),
             horn: Horn::new(sample_rate),
-            warp: Ramp::settled_at(
-                0.0,
-                ((sample_rate * f64::from(SMOOTHING_S)).round() as u32).max(1),
-            ),
+            echo: GrooveEcho::new(sample_rate),
+            echo_gain: Ramp::settled_at(0.0, steps),
+            warp: Ramp::settled_at(0.0, steps),
             targets: RecordControls::CLEAN,
         }
     }
@@ -371,18 +385,20 @@ impl Record {
         (self.targets.mains, self.targets.hum_db)
     }
 
-    /// Moves the warp's ramp on by `samples`, playing nothing.
+    /// Moves the warp's and the echo's ramps on by `samples`, playing nothing.
     pub fn advance(&mut self, samples: u32) {
         self.warp.advance(samples);
+        self.echo_gain.advance(samples);
     }
 
-    /// Ends the warp's ramp at its target.
+    /// Ends the warp's and the echo's ramps at their targets.
     pub fn snap(&mut self) {
         self.warp.snap();
+        self.echo_gain.snap();
     }
 
     pub fn is_settled(&self) -> bool {
-        self.warp.is_settled()
+        self.warp.is_settled() && self.echo_gain.is_settled()
     }
 
     /// Clears every memory; the disc goes back to its seed's first turn.
@@ -400,6 +416,7 @@ impl Record {
         self.disc.clear();
         self.player.reset();
         self.horn.clear();
+        self.echo.clear();
     }
 
     pub fn set_controls(&mut self, c: RecordControls) {
@@ -427,6 +444,12 @@ impl Record {
         self.player.set_player(c.player);
         self.horn.set(c.horn);
         self.warp.retarget(c.warp);
+        self.echo.set_groove_speed(c.groove.speed());
+        self.echo_gain.retarget(if c.echo_db > NOISE_OFF_DB {
+            crate::db_to_gain(c.echo_db)
+        } else {
+            0.0
+        });
         let cut = c.cut.unwrap_or(c.era.model().cut);
         if self.cut_curve != Some(cut) {
             self.cut_curve = Some(cut);
@@ -496,6 +519,7 @@ impl Record {
     pub fn process(&mut self, frame: [f32; 2], noise: f32, turn: f64) -> [f32; 2] {
         let c = self.targets;
         let warped = f64::from(self.warp.next());
+        let echo = f64::from(self.echo_gain.next());
         let era = c.era.model();
         let horned = self.horn.sounds();
         let mut x = [f64::from(frame[0]), f64::from(frame[1])];
@@ -534,6 +558,7 @@ impl Record {
             }
             *v = cut.process(*v);
         }
+        x = self.echo.process(x, echo, c.disc.speed);
         let groove = GrooveControls {
             tip_um: c.player.model().tip_um,
             ..c.groove

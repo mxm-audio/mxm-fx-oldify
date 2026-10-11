@@ -228,6 +228,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "How loud the hum is, from off to loud.",
         ),
         Bound::new(
+            "groove_echo",
+            &params.groove_echo,
+            "A faint ghost of the music a turn of the record later, mostly its bass, heard in the quiet after a loud passage. Real records sit low on the knob; higher is for effect.",
+        ),
+        Bound::new(
             "tape_on",
             &params.tape_on,
             "Plays the sound through a cassette tape; with Vinyl on too, the record is taped onto it.",
@@ -753,7 +758,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             knobs(ui, params, &["surface_noise", "scratches", "rumble"]),
             segmented_leaf(params, "cracks"),
             segmented_leaf(params, "hum"),
-            knobs(ui, params, &["hum_level"]),
+            knobs(ui, params, &["hum_level", "groove_echo"]),
         ]),
         3 => stack(vec![
             toggle_leaf(params, "tape_on"),
