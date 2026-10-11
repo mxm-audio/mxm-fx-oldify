@@ -199,7 +199,7 @@ impl RecordControls {
     pub const INIT: Self = Self {
         disc: DiscControls {
             speed: Speed::Lp33,
-            surface_db: -58.0,
+            surface_db: -70.0,
             crackle: 60.0,
             clicks: 1.0,
             scratches: 0,

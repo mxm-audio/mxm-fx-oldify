@@ -118,8 +118,8 @@ pulsed, and each is now held by a test:
   9 dB and through silence on some seeds; on a 78 it pulses at 1.3 Hz and its harmonics. `SWISH`
   keeps the swing under 5.4 dB, a median of 2 (`surface_noise_swishes_with_the_turn_by_a_few_decibels`).
 
-Through the acoustic band a drum kit loses its kick and its cymbals, and sat 4–7 dB under that
-preset's noise, so the preset's surface noise came down 6 dB.
+How loud the presets set their noise, and why: [the plugin's NOTES.md § The factory
+bank](../../plugins/mxm-fx-oldify/NOTES.md#the-factory-bank).
 
 ## Dynamic wear
 
