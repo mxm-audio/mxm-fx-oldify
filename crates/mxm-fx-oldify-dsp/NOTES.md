@@ -316,7 +316,9 @@ aliases between 100 Hz and 12 kHz against the tone. Driven as tapes are (Soft, s
 level 0.5): Normal −37 dB, High −56 dB. At the hardest (Hard, saturation 1, level 0.9), whose
 harmonics fall as slowly as a square wave's: Normal −20 dB, High −26 dB, one doubling's worth. A
 16 kHz tone through a wow keeps its level within 0.2 dB read by the sinc
-(`high_quality_keeps_the_treble_a_wobble_moves`).
+(`high_quality_keeps_the_treble_a_wobble_moves`). Through the plugin, a 15 kHz tone on a modern
+record off centre by 1 mm swung 2.3 dB with the turn at Normal and 0.7 dB at High, and sat 1 dB
+louder.
 
 **Why one latency.** Normal delays its curve by the inner pair's round trip and every read leaves
 room for the sinc ahead, so switching never moves the latency the host compensates. Together they
@@ -350,7 +352,13 @@ its turns to go, and the tail ends where the last one does
 is endless.
 
 **Why its range.** The plan's 0–5 % a turn is a battered record's; the travel goes on to one a turn
-for effect, skewed so 5 % is its middle.
+for effect, skewed so 5 % is its middle. It reads to a hundredth under 1 %, so a chance that is not
+nothing never reads 0.
+
+**Measured through the plugin** (2026-10-11: twenty seconds of drums on the cracked shellac, its
+noises off, the skips found as the stretches that differ from the render without them): over its 26
+turns, 2 skips at 5 %, 8 at 50 % and 9 at 100 %, as the chance and the turns each skip takes
+predict (about 1.3, 8 and 11), each one turn or two long.
 
 ## Tape stop
 
@@ -406,3 +414,8 @@ look-ahead. The plan's ruling for the groove echo, kept.
 **Why its range.** No measured cassette print-through level exists (the plan's own note); real
 tapes are put at −60 to −45 dB, worse on thin ones. The travel goes on to `MAX_PRINT_DB`, the
 groove echo's, for effect. The worn pocket tape carries −50 dB, the plan's value for it.
+
+**Measured through the plugin** (2026-10-11: a second of drums, then silence, on the worn pocket
+tape with its hiss and dropouts off, the copy taken as the render less the same render with it
+off): in its band (300–750 Hz) the copy sat 0.7 dB under the knob at −50, −30 and −12 dB, and
+nothing at all came before its wrap.

@@ -540,14 +540,18 @@ fn string_to_time() -> StringToValue {
     })
 }
 
-/// A chance in percent: to a tenth under ten, whole from it. The precision is chosen from the
-/// rounded reading, so the host's text round trip is idempotent at the switch.
+/// A chance in percent: to a hundredth under one, a tenth under ten, whole from it, so a chance
+/// that is not nothing never reads as nothing. The precision is chosen from the rounded reading, so
+/// the host's text round trip is idempotent at each switch.
 fn chance_to_string() -> ValueToString {
     Arc::new(|value| {
-        if (value * 1_000.0).round() < 100.0 {
-            format!("{:.1} %", value * 100.0)
+        let percent = value * 100.0;
+        if (percent * 100.0).round() < 100.0 {
+            format!("{percent:.2} %")
+        } else if (percent * 10.0).round() < 100.0 {
+            format!("{percent:.1} %")
         } else {
-            format!("{:.0} %", value * 100.0)
+            format!("{percent:.0} %")
         }
     })
 }

@@ -44,7 +44,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | Vinyl groove | `wear`, `dynamic_wear`, `side` | Wear, Dynamic wear, Side position | 0–100 %, linear; Dynamic wear wears the loud passages beyond the rest; side runs from the outer groove to the inner |
 | | `groove_distortion` | Groove distortion | 0–200 %, linear; 100 % is the groove's own |
 | | `eccentricity` | Eccentricity | 0…`record::MAX_ECCENTRICITY_MM` mm, skewed so the everyday tenths get the first half |
-| | `skips` | Skips | 0…`skip::MAX_SKIPS` a turn, read in % (a tenth under 10 %), skewed so 5 % is mid-travel: the chance a turn the stylus jumps back a groove |
+| | `skips` | Skips | 0…`skip::MAX_SKIPS` a turn, read in % (to a hundredth under 1 %, a tenth under 10 %), skewed so 5 % is mid-travel: the chance a turn the stylus jumps back a groove |
 | | `stuck_groove` | Stuck groove | Off / On: on, the stylus goes round the last turn; off, it jumps on |
 | | `warp` | Warp | 0…`record::MAX_WARP`, read in %: 100 % is the measured reference's full warp, past it for effect; skewed as Eccentricity, so real warps get the first half |
 | Vinyl surface | `crackle`, `clicks` | Crackle, Clicks | 0…`disc::MAX_CRACKLE_HZ` / `MAX_CLICKS_HZ` a second, read `60/s`, skewed so the low counts get the travel |
