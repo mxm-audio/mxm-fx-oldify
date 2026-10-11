@@ -193,6 +193,14 @@
       "v": 0.25,
       "text": "25 %"
     },
+    "stop_sync": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "stop_time": {
+      "v": 0.611851,
+      "text": "1.50 s"
+    },
     "surface_noise": {
       "v": 0.29066217,
       "text": "-70.0 dB"
@@ -204,6 +212,10 @@
     "tape_on": {
       "v": 1.0,
       "text": "On"
+    },
+    "tape_stop": {
+      "v": 0.0,
+      "text": "Off"
     },
     "tape_tone": {
       "v": 1.0,

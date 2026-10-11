@@ -63,6 +63,8 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `wow_shape`, `flutter_shape` | Wow shape, Flutter shape | Sine / Random / Saw / Reverse saw (`sine`, `random`, `saw`, `reverse-saw`); Flutter's the first two |
 | | `follow` | Flutter follows wow | Off / On: on, the wow swings the flutter's rate instead of the pitch |
 | | `flange` | Flange | 0–100 %, linear |
+| | `stop_time`, `stop_sync` | Stop time, Stop sync | `cassette::MIN_STOP_S`…`MAX_STOP_S`, skewed so the geometric mean is mid-travel, read in ms then s; its sync on `params::STOP_SYNC` |
+| | `tape_stop` | Tape stop | Off / On: on, the tape slows to a halt over Stop time and stays stopped; off, it starts again |
 | Noise | `hiss` | Hiss | `HISS_OFF_DB`…`HISS_MAX_DB`, stored as linear gain, `gain_skew_factor`; Off at the bottom |
 | | `nr` | Noise reduction | Off / Single-band / Two-band (`off`, `single-band`, `two-band`) |
 | | `nr_decode` | Decode | On / Off: Off plays the tape without its decoder |
@@ -94,15 +96,17 @@ is engaged ([NOTES.md § Engaged](NOTES.md#engaged)).
 
 ## Tempo sync
 
-Wow rate and Flutter rate keep the collection's one sync interface, as mxm-fx-delay's Rate: one
-*sync* switch, drawn as the quarter note beside its rate, default Off. **Each ladder is its rate's
-own range at 120 bpm** (`each_sync_ladder_is_its_rates_own_range_at_120_bpm`), the top the fastest
+Wow rate, Flutter rate and Stop time keep the collection's one sync interface, as mxm-fx-delay's
+Rate: one *sync* switch, drawn as the quarter note beside its control, default Off. **Each ladder is
+its control's own range at 120 bpm** (`each_sync_ladder_is_its_rates_own_range_at_120_bpm`,
+`the_stop_sync_ladder_is_stop_times_own_range_and_picks_a_division`), a rate's top the fastest, Stop
+time's the longest
 ([NOTES.md § Why the ladders are the rates' own](NOTES.md#why-the-ladders-are-the-rates-own); how a
 rate resolves: [NOTES.md § Resolving a synced rate](NOTES.md#resolving-a-synced-rate)). **Nothing
 resolved is kept**, so nothing goes stale: an activation forgets the tempo, and a reset resolves at
 the last tempo seen (`the_tempo_reaches_the_editor_and_an_activation_forgets_it`,
 `a_reset_resolves_the_syncs_at_the_last_tempo_seen`; [NOTES.md § A synced
-knob](NOTES.md#a-synced-knob)). An older preset loads both syncs Off and an older project restores
+knob](NOTES.md#a-synced-knob)). An older preset loads its syncs Off and an older project restores
 them Off (`preset::TEMPO_SYNC_IDS`, `mxm_preset::add_switches_off` in `filter_state`).
 
 ## Latency and tail
@@ -129,7 +133,7 @@ takes a switch or a count as it comes ([NOTES.md § Smoothing](NOTES.md#smoothin
 
 ## Still to come
 
-- The record's skips; the cassette's tape stop and High quality. None is a parameter yet: each id is fixed when its control arrives.
+- The record's skips; High quality. None is a parameter yet: each id is fixed when its control arrives.
 
 ## Presets
 

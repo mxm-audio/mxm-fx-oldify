@@ -39,7 +39,7 @@ control the tape, and what controls the vinyl"). Key 0, the Medium card, is reti
 | 2 | Vinyl groove | **Wear**, Dynamic wear, Side position, Groove distortion, Eccentricity, Warp |
 | 3 | Vinyl surface | **Crackle**, Crackle level, Clicks, Surface noise, Scratches, Cracks, Rumble, Hum, Groove echo |
 | 4 | Tape | **Tape**, **Tape type**, Grade, Tape tone, **Saturation**, Character, Generations, **Age** |
-| 5 | Tape transport | **Wow** depth, rate (sync), shape; Flutter depth, rate (sync), shape; follows wow; Flange; *Tape stop* |
+| 5 | Tape transport | **Wow** depth, rate (sync), shape; Flutter depth, rate (sync), shape; follows wow; Flange; Stop time (sync), Tape stop |
 | 6 | Tape noise | **Hiss**, Noise reduction, Decode, its Amount, Brightness and Level error, Dropouts, Print-through |
 | 7 | Tape deck | Azimuth, Crosstalk, Wrong EQ |
 | 8 | Output | Drive, Width, **Mix**, Noise follows, Variation, Noise stops in silence, *Quality* |

@@ -5,8 +5,8 @@
 //!   → tape response, by Tape tone → + print-through
 //!   → transport (wow and flutter; Flange against the unmoved read)
 //!   → crosstalk → + hiss → spacing loss (Age, generations, azimuth, a dropout's lift)
-//!   → a dropout's dip → wrong playback EQ → azimuth's delay between the tracks
-//!   → noise-reduction decode
+//!   → a dropout's dip → the head at a stopping tape's speed → wrong playback EQ
+//!   → azimuth's delay between the tracks → noise-reduction decode
 //! ```
 //!
 //! The order is the physics' (`ops: notes/oldify/reports`, the cassette signal chain): the record
@@ -36,6 +36,13 @@
 //! the same 3.9 dB at half the sinc's first null, so it rides the spacing filter. Between the two
 //! tracks it is a delay, [`TRACK_PITCH_M`] · tan θ / speed: summed to mono, 15′ puts a notch at
 //! 6.1 kHz (`ops: notes/oldify/reports`, the physics).
+//!
+//! **Tape stop**: held, the transport slows the tape to a halt over the stop time and holds it
+//! there; let go, it starts again ([`crate::transport`]). A head reads a slower tape more quietly,
+//! and the deck's playback EQ, made for full speed, no longer matches it: what plays below its
+//! bass corner ([`STOP_LOW_S`]) or above its treble corner (the tape's time constant) falls with
+//! the speed ([`Slowed`]), so the tape's sound dulls and thins as it slows, and is gone when it
+//! stops.
 //!
 //! **Print-through** ([`crate::print`]) is the recorded tape a wrap of the reel later, printed
 //! onto the layer wound against it on the shelf: added before the transport, it plays back as the
@@ -102,6 +109,12 @@ pub const SPEED_M_S: f64 = 0.0476;
 const HISS_70US_DB: f32 = -4.0;
 /// The hiss's top: tape noise is not flat to the Nyquist of a 96 kHz session.
 const HISS_TOP_HZ: f64 = 16_000.0;
+/// The tape stop's time: the shortest, the longest, and the plan's own.
+pub const MIN_STOP_S: f32 = 0.05;
+pub const MAX_STOP_S: f32 = 10.0;
+pub const STOP_S: f32 = 1.5;
+/// The playback EQ's bass time constant, seconds: 3180 µs, 50 Hz.
+const STOP_LOW_S: f64 = 3180e-6;
 /// Wrong playback EQ's shelf: playing a tape with the other time constant. Chosen from the two
 /// curves' difference, about ±4.7 dB above their corners.
 const WRONG_EQ_DB: f64 = 4.7;
@@ -146,6 +159,10 @@ pub struct CassetteControls {
     pub print_db: f32,
     /// The tape played back with the other time constant.
     pub wrong_eq: bool,
+    /// The tape stop held: the tape slows to a halt over `stop_s` and stays stopped.
+    pub stop: bool,
+    /// How long the tape takes to stop from full speed, seconds, [`MIN_STOP_S`]..=[`MAX_STOP_S`].
+    pub stop_s: f32,
     /// 0–1.
     pub age: f32,
     /// Which seed every random source starts from, 0..=[`MAX_VARIATION`].
@@ -181,6 +198,8 @@ impl CassetteControls {
         crosstalk_db: CROSSTALK_OFF_DB,
         print_db: PRINT_OFF_DB,
         wrong_eq: false,
+        stop: false,
+        stop_s: STOP_S,
         age: 0.0,
         variation: 0,
         nr: NrControls::OFF,
@@ -251,6 +270,7 @@ impl CassetteControls {
                 CROSSTALK_OFF_DB,
             ),
             print_db: within(self.print_db, (PRINT_OFF_DB, MAX_PRINT_DB), PRINT_OFF_DB),
+            stop_s: within(self.stop_s, (MIN_STOP_S, MAX_STOP_S), STOP_S),
             age: unit(self.age),
             variation: self.variation.min(MAX_VARIATION),
             nr: self.nr.bounded(),
@@ -431,6 +451,57 @@ impl Skew {
     }
 }
 
+/// One first-order section, `g·(p + z) / (p + q)` in the analogue, by the bilinear transform.
+#[derive(Clone, Copy, Debug, Default)]
+struct First {
+    b0: f64,
+    b1: f64,
+    a1: f64,
+    state: f64,
+}
+
+impl First {
+    fn set(&mut self, g: f64, z: f64, q: f64, c: f64) {
+        self.b0 = g * (c + z) / (c + q);
+        self.b1 = g * (z - c) / (c + q);
+        self.a1 = (q - c) / (c + q);
+    }
+
+    #[inline]
+    fn process(&mut self, x: f64) -> f64 {
+        let y = self.b0 * x + self.state;
+        self.state = self.b1 * x - self.a1 * y;
+        y
+    }
+}
+
+/// **What the head and the playback EQ make of a tape at `σ` of its speed.** The head's output
+/// for a recorded wavelength goes as the speed, and the EQ, which turns the head's rise with
+/// frequency flat between its bass corner ω_lo and its treble corner ω_hi, now meets each sound at
+/// σ of its frequency. Against full speed that is `(σ + p/ω_lo)/(1 + p/ω_lo)`, the bass below the
+/// corner falling to σ, times `(1 + p/ω_hi)/(1 + p/(σ·ω_hi))`, the treble above it falling to σ:
+/// at σ = 1 nothing, at σ = 0 nothing passes.
+#[derive(Clone, Copy, Debug, Default)]
+struct Slowed {
+    low: First,
+    high: First,
+    speed: f64,
+}
+
+impl Slowed {
+    #[inline]
+    fn process(&mut self, x: f64, speed: f64, treble_s: f64, rate: f64) -> f64 {
+        if speed != self.speed {
+            self.speed = speed;
+            let c = 2.0 * rate;
+            let (low, high) = (1.0 / STOP_LOW_S, 1.0 / treble_s);
+            self.low.set(1.0, speed * low, low, c);
+            self.high.set(speed, high, speed * high, c);
+        }
+        self.high.process(self.low.process(x))
+    }
+}
+
 /// One channel's stages.
 #[derive(Clone, Debug)]
 struct Channel {
@@ -438,6 +509,7 @@ struct Channel {
     response: TapeResponse,
     hiss: Hiss,
     spacing: Spacing,
+    slowed: Slowed,
     wrong_eq: Biquad,
 }
 
@@ -481,16 +553,18 @@ impl Cassette {
             response: TapeResponse::default(),
             hiss: Hiss::new(sample_rate, seed.wrapping_add(n)),
             spacing: Spacing::new(sample_rate),
+            slowed: Slowed::default(),
             wrong_eq: Biquad::default(),
         };
         let ramp = |v: f32| Ramp::settled_at(v, steps);
         Self {
             rate: sample_rate,
             channels: [channel(1), channel(2)],
-            transport: Transport::new(
+            transport: Transport::with_stop(
                 sample_rate,
                 WOW_REACH_S + FLUTTER_REACH_S + ECCENTRIC_REACH_S + TABLE_REACH_S + WARP_REACH_S,
                 seed,
+                f64::from(MAX_STOP_S),
             ),
             dropouts: Dropouts::new(sample_rate, seed),
             print: PrintThrough::new(sample_rate),
@@ -539,6 +613,17 @@ impl Cassette {
         self.targets.hiss_db > HISS_OFF_DB
     }
 
+    /// The tape's speed this sample, as a share of its own: 1 running, 0 stopped.
+    pub fn speed(&self) -> f64 {
+        self.transport.speed()
+    }
+
+    /// How far behind its base delay the tape's read will be when a stop under way comes to rest,
+    /// in samples: how much longer the sound in it plays out ([`Transport::lag_to_come`]).
+    pub fn stop_lag_to_come(&self) -> u64 {
+        self.transport.lag_to_come().ceil() as u64
+    }
+
     pub fn set_controls(&mut self, c: CassetteControls) {
         let c = c.bounded();
         if self.tape != Some((c.tape, c.grade)) {
@@ -569,6 +654,7 @@ impl Cassette {
             }
         }
         self.targets = c;
+        self.transport.set_stop(c.stop, f64::from(c.stop_s));
         self.tone.retarget(c.tone);
         self.saturation.retarget(c.saturation);
         self.wow_depth.retarget(c.wow.depth);
@@ -645,6 +731,7 @@ impl Cassette {
             channel.response.reset();
             channel.hiss.reset();
             channel.spacing.reset();
+            channel.slowed = Slowed::default();
             channel.wrong_eq.reset();
         }
         self.transport.reset();
@@ -723,6 +810,8 @@ impl Cassette {
         let (moving, still) = self
             .transport
             .process_full(recorded, &wow, &flutter, follow);
+        let speed = self.transport.speed();
+        let treble_s = if c.tape == Tape::I { 120e-6 } else { 70e-6 };
         let mut played = if flange > 0.0 {
             [
                 moving[0] + 0.5 * flange * (still[0] - moving[0]),
@@ -747,6 +836,15 @@ impl Cassette {
             z = channel.spacing.process(z, spacing + LIFT_UM_PER_DB * dip);
             if dip > 0.0 {
                 z *= f64::from(crate::db_to_gain(-dip as f32));
+            }
+            if speed == 0.0 {
+                z = 0.0;
+                channel.slowed = Slowed::default();
+            } else if speed < 1.0 {
+                z = channel.slowed.process(z, speed, treble_s, self.rate);
+            } else if channel.slowed.speed != 0.0 {
+                // Back to speed: the section is through, and starts clean at the next stop.
+                channel.slowed = Slowed::default();
             }
             if c.wrong_eq {
                 z = channel.wrong_eq.process(z);

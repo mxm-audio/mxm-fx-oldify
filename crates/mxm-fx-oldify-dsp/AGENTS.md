@@ -5,8 +5,7 @@ Parent: [`../../AGENTS.md`](../../AGENTS.md)
 # Purpose
 
 Framework-free DSP for `mxm-fx-oldify`: the chain, the **cassette engine**, the **record
-engine**, and the blocks they are built from. Still to come: the cassette's tape stop and High
-quality; the record's skips. The design and the measurements
+engine**, and the blocks they are built from. Still to come: High quality; the record's skips. The design and the measurements
 behind it are private, `ops:notes/oldify/` (root *The design and its measurements are private*).
 
 # Ownership
@@ -48,7 +47,8 @@ input → Drive → [the record] → the cassette engine → ÷ Drive (a latency
 NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape response × Tape tone
   → + print-through → transport (wow, flutter; Flange against the unmoved read) → crosstalk → + hiss
   → spacing loss (Age, generations, azimuth, a dropout's lift) → a dropout's dip
-  → wrong playback EQ → azimuth's delay between the tracks → NR decode
+  → the head at a stopping tape's speed → wrong playback EQ → azimuth's delay between the tracks
+  → NR decode
 ```
 
 - The physics' order, not the reference's (which filters before saturating): a known difference.
@@ -60,6 +60,12 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
   reference, with copies, is lowered to fit. The fit: [NOTES.md § The modulations,
   fitted](NOTES.md#the-modulations-fitted).
 - Hiss is seeded, independent per channel, 4 dB lower on the 70 µs tapes, and gated by the chain.
+- **Tape stop**: held, the transport's speed falls straight to nothing over `stop_s` and the
+  read falls behind by what it did not play; stopped, it reads nothing. Let go, the tape gets back
+  to speed in the base delay's time from a read put ahead by what the start loses, so it lands on
+  the base delay and **the latency never moves**; let go while slowing, it brakes in `BRAKE_S`
+  first. The head and playback EQ at that speed (`Slowed`) dull and thin it as it slows; a taped
+  record's hum stops with it ([NOTES.md § Tape stop](NOTES.md#tape-stop)).
 - **Print-through** (`print.rs`): the recorded tape a wrap of the reel later (`print::wrap_s`,
   halfway through a C60), through the band a layer's thickness prints (`print::peak_hz`), up to
   `MAX_PRINT_DB`; only the echo after. Before the transport, so it plays back as the music does
@@ -122,7 +128,8 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   `POINTS_PER_CYCLE` a cycle (its speed holds, then steps), the warp's a warped record's turn. A
   change goes into a drift term that
   leaks away at an eighth of the rate, so the read never jumps. The base delay is twice the reach.
-  Wow and flutter are the same in both channels, as measured.
+  Wow and flutter are the same in both channels, as measured. The line holds the longest stop's
+  lag beside the reach (`Transport::with_stop`); a reset empties only what a running read reaches.
 - **`nr`**: noise reduction, a sliding-band compander: `y = x + k · H(x)`, `H` a high-pass whose
   corner slides up and `k` falls with the side chain's own level (previous sample). **The decoder
   is the encoder solved for its input, exactly** (`x = (y − k · pending) / (1 + k · b₀)`), from its
@@ -179,7 +186,8 @@ and the shapes switch at once. `reset` ends every ramp and clears every memory.
 - **Silence in is exact zero out once the tails have run out**: the noise holds `NOISE_HOLD_S`
   after the input falls under `SILENCE`, fades over `NOISE_FADE_S`, and after `Oldify::tail` (the
   hold, or the longest echo if longer: the groove's turn on the slowest disc, the print-through's
-  wrap) every memory is cleared and the chain is **quiet**. A quiet chain fed silence costs the input scan only
+  wrap; and while a tape stop is under way, what its read will have fallen behind) every memory is
+  cleared and the chain is **quiet**. A quiet chain fed silence costs the input scan only
   and gives exact zero; the input returning wakes it, with every seed back at its start.
 - **Mix zero is the dry input delayed by the latency, to the bit.** A clean modern record on a
   modern deck is the input delayed, at its level.

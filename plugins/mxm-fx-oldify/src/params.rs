@@ -5,9 +5,9 @@
 //! here would stack two ramps on one control. The switches are not smoothed anywhere: the DSP takes
 //! a new tape, grade, character, shape or count as it comes.
 //!
-//! **Wow rate and Flutter rate sync to the host's tempo** (mxm-kit's plugin conventions, *Tempo sync
-//! is one button changing one Rate or Time control*): each has one *sync* switch, and synced, the
-//! rate's own position picks a division on its [`mxm_tempo::Ladder`]. [`MxmFxOldifyParams::controls`]
+//! **Wow rate, Flutter rate and Stop time sync to the host's tempo** (mxm-kit's plugin conventions,
+//! *Tempo sync is one button changing one Rate or Time control*): each has one *sync* switch, and
+//! synced, the control's own position picks a division on its [`mxm_tempo::Ladder`]. [`MxmFxOldifyParams::controls`]
 //! resolves it from the tempo it is handed, every block, so nothing resolved is kept to go stale
 //! across an activation or a reset.
 
@@ -15,7 +15,8 @@ use std::sync::{Arc, RwLock};
 
 use mxm_fx_oldify_dsp::cassette::{
     CROSSTALK_MAX_DB, CROSSTALK_OFF_DB, CassetteControls, FLUTTER_HZ, HISS_MAX_DB, HISS_OFF_DB,
-    MAX_AZIMUTH_ARCMIN, MAX_GENERATIONS, MAX_VARIATION, MOTION_MAX, Motion, WOW_HZ,
+    MAX_AZIMUTH_ARCMIN, MAX_GENERATIONS, MAX_STOP_S, MAX_VARIATION, MIN_STOP_S, MOTION_MAX, Motion,
+    WOW_HZ,
 };
 use mxm_fx_oldify_dsp::curves::Curve;
 use mxm_fx_oldify_dsp::disc::{
@@ -50,6 +51,13 @@ pub const WOW_SYNC: Ladder = Ladder::new(
 pub const FLUTTER_SYNC: Ladder = Ladder::new(
     Span::new(Division::ThirtySecondTriplet, Division::Eighth),
     Direction::Rate,
+);
+
+/// **Stop time's tempo sync**: the divisions its own range holds at 120 bpm, 1/32 (62.5 ms) to four
+/// bars (8 s), the top the longest.
+pub const STOP_SYNC: Ladder = Ladder::new(
+    Span::new(Division::ThirtySecond, Division::FourBars),
+    Direction::Time,
 );
 
 /// Every permanent id this plugin has retired. **None may ever be re-used**: a saved project or
@@ -487,6 +495,30 @@ fn string_to_rate() -> StringToValue {
     })
 }
 
+/// A time: milliseconds under a second, seconds from it. The unit is chosen from the rounded
+/// reading, so the host's text round trip is idempotent at the switch (`time_text_checks`).
+fn time_to_string() -> ValueToString {
+    Arc::new(|seconds| {
+        let milliseconds = seconds * 1_000.0;
+        if milliseconds.round() >= 1_000.0 {
+            format!("{seconds:.2} s")
+        } else {
+            format!("{milliseconds:.0} ms")
+        }
+    })
+}
+
+fn string_to_time() -> StringToValue {
+    Arc::new(|text| {
+        let lower = text.trim().to_ascii_lowercase();
+        if let Some(value) = lower.strip_suffix("ms") {
+            value.trim().parse::<f32>().ok().map(|v| v / 1_000.0)
+        } else {
+            lower.trim_end_matches('s').trim().parse::<f32>().ok()
+        }
+    })
+}
+
 /// An angle in arc-minutes, read with the minute's own sign.
 fn arcmin_to_string() -> ValueToString {
     Arc::new(|value| format!("{value:.1}′"))
@@ -795,6 +827,15 @@ pub struct MxmFxOldifyParams {
     pub follow: BoolParam,
     #[id = "flange"]
     pub flange: FloatParam,
+    /// Held, the tape slows to a halt and stays stopped; let go, it starts again.
+    #[id = "tape_stop"]
+    pub tape_stop: BoolParam,
+    /// Seconds from full speed to a halt.
+    #[id = "stop_time"]
+    pub stop_time: FloatParam,
+    /// Stop time's tempo sync.
+    #[id = "stop_sync"]
+    pub stop_sync: BoolParam,
 
     // ---- Noise ----
     /// Stored as linear gain; the bottom of the travel is Off.
@@ -983,6 +1024,19 @@ impl Default for MxmFxOldifyParams {
             flutter_shape: EnumParam::new("Flutter shape", FlutterShapeChoice::Random),
             follow: BoolParam::new("Flutter follows wow", cassette.follow),
             flange: percent("Flange", cassette.flange, 1.0),
+            tape_stop: BoolParam::new("Tape stop", cassette.stop),
+            stop_time: FloatParam::new(
+                "Stop time",
+                cassette.stop_s,
+                FloatRange::Skewed {
+                    min: MIN_STOP_S,
+                    max: MAX_STOP_S,
+                    factor: geometric_skew((MIN_STOP_S, MAX_STOP_S)),
+                },
+            )
+            .with_value_to_string(time_to_string())
+            .with_string_to_value(string_to_time()),
+            stop_sync: sync("Stop sync"),
 
             hiss: off_level("Hiss", cassette.hiss_db, HISS_OFF_DB, HISS_MAX_DB),
             print_through: off_level(
@@ -1076,6 +1130,13 @@ impl MxmFxOldifyParams {
         .unwrap_or_else(|| self.flutter_rate.value())
     }
 
+    /// The stop's time in force at `tempo`: its division while synced to a tempo, the knob
+    /// otherwise.
+    pub fn stop_s(&self, tempo: Option<f64>) -> f32 {
+        Self::synced(STOP_SYNC, self.stop_sync.value(), &self.stop_time, tempo)
+            .unwrap_or_else(|| self.stop_time.value())
+    }
+
     /// This block's targets for the DSP, as the host has them (host modulation included), the
     /// synced rates resolved at the host's `tempo`.
     pub fn controls(&self, tempo: Option<f64>) -> Controls {
@@ -1139,6 +1200,8 @@ impl MxmFxOldifyParams {
                 },
                 follow: self.follow.value(),
                 flange: self.flange.value(),
+                stop: self.tape_stop.value(),
+                stop_s: self.stop_s(tempo),
                 hiss_db: hiss_db(self.hiss.value()),
                 nr: NrControls {
                     kind: self.nr.value().dsp(),
@@ -1371,10 +1434,46 @@ mod tests {
         assert!(modulated > set_at, "modulation up picked no faster rate");
     }
 
+    /// **Stop time's ladder is its own range at 120 bpm**, the top the longest, and synced it
+    /// hands the DSP the division in force; off, or with no tempo, the knob's own time.
+    #[test]
+    fn the_stop_sync_ladder_is_stop_times_own_range_and_picks_a_division() {
+        let inside = |division: Division| {
+            let s = division.seconds(120.0);
+            s >= f64::from(MIN_STOP_S) && s <= f64::from(MAX_STOP_S)
+        };
+        let divisions = STOP_SYNC.span.divisions();
+        assert!(divisions.iter().all(|d| inside(*d)), "{divisions:?}");
+        let (first, last) = (divisions[0].index(), divisions[divisions.len() - 1].index());
+        assert!(first == 0 || !inside(Division::ALL[first - 1]));
+        assert!(last + 1 == Division::ALL.len() || !inside(Division::ALL[last + 1]));
+
+        let params = MxmFxOldifyParams::default();
+        set(&params.stop_time, 1.0);
+        assert_eq!(params.stop_s(Some(120.0)), params.stop_time.value());
+        set(&params.stop_sync, 1.0);
+        assert_eq!(params.stop_s(None), params.stop_time.value());
+        let longest = divisions[divisions.len() - 1].seconds(120.0) as f32;
+        assert!((params.stop_s(Some(120.0)) - longest).abs() < 1e-4);
+        set(&params.stop_time, 0.0);
+        let shortest = divisions[0].seconds(120.0) as f32;
+        assert!((params.stop_s(Some(120.0)) - shortest).abs() < 1e-4);
+        assert_eq!(params.controls(Some(120.0)).cassette.stop_s, shortest);
+    }
+
+    /// **Stop time reads the same through the host's text round trip** either side of a second.
+    #[test]
+    fn stop_time_survives_the_hosts_text_round_trip() {
+        mxm_plugin_test::time_text_checks::time_readings_round_trip(
+            &MxmFxOldifyParams::default(),
+            &["stop_time"],
+        );
+    }
+
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 37] = [
+        let continuous: [&FloatParam; 38] = [
             &params.horn,
             &params.horn_size,
             &params.age,
@@ -1386,6 +1485,7 @@ mod tests {
             &params.flutter,
             &params.flutter_rate,
             &params.flange,
+            &params.stop_time,
             &params.hiss,
             &params.wear,
             &params.dynamic_wear,

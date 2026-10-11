@@ -144,7 +144,7 @@ fn difference(a: &[Vec<f32>; 2], b: &[Vec<f32>; 2]) -> f32 {
 fn every_cassette_control_changes_the_sound() {
     const LOUD: f32 = 0.3;
     const QUIET: f32 = 0.01;
-    let alone: [Move<'_>; 16] = [
+    let alone: [Move<'_>; 17] = [
         ("age", 1.0),
         ("variation", 0.5),
         ("tape", 1.0),
@@ -154,6 +154,7 @@ fn every_cassette_control_changes_the_sound() {
         ("generations", 1.0),
         ("wow", 1.0),
         ("flange", 1.0),
+        ("tape_stop", 1.0),
         ("hiss", 1.0),
         ("nr", 1.0),
         ("dropouts", 1.0),
@@ -174,6 +175,32 @@ fn every_cassette_control_changes_the_sound() {
         &render_moved_for(&[], LOUD, late),
     );
     assert!(printed > 1e-3, "print_through changed nothing: {printed}");
+    // Stop time is heard as the tape stops: held from a tenth of a second in, it stops sooner.
+    let stopping = |stop_time: f32| {
+        let (mut l, mut r) = (noise(24_000, 1, LOUD), noise(24_000, 2, LOUD));
+        let mut plugin = MxmFxOldify::default();
+        let set = |plugin: &MxmFxOldify, id: &str, value: f32| {
+            let (_, param, _) = plugin
+                .params
+                .param_map()
+                .into_iter()
+                .find(|(other, _, _)| other == id)
+                .unwrap_or_else(|| panic!("no parameter {id}"));
+            unsafe {
+                let _ = param._internal_set_normalized_value(value);
+            }
+        };
+        set(&plugin, "stop_time", stop_time);
+        assert!(plugin.prepare_for_test(48_000.0, 2));
+        let (l1, l2) = l.split_at_mut(4_800);
+        let (r1, r2) = r.split_at_mut(4_800);
+        let _ = plugin.process_block_for_test(&mut [l1, r1], None);
+        set(&plugin, "tape_stop", 1.0);
+        let _ = plugin.process_block_for_test(&mut [l2, r2], None);
+        [l, r]
+    };
+    let sooner = difference(&stopping(0.0), &stopping(0.5));
+    assert!(sooner > 1e-3, "stop_time changed nothing: {sooner}");
     // (what must be on, its programme's level, the threshold, the controls it shapes)
     let shaped: [(Move<'_>, f32, f32, [Move<'_>; 4]); 2] = [
         (

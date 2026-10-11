@@ -366,13 +366,19 @@ impl Oldify {
     }
 
     /// How long after the input falls silent the output is exact zero, in samples; while
-    /// [`Oldify::endless`], never.
+    /// [`Oldify::endless`], never. A tape stop under way adds what its read will have fallen
+    /// behind.
     pub fn tail(&self) -> u32 {
         if self.endless() {
             u32::MAX
         } else {
-            u32::try_from(self.quiet_after).unwrap_or(u32::MAX)
+            u32::try_from(self.quiet_after()).unwrap_or(u32::MAX)
         }
+    }
+
+    /// The silence after which every memory is cleared: the fixed tail, and a stop's lag to come.
+    fn quiet_after(&self) -> u64 {
+        self.quiet_after + self.cassette.stop_lag_to_come()
     }
 
     /// True while the output never falls silent: noise that plays on in silence.
@@ -561,9 +567,16 @@ impl Oldify {
         self.driven_head = (self.driven_head + 1) % self.driven.len();
         let mut wet = [taped[0] / then, taped[1] / then];
         if record_on {
-            // Hum comes after the read: it does not wobble.
+            // Hum comes after the read: it does not wobble. Taped with the record, it stops with
+            // the tape.
             let (mains, hum_db) = self.record.mains();
-            let hum = (self.hum.next(mains, hum_db, self.rate) * f64::from(noise)) as f32;
+            let stopping = if self.tape_on {
+                self.cassette.speed()
+            } else {
+                1.0
+            };
+            let hum =
+                (self.hum.next(mains, hum_db, self.rate) * f64::from(noise) * stopping) as f32;
             wet = [wet[0] + hum, wet[1] + hum];
         }
 
@@ -584,7 +597,7 @@ impl Oldify {
                 dry[1] * (1.0 - mix) + wet[1] * mix,
             ]
         };
-        if self.silent_for >= self.quiet_after && !endless {
+        if self.silent_for >= self.quiet_after() && !endless {
             self.clear();
         }
         out.map(flush)
@@ -679,6 +692,8 @@ mod tests {
             crosstalk_db: crate::cassette::CROSSTALK_MAX_DB,
             print_db: crate::print::MAX_PRINT_DB,
             wrong_eq: true,
+            stop: false,
+            stop_s: crate::cassette::MIN_STOP_S,
             variation: crate::cassette::MAX_VARIATION,
             nr: crate::nr::NrControls {
                 kind: crate::nr::NoiseReduction::TwoBand,
@@ -728,7 +743,13 @@ mod tests {
             (true, true, loud_record),
             (false, false, loud_record),
         ] {
-            for cassette in [CassetteControls::NEUTRAL, CassetteControls::INIT, loud] {
+            let stopped = CassetteControls { stop: true, ..loud };
+            for cassette in [
+                CassetteControls::NEUTRAL,
+                CassetteControls::INIT,
+                loud,
+                stopped,
+            ] {
                 for drive in gains {
                     for (width, mix) in [(0.0, 0.0), (1.0, 0.5), (MAX_WIDTH, 1.0)] {
                         all.push(Controls {
@@ -1023,6 +1044,124 @@ mod tests {
                 run(block) == reference,
                 "blocks of {block} differ from blocks of one"
             );
+        }
+    }
+
+    /// **A tape stop slows the tape to silence in its time, and the tape starts again where it
+    /// would have been**: the tone's pitch falls through the stop, the tape is then silent, and
+    /// once it is back to speed it plays what an unstopped tape plays.
+    #[test]
+    fn a_stopped_tape_slows_to_silence_and_starts_again_where_it_would_be() {
+        let rate = RATE as usize;
+        let n = 3 * rate;
+        let (stop_at, let_go) = (rate / 5, 7 * rate / 5);
+        let source: Vec<f32> = (0..n)
+            .map(|i| 0.5 * (std::f32::consts::TAU * 1_000.0 * i as f32 / RATE).sin())
+            .collect();
+        let running = Controls::IDENTITY;
+        let stopping = Controls {
+            cassette: CassetteControls {
+                stop: true,
+                stop_s: 0.5,
+                ..CassetteControls::NEUTRAL
+            },
+            ..running
+        };
+        let mut reference = settled_at(running);
+        let [unstopped, _] = render(&mut reference, &source, &source, running);
+        let mut oldify = settled_at(running);
+        let latency = oldify.latency() as usize;
+        let mut out = Vec::new();
+        for (from, to, controls) in [
+            (0, stop_at, running),
+            (stop_at, let_go, stopping),
+            (let_go, n, running),
+        ] {
+            out.extend(
+                render(&mut oldify, &source[from..to], &source[from..to], controls)[0].clone(),
+            );
+        }
+        // Rising zero crossings in each tenth of a second of the stop: fewer and fewer.
+        let crossings = |range: std::ops::Range<usize>| {
+            range.filter(|&i| out[i - 1] <= 0.0 && out[i] > 0.0).count()
+        };
+        let tenth = rate / 10;
+        let counts: Vec<usize> = (0..4)
+            .map(|k| crossings(stop_at + latency + k * tenth..stop_at + latency + (k + 1) * tenth))
+            .collect();
+        assert!(counts.windows(2).all(|w| w[1] < w[0]), "{counts:?}");
+        assert!(counts[0] < 100 && counts[3] < 30, "{counts:?}");
+        // Stopped, silent.
+        let silent = stop_at + rate / 2 + latency + 512..let_go;
+        assert!(
+            out[silent].iter().all(|s| *s == 0.0),
+            "a stopped tape sounds"
+        );
+        // Back to speed, it plays what the unstopped tape plays.
+        let back = let_go + 2 * latency + rate / 10;
+        let apart = (back..n)
+            .map(|i| (out[i] - unstopped[i]).abs())
+            .fold(0.0f32, f32::max);
+        assert!(apart < 1e-4, "{apart} from the unstopped tape");
+    }
+
+    /// **A stop under way keeps the tail until its read has played out**: the read falls behind,
+    /// the tail grows by what it will have fallen, and after it the output is exact zero.
+    #[test]
+    fn a_stop_under_way_keeps_the_tail_until_its_read_has_played_out() {
+        let stopping = Controls {
+            cassette: CassetteControls {
+                stop: true,
+                stop_s: crate::cassette::MAX_STOP_S,
+                ..CassetteControls::NEUTRAL
+            },
+            ..Controls::IDENTITY
+        };
+        let mut oldify = settled_at(Controls::IDENTITY);
+        let fixed = oldify.tail() as usize;
+        let source = noise(2 * RATE as usize, 4);
+        render(&mut oldify, &source, &source, stopping);
+        let tail = oldify.tail() as usize;
+        assert!(tail > fixed + RATE as usize, "{tail} against {fixed}");
+        let silence = vec![0.0; tail + 512];
+        let [left, right] = render(&mut oldify, &silence, &silence, stopping);
+        assert!(left[..tail].iter().any(|s| *s != 0.0), "no tail at all");
+        assert!(left[tail..].iter().chain(&right[tail..]).all(|s| *s == 0.0));
+    }
+
+    /// **A stop and a start are the same at any block size**, with every random source running.
+    #[test]
+    fn a_stop_and_a_start_are_the_same_at_any_block_size() {
+        let edge = 37 * 512;
+        let length = 4 * edge;
+        let source = noise(length, 9);
+        let stopping = Controls {
+            cassette: CassetteControls {
+                stop: true,
+                stop_s: 0.2,
+                ..CassetteControls::INIT
+            },
+            ..Controls::INIT
+        };
+        let run = |block: usize| {
+            let mut oldify = Oldify::new(RATE).unwrap();
+            let (mut left, mut right) = (source.clone(), source.clone());
+            let mut start = 0;
+            while start < length {
+                let end = (start + block).min(length);
+                let controls = if (edge..2 * edge).contains(&start) {
+                    stopping
+                } else {
+                    Controls::INIT
+                };
+                oldify.process(&mut left[start..end], &mut right[start..end], controls);
+                start = end;
+            }
+            (bits(&left), bits(&right))
+        };
+        let reference = run(1);
+        for block in [37, 512] {
+            assert!(run(block) == reference, "blocks of {block} differ");
         }
     }
 

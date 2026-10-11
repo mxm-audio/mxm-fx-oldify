@@ -11,7 +11,9 @@ cassette → the delayed input to −50 dB, an impulse at the latency, blocks of
 through a quiet stretch and a retarget, a reset rendering the same again, finite bounded output at every extreme, Width
 zero → mono, the hiss at its level and silent after its hold, the hiss playing on with Noise stops
 off, following noise at three input levels, noise steady through a drum machine's gaps, the ramps, the latency near 90 ms at 44.1, 48 and
-96 kHz, a warp's dip in step with its speed at the read, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
+96 kHz, a warp's dip in step with its speed at the read, a tape stop falling in pitch to silence and
+starting again where an unstopped tape would be, its tail kept until its read has played out, a
+stop and a start the same at any block size, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
 tape table against the measurement, the curves' slope, bounds and asymmetry, treble saturating
 first, the oversampler's round trip, the transport's depths (the saw's, the random's and the
 warp's as the reference's), reach, the phase an extra wobble will have at the read, the random's straight reads between its points, seeds, unmoved read, a
@@ -43,7 +45,7 @@ the hiss's top and its 70 µs offset, the silence thresholds and times, the nois
 and detector, the record's era Qs, limiter times, players, `TURNOVER`, the crackle, click, scratch
 and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S`,
 `CRACK_WIDTH_S`, `BLOCK_BELOW`, `SWISH`, `CRACKLE_LEVEL_DB`, `MAX_ECHO_DB`, `ECHO_TOP_HZ`, `MAX_PRINT_DB`, the print-through's tape (a C60's
-length and thickness, the plan's hub), the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
+length and thickness, the plan's hub), `BRAKE_S`, the stop's constant brake and the start's length, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
 from period compliance and tip mass), `STYLUS_Q`, `GIVE`, `KNEE`, `WALL_SPREAD_DB`,
 `WORN_DULL_HZ`, `ROUGH`, `ROUGH_HZ` and `WORN_RELEASE_S`, and the horn's feedbacks, mouths,
 heights, corners, `BLAST` and the gramophone's `PLAY_LENGTH` and soundbox are chosen here, not
@@ -291,6 +293,37 @@ print-through's wrap is the longer (`the_tail_outlasts_both_echoes`).
 **Why a clear only forgets.** The line holds 1.8 s, 11 MB at the top rate; a clear on the audio
 thread, as the chain going quiet makes, sets the count of samples written to zero, and anything
 older reads as silence. The print-through's line forgets the same way.
+
+## Tape stop
+
+**Why a straight fall.** A deck whose motor is cut stops against the friction of its capstan,
+pinch roller and reels, which hardly changes with speed: a constant brake, so the speed falls in a
+straight line, and the pitch with it. The plan's range and default (0.05–10 s, 1.5 s) are the
+tape-stop convention's.
+
+**Why the start is as long as the base delay.** A slower tape lags its writing; a start that
+began at the base delay would end a start's worth late, and the latency would have moved. The read
+starts ahead of the base by exactly what a straight start loses, `(N − 1)/2` samples, and lands on
+it at full speed, which only fits in the base delay's own room: about 86 ms, a quick deck's start.
+Once at speed the tape plays exactly what an unstopped one plays
+(`a_stopped_tape_slows_to_silence_and_starts_again_where_it_would_be`).
+
+**Why a release while slowing brakes.** The read is then behind by what the stop has lost so far,
+and only a stopped tape can be put back without a jump: it stops in `BRAKE_S`, silent, and starts.
+
+**Why the sound dulls as it slows.** The head's output for a recorded wavelength goes as the speed,
+and the playback EQ is made for full speed: it lifts the bass below its 3180 µs corner's frequency
+and leaves the treble above the tape's own time constant flat, so a slowed tape is quieter there
+and as loud in between. Against full speed that is two first-order shelves whose corners move with
+the speed, gone at full speed and nothing at a halt (`Slowed`). The hiss passes it too.
+
+**Why the tail grows while it slows.** The sound in the line plays out up to what the read will
+have fallen behind when it comes to rest; the tail adds that while a stop is under way
+(`Transport::lag_to_come`, `a_stop_under_way_keeps_the_tail_until_its_read_has_played_out`).
+
+**Why a reset empties only the near line.** The line holds the longest stop's lag, 5 s at the top
+rate's 768 kHz, 30 MB; a stop's read falls behind no faster than the line is written, so from a
+reset it never reaches further back than a running read does, and only that stretch is emptied.
 
 ## Print-through
 

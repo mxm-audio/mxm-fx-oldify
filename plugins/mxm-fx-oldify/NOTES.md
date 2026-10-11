@@ -15,7 +15,7 @@ mxm-kit's `docs/MXM_CONTROL_MAP.md` — a new page — and the owner's to rule o
 
 Wow rate's and Flutter rate's tempo syncs each run over the divisions their own range holds at
 120 bpm, not over `Span::LFO`: these are a tape's speed wobbles, not an LFO, and Flutter's range
-runs past `Span::LFO`'s.
+runs past `Span::LFO`'s. Stop time's runs the same way over its own range, 1/32 to four bars.
 
 ## Levels
 
@@ -54,7 +54,7 @@ and Replay curve as lists; Horn, Horn size), **Vinyl groove** (Wear, Dynamic wea
 distortion, Eccentricity, Warp), **Vinyl surface** (Crackle, Crackle level, Clicks; Surface noise, Scratches, Rumble; Cracks; Hum;
 Hum level, Groove echo), **Tape** (the Tape switch; Tape type; Grade; Tape tone, Saturation; Character;
 Generations; Age), **Tape transport** (Wow, Wow rate and its sync; Wow shape; Flutter, Flutter rate
-and its sync; Flutter shape; Flutter follows wow; Flange), **Tape noise** (Hiss, Print-through; Noise reduction;
+and its sync; Flutter shape; Flutter follows wow; Flange, Stop time and its sync; Tape stop), **Tape noise** (Hiss, Print-through; Noise reduction;
 Decode; NR amount, NR brightness, NR level error; Dropouts, Dropout intensity, Dropout width),
 **Tape deck** (Azimuth, Crosstalk; Wrong EQ) and **Output** (the In and Out levels; Drive, Width,
 Mix; Noise follows, Variation; Noise stops in silence). Noise follows and Variation share a knob row

@@ -78,6 +78,7 @@ fn ladder_of(id: &str) -> Option<mxm_tempo::Ladder> {
     match id {
         "wow_rate" => Some(crate::params::WOW_SYNC),
         "flutter_rate" => Some(crate::params::FLUTTER_SYNC),
+        "stop_time" => Some(crate::params::STOP_SYNC),
         _ => None,
     }
 }
@@ -92,6 +93,7 @@ fn shown_division(
     let (on, param): (bool, &nice_plug::prelude::FloatParam) = match id {
         "wow_rate" => (params.wow_sync.value(), &params.wow_rate),
         "flutter_rate" => (params.flutter_sync.value(), &params.flutter_rate),
+        "stop_time" => (params.stop_sync.value(), &params.stop_time),
         _ => return None,
     };
     if !on {
@@ -317,6 +319,21 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "flange",
             &params.flange,
             "Blends in a steady copy of the tape, for the sweeping sound of two tapes side by side.",
+        ),
+        Bound::new(
+            "tape_stop",
+            &params.tape_stop,
+            "Stops the tape: it slows to a halt over the stop time and stays stopped while this is on. Off, the tape starts again.",
+        ),
+        Bound::new(
+            "stop_time",
+            &params.stop_time,
+            "How long the tape takes to slow from full speed to a halt.",
+        ),
+        Bound::new(
+            "stop_sync",
+            &params.stop_sync,
+            super::binding::SYNC_DESCRIPTION,
         ),
         Bound::new("hiss", &params.hiss, "The tape's own hiss, from off to loud."),
         Bound::new(
@@ -793,7 +810,14 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             ),
             waves_leaf(params, "flutter_shape"),
             toggle_leaf(params, "follow"),
-            knobs(ui, params, &["flange"]),
+            row_gap(
+                gap,
+                vec![
+                    knobs(ui, params, &["flange", "stop_time"]),
+                    sync_beside("stop_sync"),
+                ],
+            ),
+            toggle_leaf(params, "tape_stop"),
         ]),
         5 => stack(vec![
             knobs(ui, params, &["hiss", "print_through"]),

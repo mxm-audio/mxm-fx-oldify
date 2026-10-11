@@ -29,6 +29,14 @@
 //! **A following flutter** is the wow's other use, the reference's: the wow moves no read of its
 //! own, and swings the flutter's rate instead ([`FOLLOW_HZ`]), never below [`FOLLOW_FLOOR`] of it.
 //!
+//! **A tape stop** is the same law with the speed taken all the way down: held, the speed falls
+//! straight to nothing over the stop time (a constant brake), and the read falls behind by what the
+//! slower tape did not play, `Σ(1 − speed)`; stopped, nothing is read. Let go, the tape starts
+//! again: the speed rises straight to its own over as long as the base delay, from a read put ahead
+//! of the base by exactly what the start will lose, so it lands on the base delay at full speed and
+//! the latency never moves. Let go while still slowing, it brakes the rest of the way in
+//! [`BRAKE_S`] first. The line holds the longest stop's lag beside the wobbles' reach.
+//!
 //! Every random draw comes from the transport's own seeded generator, one at each of a random
 //! wobble's points, so a render with the same seed is the same at any block size.
 
@@ -120,6 +128,42 @@ pub const FOLLOW_HZ: f64 = 4.5;
 pub const FOLLOW_FLOOR: f64 = 0.5;
 /// The two-harmonic saw's peak, `sin θ − ½·sin 2θ` at θ = 2π/3 (3√3/4): what scales it to ±1.
 const SAW_PEAK: f64 = 1.299_038_105_676_658;
+/// A tape let go while it is still slowing stops in this long from full speed, then starts.
+/// Chosen: a quick brake, so the tape starts soon after it is let go.
+pub const BRAKE_S: f64 = 0.05;
+
+/// Where a tape stop has got to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Phase {
+    Running,
+    /// Slowing at the stop time's pace, or, let go, braking.
+    Stopping {
+        braking: bool,
+    },
+    Stopped,
+    /// Getting back to speed: the start's step.
+    Starting(u32),
+}
+
+/// A tape stop: its phase, the speed as a share of the tape's own, and how far the read is behind
+/// the base delay (ahead of it while starting), in samples.
+#[derive(Clone, Copy, Debug)]
+struct Stop {
+    phase: Phase,
+    speed: f64,
+    lag: f64,
+}
+
+impl Stop {
+    /// Running, or stopped if the stop is held.
+    fn at_rest(held: bool) -> Self {
+        Self {
+            phase: if held { Phase::Stopped } else { Phase::Running },
+            speed: if held { 0.0 } else { 1.0 },
+            lag: 0.0,
+        }
+    }
+}
 
 /// A shape's read at `phase` (a random wobble's at `point`, where it is between its points), ±1:
 /// a sine's read is a cosine, so its speed (`dD/dt = −δ`) is a sine.
@@ -214,18 +258,39 @@ pub struct Transport {
     extra: [Oscillator; 3],
     rng: Rng,
     seed: u32,
+    /// How far the wobbles may take the read past the base, in samples: twice their reach.
+    wobble_room: f64,
+    /// How far a stop may take it on past that.
+    stop_room: f64,
+    stop: Stop,
+    /// The stop held, and the stop's pace: the speed it loses a sample.
+    held: bool,
+    pace: f64,
 }
 
 impl Transport {
     /// A transport at `rate` whose wobbles reach up to `reach_seconds` (the sum of their
-    /// [`Wobble::reach_seconds`] at the most the parameters allow). Allocates; call it outside the
-    /// audio thread.
+    /// [`Wobble::reach_seconds`] at the most the parameters allow), with no room for a stop.
+    /// Allocates; call it outside the audio thread.
     pub fn new(rate: f64, reach_seconds: f64, seed: u32) -> Self {
+        Self::with_stop(rate, reach_seconds, seed, 0.0)
+    }
+
+    /// A transport as [`Transport::new`] with room for a stop of up to `longest_stop_s` from full
+    /// speed. Allocates; call it outside the audio thread.
+    pub fn with_stop(rate: f64, reach_seconds: f64, seed: u32, longest_stop_s: f64) -> Self {
         let reach = (reach_seconds * rate).ceil();
         // Below the base: twice the reach for a change not yet re-centred, and four samples for the
         // interpolator to read ahead of. Above it: twice the reach, and room to read behind.
         let base = 2.0 * reach + 4.0;
-        let length = (base + 2.0 * reach) as usize + 8;
+        let wobble_room = 2.0 * reach + 2.0;
+        // A stop from full speed loses half its time; a brake after it at most its own.
+        let stop_room = if longest_stop_s > 0.0 {
+            ((0.5 * longest_stop_s + BRAKE_S) * rate).ceil() + 2.0
+        } else {
+            0.0
+        };
+        let length = (base + wobble_room + stop_room) as usize + 6;
         Self {
             lines: [vec![0.0; length], vec![0.0; length]],
             write: 0,
@@ -237,6 +302,11 @@ impl Transport {
             extra: [Oscillator::default(); 3],
             rng: Rng::new(seed),
             seed,
+            wobble_room,
+            stop_room,
+            stop: Stop::at_rest(false),
+            held: false,
+            pace: 1.0,
         }
     }
 
@@ -246,10 +316,17 @@ impl Transport {
     }
 
     /// Back to the start: silence in the line, the wobbles centred at phase zero, the seed's first
-    /// draw.
+    /// draw, and the tape running, or stopped if the stop is held. Only the stretch a running read
+    /// reaches is emptied: a stop's read falls behind no faster than the tape is written, so it
+    /// never reaches past the start, and a long line costs no more to reset than a short one.
     pub fn reset(&mut self) {
-        self.lines.iter_mut().for_each(|line| line.fill(0.0));
+        let length = self.lines[0].len();
+        let near = ((self.base + self.wobble_room) as usize + 6).min(length);
+        for line in &mut self.lines {
+            line[length - near..].fill(0.0);
+        }
         self.write = 0;
+        self.stop = Stop::at_rest(self.held);
         self.wow = Oscillator::default();
         self.flutter = Oscillator::default();
         self.extra = [Oscillator::default(); 3];
@@ -268,6 +345,85 @@ impl Transport {
     pub fn extra_phase_when_read(&self, index: usize) -> f64 {
         let ahead = (self.base + 1.0) * self.extras[index].hz / self.rate;
         (self.extra[index].phase + ahead).fract()
+    }
+
+    /// The tape stop: held, the tape slows to a halt over `seconds` from full speed and stays
+    /// stopped; let go, it starts again. From the next sample on.
+    pub fn set_stop(&mut self, held: bool, seconds: f64) {
+        self.held = held;
+        self.pace = 1.0 / (seconds * self.rate).max(1.0);
+    }
+
+    /// The tape's speed this sample, as a share of its own: 1 running, 0 stopped.
+    pub fn speed(&self) -> f64 {
+        self.stop.speed
+    }
+
+    /// How far behind the base delay the read will be when the stop under way comes to rest, in
+    /// samples: what the sound still in the line has left to play out. Zero unless it is slowing.
+    pub fn lag_to_come(&self) -> f64 {
+        let Phase::Stopping { braking } = self.stop.phase else {
+            return 0.0;
+        };
+        let pace = if braking {
+            self.pace.max(1.0 / (BRAKE_S * self.rate))
+        } else {
+            self.pace
+        };
+        // n more steps of the speed falling by `pace`: Σ (1 − (s − k·pace)), k = 1..n.
+        let n = (self.stop.speed / pace).ceil();
+        (self.stop.lag + n * (1.0 - self.stop.speed) + pace * n * (n + 1.0) / 2.0).max(0.0)
+    }
+
+    /// One sample of the tape stop: the speed's and the read's lag's next step.
+    fn step_stop(&mut self) {
+        let start = self.base.max(1.0);
+        let stop = &mut self.stop;
+        stop.phase = match stop.phase {
+            Phase::Running if self.held => Phase::Stopping { braking: false },
+            Phase::Starting(_) if self.held => Phase::Stopping { braking: false },
+            Phase::Stopping { .. } => Phase::Stopping {
+                braking: !self.held,
+            },
+            phase => phase,
+        };
+        match stop.phase {
+            Phase::Stopping { braking } => {
+                let pace = if braking {
+                    self.pace.max(1.0 / (BRAKE_S * self.rate))
+                } else {
+                    self.pace
+                };
+                stop.speed = (stop.speed - pace).max(0.0);
+                stop.lag += 1.0 - stop.speed;
+                if stop.speed == 0.0 {
+                    stop.phase = if braking {
+                        Phase::Starting(0)
+                    } else {
+                        Phase::Stopped
+                    };
+                }
+            }
+            Phase::Stopped if !self.held => stop.phase = Phase::Starting(0),
+            Phase::Starting(step) => {
+                // The k-th step of `start` puts the speed at k / start and the read
+                // −(start − 1)/2 + k − k(k + 1)/(2·start) from the base: on it at the last.
+                let k = f64::from(step + 1);
+                if k >= start {
+                    *stop = Stop::at_rest(false);
+                } else {
+                    stop.speed = k / start;
+                    stop.lag = -(start - 1.0) / 2.0 + k - k * (k + 1.0) / (2.0 * start);
+                    stop.phase = Phase::Starting(step + 1);
+                }
+            }
+            _ => {}
+        }
+        if let Phase::Starting(0) = stop.phase {
+            // Stopped, and silent: the read is put ahead by what the start will lose.
+            stop.speed = 0.0;
+            stop.lag = -(start - 1.0) / 2.0;
+        }
     }
 
     /// A new seed for the random shapes, from the next draw on; the line and phases stay.
@@ -316,9 +472,32 @@ impl Transport {
         for (oscillator, wobble) in self.extra.iter_mut().zip(&self.extras) {
             offset += oscillator.next(wobble, self.rate, &mut self.rng);
         }
-        let room = length as f64 - self.base - 6.0;
-        let delay = self.base + offset.clamp(-(self.base - 2.0), room);
+        self.step_stop();
+        let (out, fixed) = if self.stop.speed == 0.0 {
+            // Stopped: nothing passes the head.
+            ([0.0; 2], [0.0; 2])
+        } else {
+            let wobbled = offset.clamp(-(self.base - 2.0), self.wobble_room);
+            let lag = self.stop.lag;
+            let most = self.base + self.wobble_room + self.stop_room;
+            let delay = (self.base + wobbled + lag).clamp(2.0, most);
+            let moving = self.read(delay);
+            let fixed = if lag == 0.0 {
+                let still = (self.write + length - self.base as usize) % length;
+                [self.lines[0][still], self.lines[1][still]]
+            } else {
+                self.read((self.base + lag).clamp(2.0, most))
+            };
+            (moving, fixed)
+        };
+        self.write = (self.write + 1) % length;
+        (out, fixed)
+    }
 
+    /// Both channels read `delay` samples behind the sample just written.
+    #[inline]
+    fn read(&self, delay: f64) -> [f32; 2] {
+        let length = self.lines[0].len();
         let position = self.write as f64 - delay + length as f64;
         let whole = position.floor();
         let fraction = position - whole;
@@ -328,10 +507,7 @@ impl Transport {
             let at = |k: usize| f64::from(line[(index + k + length - 1) % length]);
             *y = hermite(at(0), at(1), at(2), at(3), fraction) as f32;
         }
-        let still = (self.write + length - self.base as usize) % length;
-        let fixed = [self.lines[0][still], self.lines[1][still]];
-        self.write = (self.write + 1) % length;
-        (out, fixed)
+        out
     }
 }
 
