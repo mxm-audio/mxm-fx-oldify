@@ -25,6 +25,10 @@
       "v": 0.39763537,
       "text": "50/s"
     },
+    "crackle_level": {
+      "v": 0.5,
+      "text": "0.0 dB"
+    },
     "cracks": {
       "v": 0.0,
       "text": "0"

@@ -684,6 +684,7 @@ mod tests {
                 speed: crate::disc::Speed::Shellac78,
                 surface_db: crate::disc::MAX_SURFACE_DB,
                 crackle: crate::disc::MAX_CRACKLE_HZ,
+                crackle_gain: db_to_gain(crate::disc::CRACKLE_LEVEL_DB),
                 clicks: crate::disc::MAX_CLICKS_HZ,
                 scratches: crate::disc::MAX_SCRATCHES as u8,
                 cracks: crate::disc::MAX_CRACKS as u8,

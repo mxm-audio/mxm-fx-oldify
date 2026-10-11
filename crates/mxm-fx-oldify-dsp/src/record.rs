@@ -201,6 +201,7 @@ impl RecordControls {
             speed: Speed::Lp33,
             surface_db: -70.0,
             crackle: 60.0,
+            crackle_gain: 1.0,
             clicks: 1.0,
             scratches: 0,
             cracks: 0,

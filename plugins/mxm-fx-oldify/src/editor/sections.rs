@@ -188,6 +188,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "How many tiny crackles a second, from a clean disc to a worn 78.",
         ),
         Bound::new(
+            "crackle_level",
+            &params.crackle_level,
+            "How loud each crackle is: 0 dB is a typical record's; at the top a battered 78's crackle rivals the music.",
+        ),
+        Bound::new(
             "clicks",
             &params.clicks,
             "How many louder clicks a second, from dust and specks in the groove.",
@@ -744,8 +749,8 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             knobs(ui, params, &["groove_distortion", "eccentricity", "warp"]),
         ]),
         2 => stack(vec![
-            knobs(ui, params, &["crackle", "clicks", "surface_noise"]),
-            knobs(ui, params, &["scratches", "rumble"]),
+            knobs(ui, params, &["crackle", "crackle_level", "clicks"]),
+            knobs(ui, params, &["surface_noise", "scratches", "rumble"]),
             segmented_leaf(params, "cracks"),
             segmented_leaf(params, "hum"),
             knobs(ui, params, &["hum_level"]),

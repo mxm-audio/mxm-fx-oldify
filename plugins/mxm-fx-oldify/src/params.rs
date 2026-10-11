@@ -19,8 +19,8 @@ use mxm_fx_oldify_dsp::cassette::{
 };
 use mxm_fx_oldify_dsp::curves::Curve;
 use mxm_fx_oldify_dsp::disc::{
-    DiscControls, MAX_CLICKS_HZ, MAX_CRACKLE_HZ, MAX_CRACKS, MAX_RUMBLE_DB, MAX_SCRATCHES,
-    MAX_SURFACE_DB, NOISE_OFF_DB, Speed,
+    CRACKLE_LEVEL_DB, DiscControls, MAX_CLICKS_HZ, MAX_CRACKLE_HZ, MAX_CRACKS, MAX_RUMBLE_DB,
+    MAX_SCRATCHES, MAX_SURFACE_DB, NOISE_OFF_DB, Speed,
 };
 use mxm_fx_oldify_dsp::dropouts::DropoutControls;
 use mxm_fx_oldify_dsp::groove::GrooveControls;
@@ -717,6 +717,9 @@ pub struct MxmFxOldifyParams {
     // ---- Surface ----
     #[id = "crackle"]
     pub crackle: FloatParam,
+    /// Stored as linear gain, 0 dB mid-travel: the crackle's size against a typical record's.
+    #[id = "crackle_level"]
+    pub crackle_level: FloatParam,
     #[id = "clicks"]
     pub clicks: FloatParam,
     /// Stored as linear gain; the bottom of the travel is Off.
@@ -902,6 +905,12 @@ impl Default for MxmFxOldifyParams {
             .with_string_to_value(string_to_percent()),
 
             crackle: per_second("Crackle", record.disc.crackle, MAX_CRACKLE_HZ, -2.0),
+            crackle_level: gain_within(
+                "Crackle level",
+                record.disc.crackle_gain,
+                -CRACKLE_LEVEL_DB,
+                CRACKLE_LEVEL_DB,
+            ),
             clicks: per_second("Clicks", record.disc.clicks, MAX_CLICKS_HZ, -1.5),
             surface_noise: off_level(
                 "Surface noise",
@@ -1058,6 +1067,7 @@ impl MxmFxOldifyParams {
                     speed: self.disc.value().dsp(),
                     surface_db: surface_db(self.surface_noise.value()),
                     crackle: self.crackle.value(),
+                    crackle_gain: self.crackle_level.value(),
                     clicks: self.clicks.value(),
                     scratches: u8::try_from(self.scratches.value()).unwrap_or(0),
                     cracks: u8::try_from(self.cracks.value()).unwrap_or(0),
@@ -1335,7 +1345,7 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 34] = [
+        let continuous: [&FloatParam; 35] = [
             &params.horn,
             &params.horn_size,
             &params.age,
@@ -1354,6 +1364,7 @@ mod tests {
             &params.eccentricity,
             &params.warp,
             &params.crackle,
+            &params.crackle_level,
             &params.clicks,
             &params.surface_noise,
             &params.rumble,

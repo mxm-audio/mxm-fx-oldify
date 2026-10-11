@@ -46,6 +46,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `eccentricity` | Eccentricity | 0…`record::MAX_ECCENTRICITY_MM` mm, skewed so the everyday tenths get the first half |
 | | `warp` | Warp | 0…`record::MAX_WARP`, read in %: 100 % is the measured reference's full warp, past it for effect; skewed as Eccentricity, so real warps get the first half |
 | Vinyl surface | `crackle`, `clicks` | Crackle, Clicks | 0…`disc::MAX_CRACKLE_HZ` / `MAX_CLICKS_HZ` a second, read `60/s`, skewed so the low counts get the travel |
+| | `crackle_level` | Crackle level | ±`disc::CRACKLE_LEVEL_DB`, stored as linear gain, 0 dB mid-travel, read in dB: the crackle's size against a typical record's |
 | | `surface_noise`, `rumble` | Surface noise, Rumble | `disc::NOISE_OFF_DB` (Off)…`MAX_SURFACE_DB` / `MAX_RUMBLE_DB`, as Hiss |
 | | `scratches`, `cracks` | Scratches, Cracks | Integers 0…`disc::MAX_SCRATCHES` / `MAX_CRACKS`; Cracks drawn as buttons |
 | | `hum`, `hum_level` | Hum, Hum level | Off / 50 Hz / 60 Hz (`off`, `50-hz`, `60-hz`); the level `NOISE_OFF_DB` (Off)…`params::MAX_HUM_DB`, as Hiss |

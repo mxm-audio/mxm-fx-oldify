@@ -16,7 +16,8 @@
 //! - **Surface noise**: noise rising about 3 dB an octave above 500 Hz, swishing with the turn
 //!   (a smooth level change fixed to the angle, up to [`SWISH`] in each of three harmonics).
 //! - **Crackle**: a dense bed of single-sample impulses with heavy-tailed (Pareto) sizes, up to
-//!   2,000 a second on a 78, where they fuse into the familiar fry.
+//!   2,000 a second on a 78, where they fuse into the familiar fry; how loud it is is set apart
+//!   from how dense, within [`CRACKLE_LEVEL_DB`] of a typical record's.
 //! - **Clicks**: sparser, larger, each a burst of noise behind a sharp edge, 20 µs to 4 ms long,
 //!   its colour its own and darker the longer it lasts. A click is "localized impulsive
 //!   disturbances… durations range from less than 20 µs to 4 ms" whose initial part "behaves as
@@ -50,6 +51,9 @@ use std::f64::consts::{PI, TAU};
 pub const TURNOVER: f64 = 0.12;
 /// The most crackle a second, as on a worn 78.
 pub const MAX_CRACKLE_HZ: f32 = 2_000.0;
+/// How far the crackle's level reaches either way of a typical record's, decibels: at the top, a
+/// battered 78's crackle comes up to the music's peaks. Chosen.
+pub const CRACKLE_LEVEL_DB: f32 = 24.0;
 /// The most clicks a second.
 pub const MAX_CLICKS_HZ: f32 = 50.0;
 pub const MAX_SCRATCHES: usize = 8;
@@ -129,6 +133,8 @@ pub struct DiscControls {
     pub surface_db: f32,
     /// Impulses a second, 0..=[`MAX_CRACKLE_HZ`].
     pub crackle: f32,
+    /// The crackle's size against a typical record's, linear, within ±[`CRACKLE_LEVEL_DB`].
+    pub crackle_gain: f32,
     /// Clicks a second, 0..=[`MAX_CLICKS_HZ`].
     pub clicks: f32,
     pub scratches: u8,
@@ -142,6 +148,7 @@ impl DiscControls {
         speed: Speed::Lp33,
         surface_db: NOISE_OFF_DB,
         crackle: 0.0,
+        crackle_gain: 1.0,
         clicks: 0.0,
         scratches: 0,
         cracks: 0,
@@ -159,6 +166,12 @@ impl DiscControls {
         Self {
             surface_db: within(self.surface_db, NOISE_OFF_DB, MAX_SURFACE_DB, NOISE_OFF_DB),
             crackle: within(self.crackle, 0.0, MAX_CRACKLE_HZ, 0.0),
+            crackle_gain: within(
+                self.crackle_gain,
+                crate::db_to_gain(-CRACKLE_LEVEL_DB),
+                crate::db_to_gain(CRACKLE_LEVEL_DB),
+                1.0,
+            ),
             clicks: within(self.clicks, 0.0, MAX_CLICKS_HZ, 0.0),
             scratches: self.scratches.min(MAX_SCRATCHES as u8),
             cracks: self.cracks.min(MAX_CRACKS as u8),
@@ -539,7 +552,7 @@ impl Disc {
 
         // The events between the last angle and this one.
         while self.next_crackle < self.crackle.len() && self.crackle[self.next_crackle].0 < now {
-            out += self.crackle[self.next_crackle].1;
+            out += self.crackle[self.next_crackle].1 * f64::from(c.crackle_gain);
             self.next_crackle += 1;
         }
         while self.next_click < self.clicks.len() && self.clicks[self.next_click].0 < now {
@@ -893,6 +906,29 @@ mod tests {
             let size: f64 = out.iter().map(|v| v.abs()).sum();
             assert!(size > 0.0);
             assert!(sum.abs() < 1e-3 * size, "{c:?}: net {sum:.4} of {size:.2}");
+        }
+    }
+
+    /// The crackle's level scales every impulse and leaves where they fall alone.
+    #[test]
+    fn the_crackle_level_scales_the_crackle() {
+        let c = DiscControls {
+            crackle: 300.0,
+            ..DiscControls::SILENT
+        };
+        let gain = crate::db_to_gain(12.0);
+        let typical = render(c, 2.0, 4);
+        let louder = render(
+            DiscControls {
+                crackle_gain: gain,
+                ..c
+            },
+            2.0,
+            4,
+        );
+        assert!(typical.iter().any(|v| *v != 0.0));
+        for (a, b) in typical.iter().zip(&louder) {
+            assert!((b - f64::from(gain) * a).abs() < 1e-12);
         }
     }
 

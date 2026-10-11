@@ -38,7 +38,7 @@ the hiss's top and its 70 µs offset, the silence thresholds and times, the nois
 `GENERATION_UM`, the dropout laws, `WRONG_EQ_DB`, the noise reduction's thresholds, corners, skew
 and detector, the record's era Qs, limiter times, players, `TURNOVER`, the crackle, click, scratch
 and crack sizes, the bursts' colours (`BRIGHTEST_HZ`, `DARKEST_HZ`), `GRIT`, `SCRATCH_WIDTH_S`,
-`CRACK_WIDTH_S`, `BLOCK_BELOW`, `SWISH`, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
+`CRACK_WIDTH_S`, `BLOCK_BELOW`, `SWISH`, `CRACKLE_LEVEL_DB`, the groove's corners and Dynamic wear's `STYLUS_HZ` (an estimate
 from period compliance and tip mass), `STYLUS_Q`, `GIVE`, `KNEE`, `WALL_SPREAD_DB`,
 `WORN_DULL_HZ`, `ROUGH`, `ROUGH_HZ` and `WORN_RELEASE_S`, and the horn's feedbacks, mouths,
 heights, corners, `BLAST` and the gramophone's `PLAY_LENGTH` and soundbox are chosen here, not
@@ -100,6 +100,13 @@ falling to the arm's resonance at 8–15 Hz. It is real, but it lives below hear
 replay curve lifts it by 20 dB: measured after the curve, the ring sat 35–40 dB above the crack's
 own pop and peaked at −8 dBFS, and the owner heard it as a drum machine's bass drum, whether it
 started at hundreds of hertz or at tens (2026-10-09, 2026-10-10).
+
+**Why the crackle has a level.** How many crackles a second and how loud they are are apart: a
+dusty disc crackles often and softly, a battered one loudly (the owner, 2026-10-11: "The surface
+crackle cannot be made loud enough", of an unrestored 1943 78). At the top of Crackle, a typical
+record's crackle sat 32–34 dB under a −18 dBFS pink programme, A-weighted, and its loudest 21–22 dB
+under the music's peaks on the 78 presets; `CRACKLE_LEVEL_DB` brings them up to the music
+(`the_crackle_level_scales_the_crackle`).
 
 **Why a scratch moves on.** A scratch or a crack crosses only so many grooves; once the stylus has
 passed them, the next is somewhere else (the owner, 2026-10-11: "they should not stay at the same

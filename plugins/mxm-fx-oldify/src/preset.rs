@@ -39,6 +39,7 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("eccentricity", &self.eccentricity),
             ("warp", &self.warp),
             ("crackle", &self.crackle),
+            ("crackle_level", &self.crackle_level),
             ("clicks", &self.clicks),
             ("surface_noise", &self.surface_noise),
             ("scratches", &self.scratches),

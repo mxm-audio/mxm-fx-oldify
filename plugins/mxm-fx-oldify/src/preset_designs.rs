@@ -487,6 +487,7 @@ pub const DESIGNS: &[Design] = &[
 const IN_DECIBELS: &[&str] = &[
     "hiss",
     "crosstalk",
+    "crackle_level",
     "surface_noise",
     "rumble",
     "hum_level",
