@@ -19,8 +19,8 @@ jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch
 skew's exact split, and the noise reduction's lift, two-band's reach, exact decode, undecoded and
 off paths, mistracking and hiss reduction, the curves' shapes, exact cut-and-replay and the UK 78
 error, the disc's rate, heavy tail, turn-locked renewal, a swish of a few decibels, clicks that are noise and not a tone,
-scratches the same tick every turn, clicks, scratches and cracks with no net push, a crack
-popping through the replay curve with under a tenth of itself below 100 Hz, cracks and levels,
+scratches the same tick every turn, scratches and cracks moving on after `GAP_LIFE_S`, clicks, scratches and cracks with no net push, a crack
+popping through the replay curve with under a tenth of itself below 100 Hz whatever the seed, cracks and levels,
 the groove's cited distortion and treble loss, Dynamic wear leaving a quiet groove exactly as it
 was, wearing a loud one, a loud bass note where a middle one as fast is not, and the two walls
 apart, the horn keeping only the middle at full, honking at `c / 2L` and staying bounded at full
@@ -100,6 +100,21 @@ falling to the arm's resonance at 8–15 Hz. It is real, but it lives below hear
 replay curve lifts it by 20 dB: measured after the curve, the ring sat 35–40 dB above the crack's
 own pop and peaked at −8 dBFS, and the owner heard it as a drum machine's bass drum, whether it
 started at hundreds of hertz or at tens (2026-10-09, 2026-10-10).
+
+**Why a scratch moves on.** A scratch or a crack crosses only so many grooves; once the stylus has
+passed them, the next is somewhere else (the owner, 2026-10-11: "they should not stay at the same
+position indefenitely… Perhaps every 30-60 second"). Each draws its own life within `GAP_LIFE_S`,
+so they move on apart, and gives way at the end of a turn, so no turn holds half of one
+(`scratches_and_cracks_move_on_after_their_life`). How many there are is still the Scratches
+and Cracks controls'; a new one is drawn as the first was.
+
+**Why the noise has generators of its own.** The surface noise and the rumble draw from their own
+seeded generators, apart from the events', so a defect switched on or off, or drawn anew as it
+moves on, leaves the noise under it the same, sample for sample. A crack is measured alone, as the
+render less the same disc without it, over several seeds
+(`a_crack_pops_through_the_replay_curve_and_never_thumps`): measured with the noise still in it, a
+quiet crack's window held more of the deck's own rumble than of the pop, and read as a thump that
+was not there.
 
 ## Noise that holds steady
 

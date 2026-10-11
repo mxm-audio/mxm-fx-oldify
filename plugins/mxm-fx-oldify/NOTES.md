@@ -43,8 +43,9 @@ the bank sat there: everything the disc and player make, A-weighted, 29–40 dB 
 tone on the 78s and 54–65 dB on the LPs. Music sits 15–20 dB under full modulation, so on the 78s
 the noise came out only 6–18 dB under a −18 dBFS pink programme (A-weighted, Noise follows off).
 Every record design and Init's record came down 12 dB: the 78s now sit 18–30 dB under that
-programme, the single and the LPs 35–51. Measure a preset's noise from silent-input renders, by
-power: the disc's sounds draw from one generator, so turning one off reshuffles the others.
+programme, the single and the LPs 35–51. A preset's surface noise is its render less the same
+render with Surface noise off: the noise has its own generator, where the disc's crackle, clicks,
+scratches and cracks share one, so turning one of those off reshuffles the rest.
 
 ## The cards
 

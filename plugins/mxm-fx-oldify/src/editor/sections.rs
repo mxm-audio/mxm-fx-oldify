@@ -200,12 +200,12 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "scratches",
             &params.scratches,
-            "How many scratches cross the record, each ticking once a turn.",
+            "How many scratches cross the record, each ticking once a turn for half a minute to a minute before the next turns up elsewhere.",
         ),
         Bound::new(
             "cracks",
             &params.cracks,
-            "How many cracks run across the record, each popping once a turn.",
+            "How many cracks run across the record, each popping once a turn for half a minute to a minute before the next turns up elsewhere.",
         ),
         Bound::new(
             "rumble",

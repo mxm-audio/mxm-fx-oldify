@@ -766,7 +766,8 @@ mod tests {
     /// **A crack pops; it never thumps**: through the replay curve's bass lift, from an LP on a
     /// modern deck to a 78 on a radiogram, nearly all of a crack's energy is above 100 Hz, where a
     /// bass drum's is below it (the owner, 2026-10-10: "It is the 'cracks' that sounds like bass
-    /// drums").
+    /// drums"). The crack alone, against the same disc without it (the player's own rumble goes on
+    /// under it), whatever crack the seed draws.
     #[test]
     fn a_crack_pops_through_the_replay_curve_and_never_thumps() {
         for (speed, era, player) in [
@@ -774,36 +775,43 @@ mod tests {
             (Speed::Shellac78, Era::Uk78, Player::ModernDeck),
             (Speed::Shellac78, Era::Us78, Player::Radiogram),
         ] {
-            let mut record = Record::new(RATE, 3);
-            record.set_controls(RecordControls {
-                disc: DiscControls {
-                    speed,
-                    cracks: 1,
-                    ..DiscControls::SILENT
-                },
-                era,
-                player,
-                ..RecordControls::INIT
-            });
-            let out: Vec<f64> = (0..(2.0 * RATE) as usize)
-                .map(|_| f64::from(record.process([0.0, 0.0], 1.0, 0.0)[0]))
-                .collect();
-            let peak = (0..out.len())
-                .max_by(|&a, &b| out[a].abs().total_cmp(&out[b].abs()))
-                .unwrap();
-            let pop = &out[peak.saturating_sub(240)..(peak + (0.1 * RATE) as usize).min(out.len())];
-            let low = Section::new(Kind::LowPass, 100.0, 0.0, FRAC_1_SQRT_2).coefficients(RATE);
-            let mut low = [Biquad::new(low), Biquad::new(low)];
-            let below: f64 = pop
-                .iter()
-                .map(|v| low.iter_mut().fold(*v, |s, b| b.process(s)).powi(2))
-                .sum();
-            let all: f64 = pop.iter().map(|v| v * v).sum();
-            assert!(
-                below < 0.1 * all,
-                "{player:?}: {:.2} of the crack below 100 Hz",
-                below / all
-            );
+            for seed in 1..=3 {
+                let render = |cracks: u8| -> Vec<f64> {
+                    let mut record = Record::new(RATE, seed);
+                    record.set_controls(RecordControls {
+                        disc: DiscControls {
+                            speed,
+                            cracks,
+                            ..DiscControls::SILENT
+                        },
+                        era,
+                        player,
+                        ..RecordControls::INIT
+                    });
+                    (0..(2.0 * RATE) as usize)
+                        .map(|_| f64::from(record.process([0.0, 0.0], 1.0, 0.0)[0]))
+                        .collect()
+                };
+                let without = render(0);
+                let out: Vec<f64> = render(1).iter().zip(&without).map(|(a, b)| a - b).collect();
+                let peak = (0..out.len())
+                    .max_by(|&a, &b| out[a].abs().total_cmp(&out[b].abs()))
+                    .unwrap();
+                let pop =
+                    &out[peak.saturating_sub(240)..(peak + (0.1 * RATE) as usize).min(out.len())];
+                let low = Section::new(Kind::LowPass, 100.0, 0.0, FRAC_1_SQRT_2).coefficients(RATE);
+                let mut low = [Biquad::new(low), Biquad::new(low)];
+                let below: f64 = pop
+                    .iter()
+                    .map(|v| low.iter_mut().fold(*v, |s, b| b.process(s)).powi(2))
+                    .sum();
+                let all: f64 = pop.iter().map(|v| v * v).sum();
+                assert!(
+                    below < 0.1 * all,
+                    "{player:?}, seed {seed}: {:.2} of the crack below 100 Hz",
+                    below / all
+                );
+            }
         }
     }
 

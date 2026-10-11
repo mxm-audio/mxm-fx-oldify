@@ -6,8 +6,9 @@
 //! that repeats too exactly (Moliner & Välimäki, DAFx 2022; `ops: notes/oldify/reports`, the
 //! record half). So the disc turns at its speed (1.8 s a turn at 33⅓, 1.333 s at 45, 0.769 s at
 //! 78), and keeps, for each revolution, where its crackle and clicks are; each new revolution
-//! keeps most of them and replaces [`TURNOVER`] of them. Scratches and cracks sit at fixed angles
-//! and come round every turn, each with its own sound, varied a little each time.
+//! keeps most of them and replaces [`TURNOVER`] of them. A scratch or a crack sits at its angle and
+//! comes round every turn, with its own sound varied a little each time, for as long as the stylus
+//! takes to cross the grooves it cut (`GAP_LIFE_S`); then the next sits somewhere else.
 //!
 //! What it makes, all in the groove, before the replay curve (which softens a vinyl click into a
 //! tick and leaves a 78's crackle bright) and before the read-out (so it shares the music's wow):
@@ -21,10 +22,10 @@
 //!   disturbances… durations range from less than 20 µs to 4 ms" whose initial part "behaves as
 //!   high-variance noise" (Moliner & Välimäki, after Rayner & Godsill; Esquef): noise, not a
 //!   tone. A damped ring of one pitch, which a click is not, is heard as a drop of water.
-//! - **Scratches**: at a fixed angle every turn, louder: the stylus drops into the scratch and
+//! - **Scratches**: at their angle every turn, louder: the stylus drops into the scratch and
 //!   climbs out, two edges of opposite sign a scratch's width apart, the same burst each turn
 //!   with its size varied a little.
-//! - **Cracks**: at a fixed angle every turn, the loudest: the stylus falls across the crack and
+//! - **Cracks**: at their angle every turn, the loudest: the stylus falls across the crack and
 //!   strikes its far side, two edges like a scratch's but larger, longer and further apart, which
 //!   the replay curve turns into a short pop with body. **No ring follows**: the tonearm's own
 //!   swing (Esquef's thump) is at 8–15 Hz, below hearing, and through the replay curve's bass
@@ -37,8 +38,10 @@
 //! thumps.
 //! - **Rumble**: low noise under 30 Hz.
 //!
-//! Every draw comes from the disc's seeded generator, so a render is the same every time and at
-//! any block size. The event tables are allocated in [`Disc::new`] and never grow.
+//! Every draw comes from the disc's seeded generators, so a render is the same every time and at
+//! any block size: one for its events, and one each for the surface noise and the rumble, so a
+//! defect switched on or off never reshuffles the noise under it. The event tables are allocated
+//! in [`Disc::new`] and never grow.
 
 use crate::transport::Rng;
 use std::f64::consts::{PI, TAU};
@@ -88,6 +91,10 @@ const GRIT: f64 = 0.35;
 const SCRATCH_WIDTH_S: (f64, f64) = (0.000_1, 0.001_5);
 /// A crack's width, the same way: a gap of 0.1–0.5 mm, its far side often higher (est.).
 const CRACK_WIDTH_S: (f64, f64) = (0.000_3, 0.002);
+/// How long a scratch or a crack keeps coming round, seconds, the shortest and the longest: it
+/// crosses only so many grooves, about 1–2 cm of a 78's side, and once the stylus has passed them
+/// the next sits elsewhere. The owner's, 2026-10-11.
+const GAP_LIFE_S: (f64, f64) = (30.0, 60.0);
 /// Voices sounding at once: clicks and the edges of scratches and cracks.
 const VOICES: usize = 32;
 
@@ -237,20 +244,22 @@ struct Voice {
     gain: f64,
 }
 
-/// A gap the stylus crosses, a scratch or a crack: where it sits, its near edge's burst, and the
-/// far edge's size against the near one's and its delay.
+/// A gap the stylus crosses, a scratch or a crack: where it sits, its near edge's burst, the far
+/// edge's size against the near one's and its delay, and how long it has left.
 #[derive(Clone, Copy, Debug, Default)]
 struct Gap {
     angle: f64,
     near: Burst,
     far: f64,
     width_s: f64,
+    /// Seconds before the stylus has crossed the grooves it cut.
+    left_s: f64,
 }
 
 impl Gap {
     /// A gap at a random angle: its near edge's size within `sizes`, its bursts' lengths within
     /// `lengths` of the clicks' range (as shares of its logarithm), its far edge within `far` of
-    /// the near one, and its width within `widths`.
+    /// the near one, its width within `widths`, and its life within [`GAP_LIFE_S`].
     fn new(
         sizes: (f64, f64),
         lengths: (f64, f64),
@@ -275,7 +284,30 @@ impl Gap {
             },
             far: within(far, rng),
             width_s: narrowest * (widest / narrowest).powf(unit(rng)),
+            left_s: within(GAP_LIFE_S, rng),
         }
+    }
+
+    /// A scratch: its edges short, the clicks' middle third, and its far edge lower.
+    fn scratch(rng: &mut Rng) -> Self {
+        Self::new(
+            (0.5 * SCRATCH_SIZE, 1.5 * SCRATCH_SIZE),
+            (0.33, 0.66),
+            (0.3, 0.9),
+            SCRATCH_WIDTH_S,
+            rng,
+        )
+    }
+
+    /// A crack: its edges longer, its far side as high or nearly.
+    fn crack(rng: &mut Rng) -> Self {
+        Self::new(
+            (0.6 * CRACK_SIZE, 1.4 * CRACK_SIZE),
+            (0.5, 0.9),
+            (0.7, 1.0),
+            CRACK_WIDTH_S,
+            rng,
+        )
     }
 }
 
@@ -289,7 +321,10 @@ fn seed(rng: &mut Rng) -> u32 {
 #[derive(Clone, Debug)]
 pub struct Disc {
     rate: f64,
+    /// The events' generator, and the surface noise's and the rumble's own.
     rng: Rng,
+    surface_rng: Rng,
+    rumble_rng: Rng,
     seed: u32,
     angle: f64,
     /// This revolution's crackle (angle, size) and clicks (angle, burst), sorted by angle, and how
@@ -319,6 +354,8 @@ impl Disc {
         let mut disc = Self {
             rate: sample_rate,
             rng: Rng::new(seed),
+            surface_rng: Rng::new(seed),
+            rumble_rng: Rng::new(seed),
             seed,
             angle: 0.0,
             crackle: Vec::with_capacity(most_crackle),
@@ -349,6 +386,8 @@ impl Disc {
     /// Back to the seed's own disc at angle zero, nothing sounding.
     pub fn clear(&mut self) {
         self.rng = Rng::new(self.seed ^ 0xD15C_0001);
+        self.surface_rng = Rng::new(self.seed ^ 0xD15C_0002);
+        self.rumble_rng = Rng::new(self.seed ^ 0xD15C_0003);
         self.angle = 0.0;
         self.voices = [Voice::default(); VOICES];
         self.tilt = 0.0;
@@ -358,25 +397,11 @@ impl Disc {
             *phase = TAU * unit(&mut self.rng);
         }
         let rng = &mut self.rng;
-        // A scratch's edges are short, the clicks' middle third, and its far edge lower; a
-        // crack's are longer, its far side as high or nearly.
         for scratch in self.scratches.iter_mut() {
-            *scratch = Gap::new(
-                (0.5 * SCRATCH_SIZE, 1.5 * SCRATCH_SIZE),
-                (0.33, 0.66),
-                (0.3, 0.9),
-                SCRATCH_WIDTH_S,
-                rng,
-            );
+            *scratch = Gap::scratch(rng);
         }
         for crack in self.cracks.iter_mut() {
-            *crack = Gap::new(
-                (0.6 * CRACK_SIZE, 1.4 * CRACK_SIZE),
-                (0.5, 0.9),
-                (0.7, 1.0),
-                CRACK_WIDTH_S,
-                rng,
-            );
+            *crack = Gap::crack(rng);
         }
         self.crackle.clear();
         self.clicks.clear();
@@ -435,6 +460,24 @@ impl Disc {
         self.clicks.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));
         self.next_crackle = 0;
         self.next_click = 0;
+    }
+
+    /// A turn of `turn_s` has gone by: a scratch or a crack whose grooves the stylus has crossed
+    /// gives way to a new one, somewhere else.
+    fn move_on(&mut self, turn_s: f64) {
+        let rng = &mut self.rng;
+        for scratch in self.scratches.iter_mut() {
+            scratch.left_s -= turn_s;
+            if scratch.left_s <= 0.0 {
+                *scratch = Gap::scratch(rng);
+            }
+        }
+        for crack in self.cracks.iter_mut() {
+            crack.left_s -= turn_s;
+            if crack.left_s <= 0.0 {
+                *crack = Gap::crack(rng);
+            }
+        }
     }
 
     /// A voice playing `burst` at `scale` of its size, after `wait_s`.
@@ -522,6 +565,7 @@ impl Disc {
         if wrapped {
             self.angle -= 1.0;
             self.refill(&c, TURNOVER);
+            self.move_on(1.0 / c.speed.hz());
             // Events at the very start of the new turn wait for the next sample.
         }
 
@@ -553,7 +597,7 @@ impl Disc {
         // Surface noise, swishing with the turn.
         let surface = level(c.surface_db, NOISE_OFF_DB);
         if surface > 0.0 {
-            let white = self.rng.bipolar() * 3f64.sqrt();
+            let white = self.surface_rng.bipolar() * 3f64.sqrt();
             // A first-order lift: the difference from a slow average leans the noise upward.
             self.tilt += 0.06 * (white - self.tilt);
             let tilted = white + 1.5 * (white - self.tilt);
@@ -569,7 +613,7 @@ impl Disc {
         // Rumble: low-passed noise.
         let rumble = level(c.rumble_db, NOISE_OFF_DB);
         if rumble > 0.0 {
-            let white = self.rng.bipolar() * 3f64.sqrt();
+            let white = self.rumble_rng.bipolar() * 3f64.sqrt();
             self.rumble[0] = self.rumble_pole * self.rumble[0] + (1.0 - self.rumble_pole) * white;
             self.rumble[1] =
                 self.rumble_pole * self.rumble[1] + (1.0 - self.rumble_pole) * self.rumble[0];
@@ -743,6 +787,55 @@ mod tests {
         assert!(shares.len() >= 6, "{} clicks", shares.len());
         let worst = shares.iter().cloned().fold(0.0, f64::max);
         assert!(worst < 0.35, "a click put {worst:.2} of itself in one band");
+    }
+
+    /// A scratch or a crack comes round at its angle for its life, 30–60 s, then the next sits
+    /// elsewhere: where each turn's loudest moment sits holds, then jumps.
+    #[test]
+    fn scratches_and_cracks_move_on_after_their_life() {
+        let rate = 8_000.0;
+        let speed = Speed::Shellac78;
+        for (scratches, cracks) in [(1, 0), (0, 1)] {
+            let mut disc = Disc::new(rate, 3);
+            disc.set_controls(DiscControls {
+                speed,
+                scratches,
+                cracks,
+                ..DiscControls::SILENT
+            });
+            disc.clear();
+            let turn = rate / speed.hz();
+            let turns = (150.0 * speed.hz()) as usize;
+            let out: Vec<f64> = (0..(turns as f64 * turn) as usize)
+                .map(|_| disc.sample())
+                .collect();
+            let loudest: Vec<usize> = (0..turns)
+                .map(|r| {
+                    let from = (r as f64 * turn) as usize;
+                    let to = ((r + 1) as f64 * turn) as usize;
+                    (from..to)
+                        .max_by(|&x, &y| out[x].abs().total_cmp(&out[y].abs()))
+                        .unwrap()
+                        - from
+                })
+                .collect();
+            let moves: Vec<usize> = (1..turns)
+                .filter(|&r| loudest[r].abs_diff(loudest[r - 1]) > 70)
+                .collect();
+            assert!(
+                moves.len() >= 2,
+                "{scratches}, {cracks}: moved at {moves:?}"
+            );
+            let mut since = 0;
+            for &r in &moves {
+                let seconds = (r - since) as f64 / speed.hz();
+                assert!(
+                    (GAP_LIFE_S.0..GAP_LIFE_S.1 + 1.0).contains(&seconds),
+                    "{scratches}, {cracks}: moved after {seconds:.1} s"
+                );
+                since = r;
+            }
+        }
     }
 
     /// **A scratch is the same tick every turn**, in the same place, only its size varied.

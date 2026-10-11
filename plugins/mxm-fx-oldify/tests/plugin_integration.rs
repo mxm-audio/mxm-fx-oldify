@@ -103,7 +103,12 @@ type Move<'a> = (&'a str, f32);
 
 /// Renders a pair of `level` noise through a fresh instance with `moves` applied.
 fn render_moved(moves: &[Move<'_>], level: f32) -> [Vec<f32>; 2] {
-    let (left, right) = (noise(24_000, 1, level), noise(24_000, 2, level));
+    render_moved_for(moves, level, 24_000)
+}
+
+/// As [`render_moved`], `frames` long.
+fn render_moved_for(moves: &[Move<'_>], level: f32, frames: usize) -> [Vec<f32>; 2] {
+    let (left, right) = (noise(frames, 1, level), noise(frames, 2, level));
     let mut plugin = MxmFxOldify::default();
     for (id, value) in moves {
         let (_, param, _) = plugin
@@ -221,13 +226,13 @@ fn every_cassette_control_changes_the_sound() {
             moved.0
         );
     }
-    // A scratch ticks and a crack pops once a turn at its own angle: on a 78, half a second is
-    // more than half a turn, where on an LP it is a quarter and a seed may put every one past it.
+    // A scratch ticks and a crack pops once a turn at its own angle: a second on a 78 holds a
+    // whole turn after the latency, so wherever one sits it is heard.
     let shellac = [record[0], record[1], ("disc", 1.0)];
-    let shellac_reference = render_moved(&shellac, LOUD);
+    let shellac_reference = render_moved_for(&shellac, LOUD, 48_000);
     for moved in [("scratches", 1.0), ("cracks", 1.0)] {
         let heard = difference(
-            &render_moved(&[shellac[0], shellac[1], shellac[2], moved], LOUD),
+            &render_moved_for(&[shellac[0], shellac[1], shellac[2], moved], LOUD, 48_000),
             &shellac_reference,
         );
         assert!(heard > 1e-3, "{} changed nothing: {heard}", moved.0);
