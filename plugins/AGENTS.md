@@ -73,6 +73,9 @@ machine only lives in its own `AGENTS.md` below.
 - **Realtime** ([§](https://github.com/mxm-audio/mxm-kit/blob/main/docs/plugin-conventions.md#realtime-rules-for-process)): no allocation, locks, logging or
   I/O in `process()`; preallocate in `activate()`, clear in `reset()`; report `Tail` while releasing;
   doing nothing costs nothing. `assert_process_allocs` fires in debug builds only.
+- **Latency** ([§](https://github.com/mxm-audio/mxm-kit/blob/main/docs/plugin-conventions.md#latency-is-fixed-and-every-moving-read-shares-one-room)):
+  reported once and fixed; every moving read shares one room, lowered alike past it; no depth past
+  the real thing that only buys latency.
 - **Editor** ([§](https://github.com/mxm-audio/mxm-kit/blob/main/docs/plugin-conventions.md#editor-contract)): a panel, never a window, and transient — DSP never
   reads editor state. Parameter edits are bracketed gestures; telemetry is atomics. Widgets, theme,
   zoom and paging come from `mxm-ui`; every card passes the tree checks; the window is at least one
