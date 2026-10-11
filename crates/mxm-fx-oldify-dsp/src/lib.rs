@@ -637,12 +637,12 @@ mod tests {
             saturation: 1.0,
             character: Character::Hard,
             wow: Motion {
-                depth: 1.0,
+                depth: crate::cassette::MOTION_MAX,
                 hz: 0.1,
                 shape: Shape::Random,
             },
             flutter: Motion {
-                depth: 1.0,
+                depth: crate::cassette::MOTION_MAX,
                 hz: 30.0,
                 shape: Shape::Sine,
             },

@@ -53,15 +53,18 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
 
 - The physics' order, not the reference's (which filters before saturating): a known difference.
 - **Laws** (named in `cassette.rs`): wow and flutter depth go as the control, as the reference's
-  do, up to `WOW_MAX` and `FLUTTER_MAX` (its extremes), so the whole travel is heard; Age, chosen,
-  as a spacing of `AGE_MAX_UM` times the control to the 1.5. **The transport's reach is bounded** (`WOW_REACH_S`,
-  `FLUTTER_REACH_S`), so the latency stays near 50 ms; only slow, deep wow is lowered to fit.
+  do; **a control of 1 is the reference's full travel at its rate** (`full_depth`, its measured
+  law), and the controls go on to `MOTION_MAX`, past it, for effect (the owner, 2026-10-11). Age,
+  chosen, as a spacing of `AGE_MAX_UM` times the control to the 1.5. **The transport's reach is
+  bounded** (`WOW_REACH_S`, `FLUTTER_REACH_S`), so the latency never moves; only wow past the
+  reference, with copies, is lowered to fit. The fit: [NOTES.md § The modulations,
+  fitted](NOTES.md#the-modulations-fitted).
 - Hiss is seeded, independent per channel, 4 dB lower on the 70 µs tapes, and gated by the chain.
 - **Generations** (1–4): each dub adds its hiss power, its own uncorrelated wobble (depth × √n)
   and `GENERATION_UM` of spacing.
 - **Flange** mixes the line read at exactly the base delay against the moving read: through-zero
-  tape flanging. **Flutter follows wow** moves the flutter's rate by up to `FOLLOW_DEPTH` with the
-  wow's shape.
+  tape flanging. **Flutter follows wow** is the reference's: the wow moves no read of its own and
+  swings the flutter's rate by `FOLLOW_HZ` times Wow, never below `FOLLOW_FLOOR` of it.
 - **Azimuth**: across a track, the sinc's main lobe as a spacing loss; between the tracks,
   `TRACK_PITCH_M` · tan θ / speed of delay about a fixed centre, so the latency never moves
   ([NOTES.md § Azimuth](NOTES.md#azimuth)). **Crosstalk** bleeds each channel into the other;
@@ -92,7 +95,8 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   numbers here.
 - Wear raises the surface noise by up to `WEAR_NOISE_DB`; a player's own rumble adds to the
   disc's. Eccentricity is `d / R` at the turn, R from the disc's size and the side position, held
-  within `ECCENTRIC_REACH_S`; the turntable's wobble within `TABLE_REACH_S`.
+  within `ECCENTRIC_REACH_S`; `MAX_ECCENTRICITY_MM` is twice the reference's full travel. The
+  turntable's wobble, its random shape at the player's RMS, within `TABLE_REACH_S`.
 
 ## The blocks
 
@@ -104,11 +108,12 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   oversampled curve, Soft (asymmetric tanh) or Hard (`v / (1 + v⁴)^¼`). **Saturation 0 is linear**
   (the curve fades in over `FADE_IN`); drive lowers the clip point by up to `MAX_DRIVE`.
 - **`oversample`**: an honest copy of mxm-mono-00's half-band pair; its latency is part of ours.
-- **`transport`**: a delay line read by the integral of the speed error. Sine and saw are exact
-  centred integrals; a change goes into a drift term that leaks away at an eighth of the rate, so
-  the read never jumps. The random shape is Ornstein–Uhlenbeck, its integral a walk of its own
-  leaking at the rate itself (`RANDOM_LEAK`; [NOTES.md § The random walk's
-  leak](NOTES.md#the-random-walks-leak)). The base delay is twice the reach. Wow and flutter are the same in both channels, as measured.
+- **`transport`**: a delay line read by the integral of the speed error. **Every shape moves
+  the read as far as a sine of its depth**, as the reference's do: the sine's speed a sine, the
+  saw's read a saw's first two harmonics, the random shape's read straight between uniform points,
+  `POINTS_PER_CYCLE` a cycle (its speed holds, then steps). A change goes into a drift term that
+  leaks away at an eighth of the rate, so the read never jumps. The base delay is twice the reach.
+  Wow and flutter are the same in both channels, as measured.
 - **`nr`**: noise reduction, a sliding-band compander: `y = x + k · H(x)`, `H` a high-pass whose
   corner slides up and `k` falls with the side chain's own level (previous sample). **The decoder
   is the encoder solved for its input, exactly** (`x = (y − k · pending) / (1 + k · b₀)`), from its

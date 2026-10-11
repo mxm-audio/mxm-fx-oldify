@@ -15,7 +15,7 @@ use std::sync::{Arc, RwLock};
 
 use mxm_fx_oldify_dsp::cassette::{
     CROSSTALK_MAX_DB, CROSSTALK_OFF_DB, CassetteControls, FLUTTER_HZ, HISS_MAX_DB, HISS_OFF_DB,
-    MAX_AZIMUTH_ARCMIN, MAX_GENERATIONS, MAX_VARIATION, Motion, WOW_HZ,
+    MAX_AZIMUTH_ARCMIN, MAX_GENERATIONS, MAX_VARIATION, MOTION_MAX, Motion, WOW_HZ,
 };
 use mxm_fx_oldify_dsp::curves::Curve;
 use mxm_fx_oldify_dsp::disc::{
@@ -930,11 +930,11 @@ impl Default for MxmFxOldifyParams {
             ),
             age: percent("Age", cassette.age, 1.0),
 
-            wow: percent("Wow", cassette.wow.depth, 1.0),
+            wow: percent("Wow", cassette.wow.depth, MOTION_MAX),
             wow_rate: rate("Wow rate", cassette.wow.hz, WOW_HZ),
             wow_sync: sync("Wow sync"),
             wow_shape: EnumParam::new("Wow shape", WowShapeChoice::Random),
-            flutter: percent("Flutter", cassette.flutter.depth, 1.0),
+            flutter: percent("Flutter", cassette.flutter.depth, MOTION_MAX),
             flutter_rate: rate("Flutter rate", cassette.flutter.hz, FLUTTER_HZ),
             flutter_sync: sync("Flutter sync"),
             flutter_shape: EnumParam::new("Flutter shape", FlutterShapeChoice::Random),

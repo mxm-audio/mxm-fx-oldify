@@ -14,17 +14,17 @@
 //! physics stays and that is a known difference: a dull tape still saturates, and its losses take
 //! the harmonics too.
 //!
-//! **Laws** ([`WOW_MAX`], [`FLUTTER_MAX`], [`AGE_MAX_UM`] and the curves on them): wow and
-//! flutter depth go as their controls, as the reference's do, up to the reference's extremes, so
-//! a realistic deck (0.05–0.2 %) is the first few percent of the travel and the rest is heard (the
-//! owner, 2026-10-09, of a squared law: "I dont think the paramaters do much"); Age is a spacing of
-//! up to [`AGE_MAX_UM`] (the reference's full Age reads as about 1.7 µm), as the 1.5 power of the
-//! control, a law chosen here.
+//! **Laws** ([`full_depth`], [`MOTION_MAX`], [`AGE_MAX_UM`] and the curves on them): wow and
+//! flutter depth go as their controls, as the reference's do, and a control of 1 is the
+//! reference's full travel at its rate, measured from 0.1 to 12 Hz: a sine's peak speed error
+//! grows with the rate as the reach it moves the read falls (`ops: notes/oldify/measurements`, the
+//! modulations). The controls go on to [`MOTION_MAX`], past the reference, for effect. Age is a
+//! spacing of up to [`AGE_MAX_UM`] (the reference's full Age reads as about 1.7 µm), as the 1.5
+//! power of the control, a law chosen here.
 //!
 //! **The transport's reach is bounded**, so its delay, which the plugin reports as latency, stays
-//! near 50 ms: a wobble whose read would go further than [`WOW_REACH_S`] or [`FLUTTER_REACH_S`]
-//! has its depth lowered to fit. Only slow, deep wow meets it: a sine below about 0.22 Hz, random
-//! wow below about 0.6 Hz at full depth.
+//! put: a wobble whose read would go further than [`WOW_REACH_S`] or [`FLUTTER_REACH_S`] has its
+//! depth lowered to fit. Only wow past the reference's travel, with copies, meets it.
 //!
 //! **Generations** is a dub of a dub: each copy adds its own noise (the hiss's power times the
 //! count), its own wobble (the depth times the count's square root, the copies being
@@ -48,20 +48,26 @@ use crate::record::{ECCENTRIC_REACH_S, TABLE_REACH_S};
 use crate::saturate::{Character, Saturator};
 use crate::spacing::Spacing;
 use crate::tape::{Grade, Tape, TapeResponse};
-use crate::transport::{Rng, Shape, Transport, Wobble, hermite};
+use crate::transport::{FOLLOW_FLOOR, FOLLOW_HZ, Rng, Shape, Transport, Wobble, hermite};
 
-/// Wow's peak speed error at full depth: the measured reference's full travel, ±2.8 %.
-pub const WOW_MAX: f32 = 0.028;
-/// Flutter's at full depth: the reference's, ±5.6 %.
-pub const FLUTTER_MAX: f32 = 0.056;
+/// Wow's and Flutter's most: twice the measured reference's full travel, for effect.
+pub const MOTION_MAX: f32 = 2.0;
+/// The reference's wobble at full travel moves the read `FULL_REACH_S · e^(−FULL_FALL·f +
+/// FULL_BEND·f²)` either way at `f` hertz: fitted to it within 0.5 % from 0.1 to 12 Hz.
+const FULL_REACH_S: f64 = 3.513e-3;
+const FULL_FALL: f64 = 0.1585;
+const FULL_BEND: f64 = 0.00213;
+/// Where the fit would turn back up, far past the rates asked of it: it holds its value above.
+const FULL_TOP_HZ: f64 = FULL_FALL / (2.0 * FULL_BEND);
 /// Wow's rate range, in hertz.
 pub const WOW_HZ: (f32, f32) = (0.1, 5.0);
 /// Flutter's rate range, in hertz: a capstan line sits near 7.6 Hz.
 pub const FLUTTER_HZ: (f32, f32) = (4.0, 30.0);
-/// How far wow may move the read, in seconds either way.
-pub const WOW_REACH_S: f64 = 0.020;
-/// How far flutter may.
-pub const FLUTTER_REACH_S: f64 = 0.005;
+/// How far wow may move the read, in seconds either way: [`MOTION_MAX`] of the reference's full
+/// reach and three copies' worth.
+pub const WOW_REACH_S: f64 = 0.013;
+/// How far flutter may: the same at the slowest flutter.
+pub const FLUTTER_REACH_S: f64 = 0.006;
 /// Hiss at or below this is off.
 pub const HISS_OFF_DB: f32 = -96.0;
 /// The loudest hiss, RMS re full scale.
@@ -95,7 +101,8 @@ const HISS_TOP_HZ: f64 = 16_000.0;
 const WRONG_EQ_DB: f64 = 4.7;
 const WRONG_EQ_HZ: f64 = 1_800.0;
 
-/// One wobble's controls: depth 0–1, rate in hertz, shape.
+/// One wobble's controls: depth 0–[`MOTION_MAX`] (1 the reference's full travel), rate in
+/// hertz, shape.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Motion {
     pub depth: f32,
@@ -117,7 +124,7 @@ pub struct CassetteControls {
     pub generations: u8,
     pub wow: Motion,
     pub flutter: Motion,
-    /// Flutter's rate moves with the wow.
+    /// The flutter follows the wow: the wow moves only the flutter's rate.
     pub follow: bool,
     /// The unmoved tape mixed in, 0–1: through-zero tape flanging.
     pub flange: f32,
@@ -176,12 +183,12 @@ impl CassetteControls {
         tone: 1.0,
         saturation: 0.25,
         wow: Motion {
-            depth: 0.0625,
+            depth: 0.319,
             hz: 0.5,
             shape: Shape::Random,
         },
         flutter: Motion {
-            depth: 0.01,
+            depth: 0.018,
             hz: 7.6,
             shape: Shape::Random,
         },
@@ -211,12 +218,12 @@ impl CassetteControls {
             saturation: unit(self.saturation),
             generations: self.generations.clamp(1, MAX_GENERATIONS),
             wow: Motion {
-                depth: unit(self.wow.depth),
+                depth: within(self.wow.depth, (0.0, MOTION_MAX), 0.0),
                 hz: within(self.wow.hz, WOW_HZ, 0.5),
                 shape: self.wow.shape,
             },
             flutter: Motion {
-                depth: unit(self.flutter.depth),
+                depth: within(self.flutter.depth, (0.0, MOTION_MAX), 0.0),
                 hz: within(self.flutter.hz, FLUTTER_HZ, 7.6),
                 shape: self.flutter.shape,
             },
@@ -278,14 +285,26 @@ fn azimuth_delay_s(arcmin: f64) -> f64 {
     TRACK_PITCH_M * (arcmin / 60.0).to_radians().tan() / SPEED_M_S
 }
 
-/// A wobble from its control values, its depth lowered if its read would go past `reach_s`.
-fn wobble(depth: f32, hz: f32, shape: Shape, max: f32, scale: f64, reach_s: f64) -> Wobble {
+/// A wobble's peak speed error at `hz` at a control of 1: the reference's full travel, a sine's.
+pub fn full_depth(hz: f64) -> f64 {
+    let hz = hz.clamp(0.0, FULL_TOP_HZ);
+    std::f64::consts::TAU * hz * FULL_REACH_S * (-FULL_FALL * hz + FULL_BEND * hz * hz).exp()
+}
+
+/// A wobble from its control values, its depth lowered if its read would go past `reach_s` at
+/// `slowest` of its rate (a following flutter's floor).
+fn wobble(depth: f32, hz: f32, shape: Shape, scale: f64, reach_s: f64, slowest: f64) -> Wobble {
+    let hz = f64::from(hz);
     let mut wobble = Wobble {
-        depth: f64::from(max * depth) * scale,
-        hz: f64::from(hz),
+        depth: full_depth(hz) * f64::from(depth) * scale,
+        hz,
         shape,
     };
-    let reach = wobble.reach_seconds();
+    let reach = Wobble {
+        hz: hz * slowest,
+        ..wobble
+    }
+    .reach_seconds();
     if reach > reach_s {
         wobble.depth *= reach_s / reach;
     }
@@ -609,21 +628,24 @@ impl Cassette {
         let generations = f64::from(c.generations);
         let tone = self.tone.next();
         let saturation = self.saturation.next();
+        let wow_depth = self.wow_depth.next();
         let wow = wobble(
-            self.wow_depth.next(),
+            wow_depth,
             self.wow_hz.next(),
             c.wow.shape,
-            WOW_MAX,
             generations.sqrt(),
             WOW_REACH_S,
+            1.0,
         );
+        // Following, the wow's control swings the flutter's rate, down to its floor.
+        let follow = c.follow.then(|| FOLLOW_HZ * f64::from(wow_depth));
         let flutter = wobble(
             self.flutter_depth.next(),
             self.flutter_hz.next(),
             c.flutter.shape,
-            FLUTTER_MAX,
             generations.sqrt(),
             FLUTTER_REACH_S,
+            if c.follow { FOLLOW_FLOOR } else { 1.0 },
         );
         let flange = self.flange.next();
         let hiss = f64::from(self.hiss.next() * noise)
@@ -662,9 +684,9 @@ impl Cassette {
             let shaped = channel.response.process(f64::from(saturated)) as f32;
             *y = saturated + tone * (shaped - saturated);
         }
-        let (moving, still) =
-            self.transport
-                .process_full(recorded, &wow, &flutter, if c.follow { 1.0 } else { 0.0 });
+        let (moving, still) = self
+            .transport
+            .process_full(recorded, &wow, &flutter, follow);
         let mut played = if flange > 0.0 {
             [
                 moving[0] + 0.5 * flange * (still[0] - moving[0]),

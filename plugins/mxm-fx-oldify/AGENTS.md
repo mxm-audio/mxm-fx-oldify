@@ -54,11 +54,11 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `tape_tone`, `saturation` | Tape tone, Saturation | 0–100 %, linear; zero Saturation is linear |
 | | `character` | Character | Soft / Hard (`soft`, `hard`) |
 | | `generations` | Generations | Integer 1…`MAX_GENERATIONS`, drawn as buttons |
-| Transport | `wow`, `flutter` | Wow, Flutter | 0–100 %, linear |
+| Transport | `wow`, `flutter` | Wow, Flutter | 0–`cassette::MOTION_MAX`, linear, read in %: 100 % is the measured reference's full travel at the rate, past it for effect |
 | | `wow_rate`, `flutter_rate` | Wow rate, Flutter rate | `cassette::WOW_HZ`, `FLUTTER_HZ`, skewed so the geometric mean is mid-travel, read in Hz |
 | | `wow_sync`, `flutter_sync` | Wow sync, Flutter sync | Off / On: the rate beside it on `params::WOW_SYNC` / `FLUTTER_SYNC` |
 | | `wow_shape`, `flutter_shape` | Wow shape, Flutter shape | Sine / Random / Saw / Reverse saw (`sine`, `random`, `saw`, `reverse-saw`); Flutter's the first two |
-| | `follow` | Flutter follows wow | Off / On |
+| | `follow` | Flutter follows wow | Off / On: on, the wow swings the flutter's rate instead of the pitch |
 | | `flange` | Flange | 0–100 %, linear |
 | Noise | `hiss` | Hiss | `HISS_OFF_DB`…`HISS_MAX_DB`, stored as linear gain, `gain_skew_factor`; Off at the bottom |
 | | `nr` | Noise reduction | Off / Single-band / Two-band (`off`, `single-band`, `two-band`) |

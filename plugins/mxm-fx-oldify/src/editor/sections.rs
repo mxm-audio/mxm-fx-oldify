@@ -175,7 +175,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "eccentricity",
             &params.eccentricity,
-            "How far off centre the hole is, so the pitch sways once a turn.",
+            "How far off centre the hole is, so the pitch sways once a turn. Past about 2.5 mm it sways further than any real record.",
         ),
         Bound::new(
             "crackle",
@@ -260,7 +260,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "wow",
             &params.wow,
-            "How much the pitch drifts slowly up and down, as an uneven tape speed does.",
+            "How much the pitch drifts slowly up and down, as an uneven tape speed does. Past 100 % it drifts further than any real tape.",
         ),
         Bound::new("wow_rate", &params.wow_rate, "How fast the slow drift goes."),
         Bound::new(
@@ -276,7 +276,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "flutter",
             &params.flutter,
-            "How much the pitch trembles quickly, roughening the sound.",
+            "How much the pitch trembles quickly, roughening the sound. Past 100 % it trembles further than any real tape.",
         ),
         Bound::new(
             "flutter_rate",
@@ -296,7 +296,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "follow",
             &params.follow,
-            "Makes the trembling speed up and slow down with the slow drift, as a slipping belt does.",
+            "The slow drift stops moving the pitch itself, and speeds the trembling up and slows it down instead, as a slipping belt does.",
         ),
         Bound::new(
             "flange",
@@ -584,13 +584,13 @@ fn details_of(id: &str) -> &'static [&'static str] {
         ],
         "wow_shape" => &[
             "An even, smooth drift up and down.",
-            "Wanders unpredictably, as a real tape does.",
-            "Drifts up, then drops back.",
-            "Drops, then jumps back up.",
+            "Wanders unpredictably, holding a pitch and then stepping to another.",
+            "Sags slowly flat, then catches up quickly.",
+            "Creeps slowly sharp, then drops back quickly.",
         ],
         "flutter_shape" => &[
             "An even, steady tremble.",
-            "An irregular, wandering tremble.",
+            "An irregular tremble, stepping unpredictably.",
         ],
         "nr" => &[
             "No noise reduction: the hiss as the tape made it.",

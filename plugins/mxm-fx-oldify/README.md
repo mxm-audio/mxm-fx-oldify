@@ -20,8 +20,9 @@ off is dimmed but can still be set up.
 - **Tape** — the Tape switch; Type I, II or IV at four grades (twelve measured responses) and how
   much of it is heard; saturation, Soft or Hard; up to four generations of copies, each adding its
   own hiss, wobble and dullness; Age, worn from new to battered.
-- **Tape transport** — wow and flutter (depth, rate, shape), each rate syncable to the host's tempo;
-  flutter that follows the wow; Flange, a steady copy of the tape mixed against the moving one.
+- **Tape transport** — wow and flutter (depth, rate, shape), each rate syncable to the host's tempo
+  and each depth going far past any real tape; flutter that follows the wow, its rate swung by
+  it; Flange, a steady copy of the tape mixed against the moving one.
 - **Tape noise** — hiss; noise reduction, single- or two-band, with its amount, brightness, a level
   error that makes it mistrack, and Decode off for the tape played without its decoder; and
   dropouts (how many, how deep and long, how differently left and right).

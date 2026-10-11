@@ -29,15 +29,16 @@ use crate::disc::{Disc, DiscControls, NOISE_OFF_DB, Speed};
 use crate::groove::{Groove, GrooveControls};
 use crate::horn::{Horn, HornControls};
 use crate::player::{Player, PlayerChain};
-use crate::transport::{Shape, Wobble};
+use crate::transport::{Shape, Wobble, random_rms_share};
 use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2, TAU};
 
-/// How far the record may move the read, in seconds either way: eccentricity's and the
-/// turntable's share.
-pub const ECCENTRIC_REACH_S: f64 = 0.006;
+/// How far the record may move the read, in seconds either way: eccentricity's (the measured
+/// reference's full eccentricity at its inner groove) and the turntable's share.
+pub const ECCENTRIC_REACH_S: f64 = 0.012;
 pub const TABLE_REACH_S: f64 = 0.004;
-/// The most eccentricity, millimetres: offsets above 1 mm are common on old shellac.
-pub const MAX_ECCENTRICITY_MM: f32 = 2.0;
+/// The most eccentricity, millimetres: offsets above 1 mm are common on old shellac, the measured
+/// reference's full travel is about 2.5 mm on an LP's outer groove, and twice that is for effect.
+pub const MAX_ECCENTRICITY_MM: f32 = 5.0;
 /// The loudest hum, RMS re full scale.
 pub const MAX_HUM_DB: f32 = -20.0;
 /// Wear raises the surface noise by up to this much.
@@ -433,7 +434,7 @@ impl Record {
         };
         let (wrms, hz) = c.player.model().wobble;
         let table = Wobble {
-            depth: wrms * SQRT_2,
+            depth: wrms / random_rms_share(),
             hz,
             shape: Shape::Random,
         };
@@ -598,6 +599,34 @@ mod tests {
             200.0 * b.depth
         );
         assert!(b.depth > 2.0 * a.depth);
+    }
+
+    #[test]
+    fn eccentricity_reaches_twice_the_reference_and_its_full_travel_fits_the_reach() {
+        // The reference's full eccentricity, measured: ±1.74 % on an LP's outer groove, ±3.48 %
+        // on its inner.
+        let mut record = Record::new(RATE, 1);
+        let at = |record: &mut Record, mm: f32, side: f32| {
+            record.set_controls(RecordControls {
+                eccentricity_mm: mm,
+                groove: GrooveControls {
+                    side,
+                    ..GrooveControls::CLEAN
+                },
+                ..RecordControls::CLEAN
+            });
+            record.wobbles()[0].depth
+        };
+        let full = at(&mut record, MAX_ECCENTRICITY_MM, 0.0);
+        assert!(full > 2.0 * 0.0174 * 0.95, "{} % at full", 100.0 * full);
+        // Half our travel is the reference's: on the inner groove it is not lowered to fit.
+        let half = 0.5 * MAX_ECCENTRICITY_MM;
+        let inner = at(&mut record, half, 1.0);
+        let unlowered = f64::from(half) * 1e-3 / radius_m(Speed::Lp33, 1.0);
+        assert!(
+            inner > 0.0348 && (inner - unlowered).abs() < 1e-12,
+            "{inner}"
+        );
     }
 
     #[test]

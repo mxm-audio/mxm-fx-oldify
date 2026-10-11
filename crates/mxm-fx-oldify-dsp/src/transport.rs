@@ -7,45 +7,49 @@
 //! samples either way. Only speed changes that average to zero can be heard through a fixed delay,
 //! which is every wobble here.
 //!
-//! **Centring.** A sine or a saw moves the read by its own integral, centred, so its speed has
-//! exactly its shape. A change of depth, rate or shape would make that integral jump; the jump goes
-//! into a drift term instead, so the read never jumps, and the drift leaks away through a
-//! first-order high-pass at an eighth of the wobble's rate, within a cycle or two. Until a change
-//! has leaked away the read can swing up to twice its reach one way, so the base delay is twice
-//! the reach.
+//! **Every shape moves the read as far as a sine of its depth** (`depth / (2π f)` either way), as
+//! in the reference we measured (`ops: notes/oldify/measurements`, the modulations): a wobble's
+//! depth is its sine's peak speed error at its rate, and the shape decides only how the read gets
+//! there. The sine's speed is a sine. The saw's read is a saw's first two harmonics (the second
+//! half the first): the tape falls behind slowly and catches up quickly, the reverse saw the other
+//! way about. The random shape's read is drawn straight between points uniform across its reach,
+//! [`POINTS_PER_CYCLE`] a cycle: its speed holds, then steps, about the rate.
+//!
+//! **Centring.** Each shape's read is centred, so its speed has exactly its shape. A change of
+//! depth, rate or shape would make the read jump; the jump goes into a drift term instead, so the
+//! read never jumps, and the drift leaks away through a first-order high-pass at an eighth of the
+//! wobble's rate, within a cycle or two. Until a change has leaked away the read can swing up to
+//! twice its reach one way, so the base delay is twice the reach.
 //!
 //! **Reading between samples:** four-point, third-order Hermite interpolation (Catmull–Rom; Olli
 //! Niemitalo, "Polynomial Interpolators for High-Quality Resampling of Oversampled Audio", 2001),
 //! flat enough at these small speed changes.
 //!
-//! **Random wobble** is an Ornstein–Uhlenbeck process (white noise through a one-pole low-pass at
-//! the wobble's rate), scaled to the asked-for depth: wobble that wanders, as a real machine's does.
-//! Its integral is a walk of its own that leaks at the rate itself, so the speed it gives is the
-//! noise band-passed about the rate (both corners there): it wanders about the rate, not down to
-//! nothing, and moves the read a third as far as a leak at an eighth of the rate would, so a deep
-//! random wow fits the reach. The leak takes half its power, which its scale gives back.
+//! **A following flutter** is the wow's other use, the reference's: the wow moves no read of its
+//! own, and swings the flutter's rate instead ([`FOLLOW_HZ`]), never below [`FOLLOW_FLOOR`] of it.
 //!
-//! Every random draw comes from the transport's own seeded generator, one per sample, so a render
-//! with the same seed is the same at any block size.
+//! Every random draw comes from the transport's own seeded generator, one at each of a random
+//! wobble's points, so a render with the same seed is the same at any block size.
 
 use std::f64::consts::TAU;
 
-/// What a wobble's speed error does over one cycle.
+/// How a wobble moves the read over one cycle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Shape {
     Sine,
-    /// Wandering, about the rate.
+    /// Straight between random points: the speed holds, then steps.
     Random,
-    /// Rising, then dropping back.
+    /// Falling behind slowly, then catching up.
     Saw,
-    /// Dropping, then jumping back.
+    /// Getting ahead slowly, then dropping back.
     ReverseSaw,
 }
 
-/// One wobble: a peak speed error, a rate and a shape.
+/// One wobble: a depth, a rate and a shape.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Wobble {
-    /// The peak speed error, as a fraction (0.01 is 1 %).
+    /// A sine's peak speed error at this rate, as a fraction (0.01 is 1 %); every shape moves the
+    /// read as far as that sine.
     pub depth: f64,
     pub hz: f64,
     pub shape: Shape,
@@ -58,19 +62,18 @@ impl Wobble {
         shape: Shape::Sine,
     };
 
-    /// How far it moves the read, in seconds either way, once centred.
+    /// How far it moves the read, in seconds either way, once centred: a sine's reach, whatever
+    /// the shape.
     pub fn reach_seconds(&self) -> f64 {
-        // The integral of a sine of depth d at f peaks at d / (2π f); a saw's at d / (6 f). The
-        // random shape's walk has a standard deviation of d / (√2·ω), ω = 2π f (its speed RMS
-        // d/√2, made up by √2, through 1/(s + ω) after the noise's own 1/(s + ω)); four of those
-        // is held.
-        let per_cycle = match self.shape {
-            Shape::Sine => 1.0 / TAU,
-            Shape::Saw | Shape::ReverseSaw => 1.0 / 6.0,
-            Shape::Random => 4.0 / (std::f64::consts::SQRT_2 * TAU),
-        };
-        self.depth.abs() * per_cycle / self.hz.max(0.01)
+        self.depth.abs() / (TAU * self.hz.max(0.01))
     }
+}
+
+/// A random wobble's RMS speed error, as a share of its depth: points uniform in ±1 of its reach,
+/// [`POINTS_PER_CYCLE`] a cycle, the read straight between them, so its speed is the difference
+/// of two such points (variance 2/3) times the points' rate.
+pub fn random_rms_share() -> f64 {
+    POINTS_PER_CYCLE * (2.0f64 / 3.0).sqrt() / TAU
 }
 
 /// A xorshift32 generator (George Marsaglia, "Xorshift RNGs", 2003): small, fast, seeded.
@@ -103,38 +106,46 @@ impl Rng {
 
 /// The leak's corner, as a share of the wobble's rate.
 const LEAK: f64 = 1.0 / 8.0;
-/// How far a following flutter's rate moves with the wow, as a share of itself. Chosen.
-pub const FOLLOW_DEPTH: f64 = 0.5;
-/// The random walk's leak's corner, as a share of the wobble's rate: the rate itself.
-const RANDOM_LEAK: f64 = 1.0;
-/// What the random shape is scaled by to give back the power its leak takes: √(1 + RANDOM_LEAK).
-const RANDOM_MAKEUP: f64 = std::f64::consts::SQRT_2;
+/// A random wobble's points a cycle: the reference draws one every 16 384 samples at 48 kHz for a
+/// 1 Hz wobble, at every rate we measured.
+pub const POINTS_PER_CYCLE: f64 = 48_000.0 / 16_384.0;
+/// How far a following flutter's rate swings at the wow's peak, in hertz at full Wow (a Wow of
+/// 1): the reference's, at every flutter and wow rate we measured.
+pub const FOLLOW_HZ: f64 = 4.5;
+/// The slowest a following flutter goes, as a share of its own rate: the reference stops a 5 Hz
+/// flutter at 2.5 Hz.
+pub const FOLLOW_FLOOR: f64 = 0.5;
+/// The two-harmonic saw's peak, `sin θ − ½·sin 2θ` at θ = 2π/3 (3√3/4): what scales it to ±1.
+const SAW_PEAK: f64 = 1.299_038_105_676_658;
 
-/// A periodic shape's centred integral at `phase`, in samples: the read's offset that gives the
-/// speed error `depth · shape(phase)`. Zero for the random shape, whose integral is the drift.
-fn centred(wobble: &Wobble, phase: f64, rate: f64) -> f64 {
-    let samples_per_cycle = rate / wobble.hz.max(1e-6);
-    // Each shape's antiderivative, negated (dD/dt = −δ) and with its mean over a cycle removed.
-    let unit = match wobble.shape {
-        Shape::Sine => (TAU * phase).cos() / TAU,
-        Shape::Saw => -(phase * phase - phase + 1.0 / 6.0),
-        Shape::ReverseSaw => phase * phase - phase + 1.0 / 6.0,
-        Shape::Random => return 0.0,
-    };
-    wobble.depth * samples_per_cycle * unit
+/// A shape's read at `phase` (a random wobble's at `point`, where it is between its points), ±1:
+/// a sine's read is a cosine, so its speed (`dD/dt = −δ`) is a sine.
+fn wave(shape: Shape, phase: f64, point: f64) -> f64 {
+    let theta = TAU * phase;
+    let saw = || (theta.sin() - 0.5 * (2.0 * theta).sin()) / SAW_PEAK;
+    match shape {
+        Shape::Sine => theta.cos(),
+        Shape::Saw => saw(),
+        Shape::ReverseSaw => -saw(),
+        Shape::Random => point,
+    }
+}
+
+/// Where a wobble puts the read, in samples: its wave times its reach.
+fn centred(wobble: &Wobble, phase: f64, point: f64, rate: f64) -> f64 {
+    wobble.depth * rate / (TAU * wobble.hz.max(1e-6)) * wave(wobble.shape, phase, point)
 }
 
 /// One wobble's running state.
 #[derive(Clone, Copy, Debug, Default)]
 struct Oscillator {
     phase: f64,
-    /// The random shape's low-passed noise.
-    wander: f64,
-    /// What the read's offset carries besides the centred integral, in samples: the jumps a change
+    /// The random shape's last point and its next, ±1, and how far it is from one to the other.
+    points: [f64; 2],
+    between: f64,
+    /// What the read's offset carries besides the centred wave, in samples: the jumps a change
     /// made, leaking away.
     drift: f64,
-    /// The random shape's integral, in samples, leaking at the rate.
-    walk: f64,
     /// Last sample's wobble, to see a change; none before the first sample, so a reset starts
     /// centred.
     last: Option<Wobble>,
@@ -151,35 +162,34 @@ impl Oscillator {
         let step = wobble.hz / rate;
         let previous = self.phase;
         self.phase = (previous + step).fract();
-        let now = centred(wobble, self.phase, rate);
+        self.between += POINTS_PER_CYCLE * step;
+        // The first sample after a reset draws too, so a random wobble sets out from the centre at
+        // once rather than a point's time later.
+        if self.between >= 1.0 || self.last.is_none() {
+            self.between = self.between.fract();
+            // Only a random wobble draws; any other heads for the centre, so that a change to the
+            // random shape starts from there.
+            let next = if wobble.shape == Shape::Random {
+                rng.bipolar()
+            } else {
+                0.0
+            };
+            self.points = [self.points[1], next];
+        }
+        let point = self.points[0] + (self.points[1] - self.points[0]) * self.between;
+        let now = centred(wobble, self.phase, point, rate);
         // Where last sample's wobble would have taken the read, at its own rate: the offset follows
         // it exactly, and the difference goes into the drift.
         let before = self.last.map_or(now, |last| {
-            centred(&last, (previous + last.hz / rate).fract(), rate)
+            centred(&last, (previous + last.hz / rate).fract(), point, rate)
         });
         self.last = Some(*wobble);
         self.drift = self.drift * (1.0 - TAU * step * LEAK) + before - now;
         self.level = match wobble.shape {
             Shape::Sine => (TAU * self.phase).sin(),
-            Shape::Saw => 2.0 * self.phase - 1.0,
-            Shape::ReverseSaw => 1.0 - 2.0 * self.phase,
-            Shape::Random => 0.0,
+            shape => wave(shape, self.phase, point),
         };
-        // The walk leaks whatever the shape, so leaving the random shape eases it home.
-        self.walk *= 1.0 - TAU * step * RANDOM_LEAK;
-        if wobble.shape == Shape::Random {
-            // An Ornstein–Uhlenbeck process: uniform noise (RMS 1/√3) through a one-pole low-pass
-            // at the rate, whose output variance is σ²·(1 − a)/(1 + a). Divided by its RMS it has
-            // unit RMS; the depth is a sine's peak, whose RMS is depth/√2.
-            let a = (-TAU * step).exp();
-            self.wander = a * self.wander + (1.0 - a) * rng.bipolar();
-            let rms = (1.0 / 3.0 * (1.0 - a) / (1.0 + a)).sqrt();
-            let unit = self.wander / rms.max(1e-12);
-            self.level = (unit * std::f64::consts::FRAC_1_SQRT_2).clamp(-1.0, 1.0);
-            let speed = RANDOM_MAKEUP * wobble.depth * std::f64::consts::FRAC_1_SQRT_2 * unit;
-            self.walk -= speed;
-        }
-        self.offset = now + self.drift + self.walk;
+        self.offset = now + self.drift;
         self.offset
     }
 }
@@ -259,32 +269,36 @@ impl Transport {
     /// One stereo sample through the moving read, with this sample's wow and flutter.
     #[inline]
     pub fn process(&mut self, input: [f32; 2], wow: &Wobble, flutter: &Wobble) -> [f32; 2] {
-        self.process_full(input, wow, flutter, 0.0).0
+        self.process_full(input, wow, flutter, None).0
     }
 
     /// One stereo sample: the moving read, and the line read at exactly the base delay (the tape
-    /// as it would play with no wobble, for flanging against). With `follow` above zero the
-    /// flutter's rate moves with the wow, by up to [`FOLLOW_DEPTH`] of itself at full `follow`.
+    /// as it would play with no wobble, for flanging against). With `follow`, the flutter follows
+    /// the wow: the wow's own read eases home, and the flutter's rate swings by `follow` hertz at
+    /// the wow's peak, never below [`FOLLOW_FLOOR`] of itself.
     #[inline]
     pub fn process_full(
         &mut self,
         input: [f32; 2],
         wow: &Wobble,
         flutter: &Wobble,
-        follow: f64,
+        follow: Option<f64>,
     ) -> ([f32; 2], [f32; 2]) {
         let length = self.lines[0].len();
         for (line, &x) in self.lines.iter_mut().zip(&input) {
             line[self.write] = x;
         }
-        let wow_offset = self.wow.next(wow, self.rate, &mut self.rng);
-        let flutter = if follow > 0.0 {
-            Wobble {
-                hz: flutter.hz * (1.0 + follow * FOLLOW_DEPTH * self.wow.level),
+        let wow = match follow {
+            Some(_) => Wobble { depth: 0.0, ..*wow },
+            None => *wow,
+        };
+        let wow_offset = self.wow.next(&wow, self.rate, &mut self.rng);
+        let flutter = match follow {
+            Some(swing) => Wobble {
+                hz: (flutter.hz + swing * self.wow.level).max(FOLLOW_FLOOR * flutter.hz),
                 ..*flutter
-            }
-        } else {
-            *flutter
+            },
+            None => *flutter,
         };
         let mut offset = wow_offset + self.flutter.next(&flutter, self.rate, &mut self.rng);
         for (oscillator, wobble) in self.extra.iter_mut().zip(&self.extras) {
@@ -384,16 +398,17 @@ mod tests {
     }
 
     #[test]
-    fn a_saw_wow_ramps_by_its_depth_within_its_reach() {
+    fn a_saw_wow_moves_the_read_as_far_as_a_sine_within_its_reach() {
         let wow = Wobble {
             depth: 0.01,
             hz: 2.0,
             shape: Shape::Saw,
         };
         let (out, furthest) = render(wow, Wobble::NONE, 6.0, 1);
-        // A ramp from −d to d has an RMS of d/√3; the measurement smooths the jump a little.
+        // Its speed is d·(cos θ − cos 2θ) / SAW_PEAK: an RMS of d / SAW_PEAK, 0.77 d, as the
+        // reference's measured saw.
         let rms = rms(&speed_errors(&out[RATE as usize..], 3150.0));
-        let expected = 0.01 / 3f64.sqrt();
+        let expected = 0.01 / SAW_PEAK;
         assert!(
             (rms / expected - 1.0).abs() < 0.03,
             "rms {rms}, expected {expected}"
@@ -408,16 +423,53 @@ mod tests {
             hz: 2.0,
             shape: Shape::Random,
         };
-        let (out, furthest) = render(wow, Wobble::NONE, 30.0, 3);
+        let (out, furthest) = render(wow, Wobble::NONE, 60.0, 3);
         let errors = speed_errors(&out[RATE as usize..], 3150.0);
-        // Depth is a sine's peak: its RMS is depth / √2.
-        let expected = 0.01 / std::f64::consts::SQRT_2;
+        // About 350 points: their RMS within a tenth of the expected, which the reference's
+        // measured random holds too (0.37–0.42 of its depth).
+        let expected = 0.01 * random_rms_share();
         let rms = rms(&errors);
         assert!(
-            (rms / expected - 1.0).abs() < 0.25,
+            (rms / expected - 1.0).abs() < 0.1,
             "rms {rms}, expected about {expected}"
         );
-        assert!(furthest < 1.0, "the read went {furthest} times its reach");
+        assert!(furthest <= 1.0, "the read went {furthest} times its reach");
+    }
+
+    #[test]
+    fn a_random_wobble_reads_straight_between_its_points() {
+        let wow = Wobble {
+            depth: 0.01,
+            hz: 3.0,
+            shape: Shape::Random,
+        };
+        let seconds = 10.0;
+        let mut transport = Transport::new(RATE, wow.reach_seconds(), 2);
+        let offsets: Vec<f64> = (0..(seconds * RATE) as usize)
+            .map(|_| {
+                transport.process([0.0, 0.0], &wow, &Wobble::NONE);
+                transport.wow.offset
+            })
+            .collect();
+        // The read bends only at a point: its speed holds between them. A point between two
+        // samples bends the read at both, so a run of bent samples is one bend.
+        let bent: Vec<bool> = offsets
+            .windows(3)
+            .map(|w| (w[2] - 2.0 * w[1] + w[0]).abs() > 1e-9)
+            .collect();
+        let bends = bent.windows(2).filter(|pair| pair[1] && !pair[0]).count();
+        let points = POINTS_PER_CYCLE * wow.hz * seconds;
+        assert!(
+            (bends as f64 - points).abs() <= 2.0,
+            "{bends} bends, {points} points"
+        );
+    }
+
+    #[test]
+    fn the_random_rms_share_is_the_points_spread() {
+        // Uniform points in ±1 (variance 1/3), the speed their difference over a point's time.
+        let share = random_rms_share();
+        assert!((share - 0.3807).abs() < 1e-4, "{share}");
     }
 
     #[test]
@@ -479,7 +531,7 @@ mod tests {
         };
         let mut transport = Transport::new(RATE, wow.reach_seconds(), 5);
         let run = |t: &mut Transport| -> Vec<f32> {
-            (0..4800)
+            (0..24_000)
                 .map(|n| {
                     let x = (TAU * 440.0 * n as f64 / RATE).sin() as f32;
                     t.process([x, -x], &wow, &Wobble::NONE)[1]
@@ -503,7 +555,7 @@ mod tests {
         let fixed: Vec<f32> = (0..2_000)
             .map(|n| {
                 let x = if n == 10 { 1.0 } else { 0.0 };
-                transport.process_full([x, x], &wow, &Wobble::NONE, 0.0).1[0]
+                transport.process_full([x, x], &wow, &Wobble::NONE, None).1[0]
             })
             .collect();
         assert_eq!(fixed.iter().position(|&y| y == 1.0), Some(10 + latency));
@@ -522,7 +574,7 @@ mod tests {
             hz: 8.0,
             shape: Shape::Sine,
         };
-        let count = |follow: f64| {
+        let count = |follow: Option<f64>| {
             let mut transport =
                 Transport::new(RATE, wow.reach_seconds() + flutter.reach_seconds(), 1);
             // Cycles in the second the wow is above its centre, then in the second it is below.
@@ -538,10 +590,64 @@ mod tests {
             }
             halves
         };
-        let still = count(0.0);
-        let moving = count(1.0);
+        let still = count(None);
+        let moving = count(Some(FOLLOW_HZ));
         assert!(still[0].abs_diff(still[1]) <= 1, "{still:?}");
         assert!(moving[0] > moving[1] + 3, "{moving:?}");
+    }
+
+    #[test]
+    fn a_wow_the_flutter_follows_moves_no_read_of_its_own() {
+        let wow = Wobble {
+            depth: 0.02,
+            hz: 1.0,
+            shape: Shape::Sine,
+        };
+        let mut transport = Transport::new(RATE, wow.reach_seconds(), 1);
+        let latency = transport.latency() as usize;
+        let out: Vec<f32> = (0..(2.0 * RATE) as usize)
+            .map(|n| {
+                let x = if n == 10 { 1.0 } else { 0.0 };
+                transport
+                    .process_full([x, x], &wow, &Wobble::NONE, Some(FOLLOW_HZ))
+                    .0[0]
+            })
+            .collect();
+        assert_eq!(out.iter().position(|&y| y == 1.0), Some(10 + latency));
+        assert_eq!(out.iter().filter(|&&y| y != 0.0).count(), 1);
+    }
+
+    #[test]
+    fn a_following_flutter_slows_no_further_than_its_floor() {
+        // A deep swing about a slow flutter: its rate stops at FOLLOW_FLOOR of itself.
+        let wow = Wobble {
+            depth: 0.0,
+            hz: 0.25,
+            shape: Shape::Sine,
+        };
+        let flutter = Wobble {
+            depth: 0.001,
+            hz: 4.0,
+            shape: Shape::Sine,
+        };
+        let mut transport = Transport::new(RATE, 0.01, 1);
+        let mut previous = 0.0f64;
+        let mut longest = 0usize;
+        let mut since = 0usize;
+        for _ in 0..(8.0 * RATE) as usize {
+            transport.process_full([0.0, 0.0], &wow, &flutter, Some(2.0 * FOLLOW_HZ));
+            since += 1;
+            if transport.flutter.phase < previous {
+                longest = longest.max(since);
+                since = 0;
+            }
+            previous = transport.flutter.phase;
+        }
+        let slowest = RATE / longest as f64;
+        assert!(
+            (slowest / (FOLLOW_FLOOR * flutter.hz) - 1.0).abs() < 0.02,
+            "slowest cycle {slowest} Hz"
+        );
     }
 
     #[test]
