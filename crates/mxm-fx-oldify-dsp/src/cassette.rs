@@ -61,7 +61,9 @@ use crate::record::{ECCENTRIC_REACH_S, TABLE_REACH_S, WARP_REACH_S};
 use crate::saturate::{Character, Saturator};
 use crate::spacing::Spacing;
 use crate::tape::{Grade, Tape, TapeResponse};
-use crate::transport::{FOLLOW_FLOOR, FOLLOW_HZ, Rng, Shape, Transport, Wobble, hermite};
+use crate::transport::{
+    FOLLOW_FLOOR, FOLLOW_HZ, READ_AHEAD, Rng, Shape, Sinc, Transport, Wobble, hermite,
+};
 
 /// Wow's and Flutter's most: twice the measured reference's full travel, for effect.
 pub const MOTION_MAX: f32 = 2.0;
@@ -403,19 +405,24 @@ impl Hiss {
 struct Skew {
     lines: [Vec<f32>; 2],
     write: usize,
-    /// The centre, in samples: half the largest delay, and room for the interpolator.
+    /// The centre, in samples: half the largest delay, and room for the windowed sinc ahead.
     centre: f64,
+    /// High quality's read, and whether it is on.
+    sinc: Sinc,
+    high: bool,
 }
 
 impl Skew {
     fn new(rate: f64) -> Self {
         let most = azimuth_delay_s(f64::from(MAX_AZIMUTH_ARCMIN)) * rate;
-        let centre = (most / 2.0).ceil() + 2.0;
+        let centre = (most / 2.0).ceil() + READ_AHEAD;
         let length = (2.0 * centre) as usize + 4;
         Self {
             lines: [vec![0.0; length], vec![0.0; length]],
             write: 0,
             centre,
+            sinc: Sinc::new(),
+            high: false,
         }
     }
 
@@ -442,6 +449,8 @@ impl Skew {
             let at = |k: usize| f64::from(line[(index + k + length - 1) % length]);
             *y = if fraction == 0.0 {
                 line[index % length]
+            } else if self.high {
+                self.sinc.read(line, index % length, fraction) as f32
             } else {
                 hermite(at(0), at(1), at(2), at(3), fraction) as f32
             };
@@ -611,6 +620,16 @@ impl Cassette {
     /// Whether any hiss is asked for.
     pub fn hisses(&self) -> bool {
         self.targets.hiss_db > HISS_OFF_DB
+    }
+
+    /// High quality: the saturation at four times the rate, and the moving read and the tracks'
+    /// delay by a windowed sinc. The latency is the same at either.
+    pub fn set_high(&mut self, high: bool) {
+        for channel in &mut self.channels {
+            channel.saturator.set_high(high);
+        }
+        self.transport.set_high(high);
+        self.skew.high = high;
     }
 
     /// The tape's speed this sample, as a share of its own: 1 running, 0 stopped.

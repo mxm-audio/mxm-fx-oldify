@@ -15,13 +15,19 @@
 //! full scale to [`MAX_DRIVE`] below it, and leaves small signals at unity gain, as the reference
 //! does.
 //!
+//! **High quality doubles the doubling**: the curve runs at four times the rate, through a second
+//! half-band pair inside the first, so less of what the curve adds above the base Nyquist folds
+//! back. Normal delays its curve's output by that pair's round trip, so both have one latency; the
+//! last doubled-rate samples are kept, so a switch brings the stage it moves to up to date at once
+//! and never starts it cold.
+//!
 //! **Two characters.** Soft is an asymmetric hyperbolic tangent (even harmonics, a smooth knee:
 //! ferric's early, gentle onset). Hard is `v / (1 + v⁴)^¼`, symmetric with a sharper knee
 //! (chrome's "sharp and dissonant" overload). Both have unit slope at zero and are bounded and
 //! monotonic.
 
 use crate::biquad::{Biquad, Kind, Section};
-use crate::oversample::Oversampler;
+use crate::oversample::{HALF_TAPS, LATENCY_SAMPLES, Oversampler};
 use crate::tape::Tape;
 
 /// The pre-emphasis lift, and the de-emphasis cut, in dB. Chosen.
@@ -32,6 +38,11 @@ pub const FADE_IN: f32 = 0.05;
 pub const MAX_DRIVE: f32 = 10.0;
 /// The asymmetric curve's offset: its even harmonics. Chosen.
 const ASYMMETRY: f32 = 0.15;
+/// The inner pair's round trip, in samples at the doubled rate: what Normal delays its curve by.
+const PAD: usize = LATENCY_SAMPLES;
+/// The doubled-rate samples kept to bring the inner pair up to date when High comes on: enough to
+/// refill both its histories.
+const KEEP: usize = 4 * HALF_TAPS + 1;
 
 /// The curve's shape.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +84,16 @@ pub struct Saturator {
     emphasis: Biquad,
     de_emphasis: Biquad,
     oversampler: Oversampler,
+    /// High's second doubling, and Normal's delay in its place.
+    inner: Oversampler,
+    pad: [f32; PAD],
+    pad_head: usize,
+    /// The last doubled-rate samples into the curve, oldest at the head.
+    kept: [f32; KEEP],
+    kept_head: usize,
+    /// The quality running, and the one asked for.
+    high: bool,
+    wanted: bool,
 }
 
 impl Saturator {
@@ -83,16 +104,69 @@ impl Saturator {
             emphasis: Biquad::default(),
             de_emphasis: Biquad::default(),
             oversampler: Oversampler::new(),
+            inner: Oversampler::new(),
+            pad: [0.0; PAD],
+            pad_head: 0,
+            kept: [0.0; KEEP],
+            kept_head: 0,
+            high: false,
+            wanted: false,
         }
     }
 
-    /// The delay the stage adds, in samples: the oversampler's.
-    pub const LATENCY: usize = crate::oversample::LATENCY_SAMPLES;
+    /// The delay the stage adds, in samples, at either quality: the outer pair's round trip and the
+    /// inner's at the doubled rate.
+    pub const LATENCY: usize = LATENCY_SAMPLES + LATENCY_SAMPLES / 2;
 
     pub fn reset(&mut self) {
         self.emphasis.reset();
         self.de_emphasis.reset();
         self.oversampler.reset();
+        self.inner.reset();
+        self.pad = [0.0; PAD];
+        self.pad_head = 0;
+        self.kept = [0.0; KEEP];
+        self.kept_head = 0;
+        self.high = self.wanted;
+    }
+
+    /// High quality, the curve at four times the rate, from the next sample on.
+    pub fn set_high(&mut self, high: bool) {
+        self.wanted = high;
+    }
+
+    /// One doubled-rate sample through the inner pair, the curve at four times the rate.
+    #[inline]
+    fn twice(&mut self, v: f32, shape: &impl Fn(f32) -> f32) -> f32 {
+        let (a, b) = self.inner.up(v);
+        self.inner.down(shape(a), shape(b))
+    }
+
+    /// One doubled-rate sample through Normal's delay.
+    #[inline]
+    fn delay(&mut self, v: f32) -> f32 {
+        let out = self.pad[self.pad_head];
+        self.pad[self.pad_head] = v;
+        self.pad_head = (self.pad_head + 1) % PAD;
+        out
+    }
+
+    /// Moves to the quality asked for, its stage brought up to date from the samples kept: the
+    /// inner pair run over them, or Normal's delay filled with their curve.
+    fn switch(&mut self, shape: &impl Fn(f32) -> f32) {
+        self.high = self.wanted;
+        if self.high {
+            self.inner.reset();
+            for i in 0..KEEP {
+                let v = self.kept[(self.kept_head + i) % KEEP];
+                let _ = self.twice(v, shape);
+            }
+        } else {
+            for i in KEEP - PAD..KEEP {
+                let v = self.kept[(self.kept_head + i) % KEEP];
+                let _ = self.delay(shape(v));
+            }
+        }
     }
 
     /// Sets the emphasis for `tape`, keeping the filters' state.
@@ -118,7 +192,19 @@ impl Saturator {
         let shape = |u: f32| u + amount * (curve(character, drive * u) / drive - u);
         let lifted = self.emphasis.process(f64::from(x)) as f32;
         let (even, odd) = self.oversampler.up(lifted);
-        let y = self.oversampler.down(shape(even), shape(odd));
+        if self.wanted != self.high {
+            self.switch(&shape);
+        }
+        let (even_out, odd_out) = if self.high {
+            (self.twice(even, &shape), self.twice(odd, &shape))
+        } else {
+            (self.delay(shape(even)), self.delay(shape(odd)))
+        };
+        for v in [even, odd] {
+            self.kept[self.kept_head] = v;
+            self.kept_head = (self.kept_head + 1) % KEEP;
+        }
+        let y = self.oversampler.down(even_out, odd_out);
         self.de_emphasis.process(f64::from(y)) as f32
     }
 }
@@ -198,6 +284,102 @@ mod tests {
             loss(8_000.0),
             loss(500.0)
         );
+    }
+
+    /// A 7 kHz tone of `level` through `saturation` of `character` at 48 kHz, quality `high`:
+    /// what is not the tone or its harmonics between 100 Hz and 12 kHz, the aliases, against the
+    /// tone, dB.
+    fn aliases_db(high: bool, level: f32, saturation: f32, character: Character) -> f32 {
+        let (rate, hz) = (48_000.0f32, 7_000.0f32);
+        let mut stage = Saturator::new(f64::from(rate));
+        stage.set_high(high);
+        stage.reset();
+        let n = 1 << 15;
+        let out: Vec<f32> = (0..2 * n)
+            .map(|i| {
+                let x = level * (std::f32::consts::TAU * hz * i as f32 / rate).sin();
+                stage.process(x, Tape::II, saturation, character)
+            })
+            .collect();
+        // A Hann-windowed DFT of the settled half, bin by bin: the tone's harmonics and their
+        // neighbours, against everything else.
+        let y = &out[n..];
+        let (mut tone, mut rest) = (0.0f64, 0.0f64);
+        for bin in 1..n / 2 {
+            let f = bin as f32 * rate / n as f32;
+            let (mut re, mut im) = (0.0f64, 0.0f64);
+            for (i, v) in y.iter().enumerate() {
+                let w = 0.5 - 0.5 * (std::f64::consts::TAU * i as f64 / n as f64).cos();
+                let a = std::f64::consts::TAU * bin as f64 * i as f64 / n as f64;
+                re += f64::from(*v) * w * a.cos();
+                im -= f64::from(*v) * w * a.sin();
+            }
+            let power = re * re + im * im;
+            let harmonic = (1..4).any(|k| (f - hz * k as f32).abs() < 30.0);
+            if harmonic {
+                tone += power;
+            } else if f > 100.0 && f < 12_000.0 {
+                // Above the soft curve's own offset, which the window spreads a few bins.
+                rest += power;
+            }
+        }
+        (10.0 * (rest / tone).log10()) as f32
+    }
+
+    /// **High folds back less**: a tape driven as tapes are, its aliases far under Normal's; at
+    /// the hardest drive, whose harmonics fall as slowly as a square wave's, the one doubling's
+    /// worth.
+    #[test]
+    #[ignore = "a slow DFT; run when the oversampling changes"]
+    fn high_quality_aliases_less_than_normal() {
+        for (level, saturation, character, better) in [
+            (0.5, 0.5, Character::Soft, 10.0),
+            (0.9, 1.0, Character::Hard, 5.0),
+        ] {
+            let normal = aliases_db(false, level, saturation, character);
+            let high = aliases_db(true, level, saturation, character);
+            println!("{character:?} at {saturation}: normal {normal:.1} dB, high {high:.1} dB");
+            assert!(
+                high < normal - better,
+                "normal {normal:.1} dB, high {high:.1} dB"
+            );
+        }
+    }
+
+    /// **Both qualities have one latency, and a switch is seamless**: at saturation zero both
+    /// pass the signal delayed by `LATENCY`, and switching back and forth mid-tone moves no sample
+    /// further than the tone itself does.
+    #[test]
+    fn both_qualities_share_one_latency_and_switch_without_a_step() {
+        for high in [false, true] {
+            let mut stage = Saturator::new(48_000.0);
+            stage.set_high(high);
+            stage.reset();
+            let out: Vec<f32> = (0..200)
+                .map(|i| {
+                    let x = if i == 10 { 1.0 } else { 0.0 };
+                    stage.process(x, Tape::I, 0.0, Character::Soft)
+                })
+                .collect();
+            let peak = (0..out.len())
+                .max_by(|&a, &b| out[a].abs().total_cmp(&out[b].abs()))
+                .unwrap();
+            assert_eq!(peak, 10 + Saturator::LATENCY, "high {high}");
+        }
+        let mut stage = Saturator::new(48_000.0);
+        let step = |i: usize| 0.8 * (std::f32::consts::TAU * 440.0 * i as f32 / 48_000.0).sin();
+        let mut previous = 0.0f32;
+        let mut largest = 0.0f32;
+        for i in 0..9_600 {
+            stage.set_high((i / 1_200) % 2 == 1);
+            let y = stage.process(step(i), Tape::I, 0.6, Character::Soft);
+            if i > 100 {
+                largest = largest.max((y - previous).abs());
+            }
+            previous = y;
+        }
+        // A 440 Hz tone at 0.8 moves at most 0.046 a sample.
+        assert!(largest < 0.05, "a switch stepped {largest}");
     }
 
     #[test]

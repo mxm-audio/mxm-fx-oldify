@@ -33,7 +33,7 @@ and each group's switch heads its first card; a group switched off is dimmed, no
 be set up before it is switched on (the owner, 2026-10-09: "There is not way to know what cards
 control the tape, and what controls the vinyl"). Key 0, the Medium card, is retired with it.
 
-| Key | Card | Controls (first-reach in bold; to come in italics) |
+| Key | Card | Controls (first-reach in bold) |
 |---:|---|---|
 | 1 | Vinyl | **Vinyl**, **Disc**, **Era** (cut), Player, Cut curve, Replay curve, **Horn**, Horn size |
 | 2 | Vinyl groove | **Wear**, Dynamic wear, Side position, Groove distortion, Eccentricity, Warp, Skips, Stuck groove |
@@ -42,7 +42,7 @@ control the tape, and what controls the vinyl"). Key 0, the Medium card, is reti
 | 5 | Tape transport | **Wow** depth, rate (sync), shape; Flutter depth, rate (sync), shape; follows wow; Flange; Stop time (sync), Tape stop |
 | 6 | Tape noise | **Hiss**, Noise reduction, Decode, its Amount, Brightness and Level error, Dropouts, Print-through |
 | 7 | Tape deck | Azimuth, Crosstalk, Wrong EQ |
-| 8 | Output | Drive, Width, **Mix**, Noise follows, Variation, Noise stops in silence, *Quality* |
+| 8 | Output | Drive, Width, **Mix**, Noise follows, Variation, Noise stops in silence, Quality |
 
 The effect ends in Mix alone, as the collection's effects do: no output level (the owner,
 2026-10-09). Each card's floor comes from its tree; category-first paging splits only where space

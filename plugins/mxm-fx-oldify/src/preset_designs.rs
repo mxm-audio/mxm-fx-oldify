@@ -527,12 +527,18 @@ pub fn generate() -> Vec<(String, String)> {
             "{name}: a sound says what it is in a sentence"
         );
         let mut preset = Preset::capture(*name, *category, &params);
-        // A factory recipe leaves out Mix, which the shared resolver keeps from the live value.
-        preset.params.remove("mix");
+        // A factory recipe leaves out Mix and Quality, which the shared resolver keeps from the
+        // live values.
+        for id in crate::preset::PRESERVED {
+            preset.params.remove(id);
+        }
         let mut named = BTreeSet::new();
         for &(id, panel) in parts.iter().flat_map(|part| part.iter()) {
             assert!(named.insert(id), "{name}: {id} is set twice");
-            assert_ne!(id, "mix", "{name}: a factory sound keeps the player's Mix");
+            assert!(
+                !crate::preset::PRESERVED.contains(&id),
+                "{name}: a factory sound keeps the player's {id}"
+            );
             let pointer = pointers
                 .get(id)
                 .unwrap_or_else(|| panic!("{name}: unknown parameter {id}"));
@@ -553,8 +559,8 @@ pub fn generate() -> Vec<(String, String)> {
         }
         assert_eq!(
             preset.params.len(),
-            erased.len() - 1,
-            "{name}: a factory recipe is complete but for Mix"
+            erased.len() - crate::preset::PRESERVED.len(),
+            "{name}: a factory recipe is complete but for Mix and Quality"
         );
         let slug = slug(name);
         assert!(slugs.insert(slug.clone()), "duplicate slug {slug}");

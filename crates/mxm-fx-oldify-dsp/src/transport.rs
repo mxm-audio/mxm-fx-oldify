@@ -24,7 +24,11 @@
 //!
 //! **Reading between samples:** four-point, third-order Hermite interpolation (Catmull–Rom; Olli
 //! Niemitalo, "Polynomial Interpolators for High-Quality Resampling of Oversampled Audio", 2001),
-//! flat enough at these small speed changes.
+//! flat enough at these small speed changes, though it dulls the top octave by a few decibels where
+//! the read falls halfway between samples, and so moves the treble as the read moves. **High
+//! quality** reads with a Kaiser-windowed sinc instead ([`Sinc`]; Smith, "Digital Audio
+//! Resampling", the bandlimited interpolation it describes): 32 taps, flat to 0.42 of the rate.
+//! The base delay leaves room ahead for it at either quality, so the latency is one.
 //!
 //! **A following flutter** is the wow's other use, the reference's: the wow moves no read of its
 //! own, and swings the flutter's rate instead ([`FOLLOW_HZ`]), never below [`FOLLOW_FLOOR`] of it.
@@ -40,7 +44,8 @@
 //! Every random draw comes from the transport's own seeded generator, one at each of a random
 //! wobble's points, so a render with the same seed is the same at any block size.
 
-use std::f64::consts::TAU;
+use crate::oversample::bessel_i0;
+use std::f64::consts::{PI, TAU};
 
 /// How a wobble moves the read over one cycle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -128,6 +133,93 @@ pub const FOLLOW_HZ: f64 = 4.5;
 pub const FOLLOW_FLOOR: f64 = 0.5;
 /// The two-harmonic saw's peak, `sin θ − ½·sin 2θ` at θ = 2π/3 (3√3/4): what scales it to ±1.
 const SAW_PEAK: f64 = 1.299_038_105_676_658;
+/// A windowed-sinc read's taps either side of the point read: 32 in all.
+pub const SINC_HALF: usize = 16;
+const SINC_TAPS: usize = 2 * SINC_HALF;
+/// The table's rows across one sample, read between in a straight line.
+const SINC_PHASES: usize = 256;
+/// The Kaiser window's shape: flat within a hundredth of a decibel to 0.42 of the rate (20 kHz
+/// at 48 kHz), 0.4 dB down at 0.45, where Hermite is down 12 dB.
+const SINC_BETA: f64 = 7.0;
+/// The nearest any read comes to the sample just written: the windowed sinc's reach ahead.
+pub const READ_AHEAD: f64 = SINC_HALF as f64;
+
+/// A table of Kaiser-windowed sinc kernels, one row a step of the fraction, each summing to one,
+/// the first and last exactly the sample itself. Allocated in [`Sinc::new`].
+#[derive(Clone, Debug)]
+pub struct Sinc {
+    rows: Vec<[f32; SINC_TAPS]>,
+}
+
+impl Default for Sinc {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Sinc {
+    pub fn new() -> Self {
+        let rows = (0..=SINC_PHASES)
+            .map(|phase| {
+                let mut row = [0.0f32; SINC_TAPS];
+                if phase == 0 || phase == SINC_PHASES {
+                    row[SINC_HALF - 1 + phase / SINC_PHASES] = 1.0;
+                    return row;
+                }
+                let fraction = phase as f64 / SINC_PHASES as f64;
+                let mut taps = [0.0f64; SINC_TAPS];
+                for (k, tap) in taps.iter_mut().enumerate() {
+                    let t = k as f64 - (SINC_HALF - 1) as f64 - fraction;
+                    let x = t / SINC_HALF as f64;
+                    let window =
+                        bessel_i0(SINC_BETA * (1.0 - x * x).max(0.0).sqrt()) / bessel_i0(SINC_BETA);
+                    *tap = (PI * t).sin() / (PI * t) * window;
+                }
+                let sum: f64 = taps.iter().sum();
+                for (w, tap) in row.iter_mut().zip(taps) {
+                    *w = (tap / sum) as f32;
+                }
+                row
+            })
+            .collect();
+        Self { rows }
+    }
+
+    /// The kernel for a point `fraction` (0..1) past a sample: its taps from `SINC_HALF − 1`
+    /// samples before that sample to `SINC_HALF` after.
+    #[inline]
+    pub fn weights(&self, fraction: f64) -> [f32; SINC_TAPS] {
+        let scaled = fraction * SINC_PHASES as f64;
+        let row = (scaled as usize).min(SINC_PHASES - 1);
+        let between = (scaled - row as f64) as f32;
+        let (a, b) = (&self.rows[row], &self.rows[row + 1]);
+        let mut w = [0.0f32; SINC_TAPS];
+        for ((w, a), b) in w.iter_mut().zip(a).zip(b) {
+            *w = a + between * (b - a);
+        }
+        w
+    }
+
+    /// The point `fraction` past `line[index]`, the line circular.
+    #[inline]
+    pub fn read(&self, line: &[f32], index: usize, fraction: f64) -> f64 {
+        let length = line.len();
+        let w = self.weights(fraction);
+        let first = (index + length - (SINC_HALF - 1)) % length;
+        if first + SINC_TAPS <= length {
+            line[first..first + SINC_TAPS]
+                .iter()
+                .zip(&w)
+                .map(|(x, w)| f64::from(*x) * f64::from(*w))
+                .sum()
+        } else {
+            (0..SINC_TAPS)
+                .map(|k| f64::from(line[(first + k) % length]) * f64::from(w[k]))
+                .sum()
+        }
+    }
+}
+
 /// A tape let go while it is still slowing stops in this long from full speed, then starts.
 /// Chosen: a quick brake, so the tape starts soon after it is let go.
 pub const BRAKE_S: f64 = 0.05;
@@ -266,6 +358,9 @@ pub struct Transport {
     /// The stop held, and the stop's pace: the speed it loses a sample.
     held: bool,
     pace: f64,
+    /// High quality's read, and whether it is on.
+    sinc: Sinc,
+    high: bool,
 }
 
 impl Transport {
@@ -280,9 +375,9 @@ impl Transport {
     /// speed. Allocates; call it outside the audio thread.
     pub fn with_stop(rate: f64, reach_seconds: f64, seed: u32, longest_stop_s: f64) -> Self {
         let reach = (reach_seconds * rate).ceil();
-        // Below the base: twice the reach for a change not yet re-centred, and four samples for the
-        // interpolator to read ahead of. Above it: twice the reach, and room to read behind.
-        let base = 2.0 * reach + 4.0;
+        // Below the base: twice the reach for a change not yet re-centred, and the windowed sinc's
+        // reach ahead and two. Above it: twice the reach, and room to read behind.
+        let base = 2.0 * reach + READ_AHEAD + 2.0;
         let wobble_room = 2.0 * reach + 2.0;
         // A stop from full speed loses half its time; a brake after it at most its own.
         let stop_room = if longest_stop_s > 0.0 {
@@ -290,7 +385,7 @@ impl Transport {
         } else {
             0.0
         };
-        let length = (base + wobble_room + stop_room) as usize + 6;
+        let length = (base + wobble_room + stop_room) as usize + SINC_HALF + 2;
         Self {
             lines: [vec![0.0; length], vec![0.0; length]],
             write: 0,
@@ -307,7 +402,14 @@ impl Transport {
             stop: Stop::at_rest(false),
             held: false,
             pace: 1.0,
+            sinc: Sinc::new(),
+            high: false,
         }
+    }
+
+    /// High quality's read, a windowed sinc, from the next sample on.
+    pub fn set_high(&mut self, high: bool) {
+        self.high = high;
     }
 
     /// The base delay in whole samples: the latency to report.
@@ -321,7 +423,7 @@ impl Transport {
     /// never reaches past the start, and a long line costs no more to reset than a short one.
     pub fn reset(&mut self) {
         let length = self.lines[0].len();
-        let near = ((self.base + self.wobble_room) as usize + 6).min(length);
+        let near = ((self.base + self.wobble_room) as usize + SINC_HALF + 2).min(length);
         for line in &mut self.lines {
             line[length - near..].fill(0.0);
         }
@@ -477,16 +579,16 @@ impl Transport {
             // Stopped: nothing passes the head.
             ([0.0; 2], [0.0; 2])
         } else {
-            let wobbled = offset.clamp(-(self.base - 2.0), self.wobble_room);
+            let wobbled = offset.clamp(-(self.base - READ_AHEAD), self.wobble_room);
             let lag = self.stop.lag;
             let most = self.base + self.wobble_room + self.stop_room;
-            let delay = (self.base + wobbled + lag).clamp(2.0, most);
+            let delay = (self.base + wobbled + lag).clamp(READ_AHEAD, most);
             let moving = self.read(delay);
             let fixed = if lag == 0.0 {
                 let still = (self.write + length - self.base as usize) % length;
                 [self.lines[0][still], self.lines[1][still]]
             } else {
-                self.read((self.base + lag).clamp(2.0, most))
+                self.read((self.base + lag).clamp(READ_AHEAD, most))
             };
             (moving, fixed)
         };
@@ -504,8 +606,12 @@ impl Transport {
         let index = whole as usize;
         let mut out = [0.0f32; 2];
         for (y, line) in out.iter_mut().zip(&self.lines) {
-            let at = |k: usize| f64::from(line[(index + k + length - 1) % length]);
-            *y = hermite(at(0), at(1), at(2), at(3), fraction) as f32;
+            *y = if self.high && fraction != 0.0 {
+                self.sinc.read(line, index % length, fraction) as f32
+            } else {
+                let at = |k: usize| f64::from(line[(index + k + length - 1) % length]);
+                hermite(at(0), at(1), at(2), at(3), fraction) as f32
+            };
         }
         out
     }
@@ -894,6 +1000,60 @@ mod tests {
         assert!(
             (slowest / (FOLLOW_FLOOR * flutter.hz) - 1.0).abs() < 0.02,
             "slowest cycle {slowest} Hz"
+        );
+    }
+
+    /// **The windowed sinc reads a tone between samples flat to 20 kHz at 48 kHz**, where Hermite
+    /// dulls it, and reads a sample itself exactly.
+    #[test]
+    fn the_sinc_reads_between_samples_flat_to_the_top() {
+        let sinc = Sinc::new();
+        let n = 4_096;
+        for hz in [1_000.0, 12_000.0, 20_000.0] {
+            let line: Vec<f32> = (0..n)
+                .map(|i| (TAU * hz * i as f64 / RATE).sin() as f32)
+                .collect();
+            for fraction in [0.25, 0.5, 0.8] {
+                let worst = (100..n - 100)
+                    .map(|i| {
+                        let exact = (TAU * hz * (i as f64 + fraction) / RATE).sin();
+                        (sinc.read(&line, i, fraction) - exact).abs()
+                    })
+                    .fold(0.0f64, f64::max);
+                assert!(worst < 2e-3, "{hz} Hz at {fraction}: {worst}");
+            }
+        }
+        let line: Vec<f32> = (0..64).map(|i| i as f32).collect();
+        assert_eq!(sinc.read(&line, 20, 0.0), 20.0);
+    }
+
+    /// **High quality reads the tone a wobble moves without dulling its treble**: a 16 kHz tone
+    /// through a wow keeps its level read by the sinc, and loses some of it read by Hermite.
+    #[test]
+    fn high_quality_keeps_the_treble_a_wobble_moves() {
+        let wow = Wobble {
+            depth: 0.003,
+            hz: 0.7,
+            shape: Shape::Sine,
+        };
+        let level = |high: bool| {
+            let mut transport = Transport::new(RATE, wow.reach_seconds(), 1);
+            transport.set_high(high);
+            let out: Vec<f32> = (0..96_000)
+                .map(|n| {
+                    let x = (TAU * 16_000.0 * n as f64 / RATE).sin() as f32;
+                    transport.process([x, x], &wow, &Wobble::NONE)[0]
+                })
+                .collect();
+            let tail = &out[48_000..];
+            (tail.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>() / tail.len() as f64).sqrt()
+                / std::f64::consts::FRAC_1_SQRT_2
+        };
+        let (normal, high) = (20.0 * level(false).log10(), 20.0 * level(true).log10());
+        assert!(high > -0.2, "high {high:.2} dB");
+        assert!(
+            normal < high - 1.0,
+            "normal {normal:.2} dB, high {high:.2} dB"
         );
     }
 

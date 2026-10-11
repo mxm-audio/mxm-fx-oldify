@@ -46,7 +46,7 @@ fn odd_taps() -> [f32; HALF_TAPS] {
 }
 
 /// The modified Bessel function of the first kind, order zero, by its power series.
-fn bessel_i0(x: f64) -> f64 {
+pub(crate) fn bessel_i0(x: f64) -> f64 {
     let half = x / 2.0;
     let mut term = 1.0;
     let mut sum = 1.0;

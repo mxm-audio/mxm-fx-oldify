@@ -117,6 +117,7 @@ fn loading_a_factory_sound_keeps_the_players_mix() {
                 .params
                 .mix
                 ._internal_set_normalized_value(plugin.params.mix.preview_normalized(0.63));
+            let _ = plugin.params.quality._internal_set_normalized_value(1.0);
         }
         let parsed = preset::Preset::parse(text, mxm_fx_oldify::CLAP_ID).unwrap();
         apply(&plugin, &parsed, preset::Origin::Factory);
@@ -124,6 +125,11 @@ fn loading_a_factory_sound_keeps_the_players_mix() {
             (plugin.params.mix.value() - 0.63).abs() < 1e-6,
             "{slug} moved Mix to {}",
             plugin.params.mix.value()
+        );
+        assert_eq!(
+            plugin.params.quality.value(),
+            mxm_fx_oldify::params::QualityChoice::High,
+            "{slug} moved Quality"
         );
         preset::mark_loaded(&*plugin.params, &parsed.name, preset::Origin::Factory);
         assert!(!preset::loaded(&*plugin.params).is_modified(), "{slug}");

@@ -34,10 +34,12 @@ off is dimmed but can still be set up.
 - **Tape deck** — azimuth (a tilted head), crosstalk between the tracks, and the wrong playback EQ.
 - **Output** — Drive (±24 dB onto the tape, divided back out after it: more saturates more and
   buries the hiss without getting louder), Width, Mix against the dry input delayed to
-  match, how far the noise follows the input, whether it stops in silence, and Variation, which
-  picks another take of everything random (the same number always sounds the same).
+  match, how far the noise follows the input, whether it stops in silence, Variation, which
+  picks another take of everything random (the same number always sounds the same), and Quality:
+  High saturates the tape at four times the rate and reads the moving tape and record more finely,
+  for cleaner treble at more CPU. Loading a factory sound keeps your Mix and Quality.
 
-The chain has one fixed latency (about 87 ms), reported to the host,
+The chain has one fixed latency (about 88 ms), reported to the host,
 and a tail after which silence in is exact silence out, unless the noise is set to play on.
 Twenty-one factory sounds cover cassettes, records and records taped to cassette, from a home deck
 to an acoustic 78 on a wind-up gramophone.

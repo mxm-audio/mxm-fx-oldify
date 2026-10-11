@@ -35,7 +35,7 @@ use mxm_fx_oldify_dsp::saturate::Character;
 use mxm_fx_oldify_dsp::skip::MAX_SKIPS;
 use mxm_fx_oldify_dsp::tape::{Grade, Tape};
 use mxm_fx_oldify_dsp::transport::Shape;
-use mxm_fx_oldify_dsp::{Controls, MAX_GAIN_DB, MAX_WIDTH, MIN_GAIN_DB, db_to_gain};
+use mxm_fx_oldify_dsp::{Controls, MAX_GAIN_DB, MAX_WIDTH, MIN_GAIN_DB, Quality, db_to_gain};
 use mxm_preset::PresetIdentity;
 use mxm_tempo::{Direction, Division, Ladder, Span};
 use nice_plug::prelude::*;
@@ -372,6 +372,26 @@ pub enum CharacterChoice {
     #[id = "hard"]
     #[name = "Hard"]
     Hard,
+}
+
+/// How hard the effect works.
+#[derive(Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QualityChoice {
+    #[id = "normal"]
+    #[name = "Normal"]
+    Normal,
+    #[id = "high"]
+    #[name = "High"]
+    High,
+}
+
+impl QualityChoice {
+    pub const fn dsp(self) -> Quality {
+        match self {
+            Self::Normal => Quality::Normal,
+            Self::High => Quality::High,
+        }
+    }
 }
 
 /// The noise reduction's system.
@@ -903,6 +923,9 @@ pub struct MxmFxOldifyParams {
     pub noise_stops: BoolParam,
     #[id = "variation"]
     pub variation: IntParam,
+    /// High: the tape's saturation at four times the rate, the moving read by a windowed sinc.
+    #[id = "quality"]
+    pub quality: EnumParam<QualityChoice>,
 
     #[persist = "preset"]
     pub preset: RwLock<PresetIdentity>,
@@ -1125,6 +1148,7 @@ impl Default for MxmFxOldifyParams {
                     max: MAX_VARIATION as i32,
                 },
             ),
+            quality: EnumParam::new("Quality", QualityChoice::Normal),
             preset: RwLock::new(PresetIdentity::none()),
         }
     }
@@ -1180,6 +1204,7 @@ impl MxmFxOldifyParams {
             mix: self.mix.value(),
             noise_follows: self.noise_follows.value(),
             noise_stops: self.noise_stops.value(),
+            quality: self.quality.value().dsp(),
             record: RecordControls {
                 disc: DiscControls {
                     speed: self.disc.value().dsp(),

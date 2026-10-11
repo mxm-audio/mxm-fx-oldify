@@ -439,6 +439,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             &params.variation,
             "Picks another take of the wobble, hiss, dropouts and crackle; the same number always sounds the same.",
         ),
+        Bound::new(
+            "quality",
+            &params.quality,
+            "How hard the effect works: High saturates the tape at four times the rate and reads the moving tape and record more finely, for cleaner treble, at more CPU.",
+        ),
     ]
 }
 
@@ -643,6 +648,10 @@ fn details_of(id: &str) -> &'static [&'static str] {
             "No noise reduction: the hiss as the tape made it.",
             "One band on the treble, as on most cassettes of the time.",
             "Two bands reaching lower, for about twice the hiss reduction.",
+        ],
+        "quality" => &[
+            "Runs light: tape saturation at twice the rate.",
+            "Works harder: saturation at four times the rate and a finer read of the moving tape, for cleaner treble.",
         ],
         "generations" => &[
             "The first recording, as it was made.",
@@ -855,6 +864,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
             knobs(ui, params, &["drive", "width", "mix"]),
             knobs(ui, params, &["noise_follows", "variation"]),
             toggle_leaf(params, "noise_stops"),
+            segmented_leaf(params, "quality"),
         ]),
     }
 }

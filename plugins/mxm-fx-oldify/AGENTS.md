@@ -83,6 +83,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `noise_follows` | Noise follows | 0–100 %, linear |
 | | `noise_stops` | Noise stops in silence | Off / On |
 | | `variation` | Variation | Integer 0…`MAX_VARIATION`: the seed every random source starts from |
+| | `quality` | Quality | Normal / High (`normal`, `high`): High saturates the tape at four times the rate and reads by a windowed sinc; one latency at either |
 
 The bounds are the DSP crate's constants, so the plugin's ranges and the DSP's clamps are one set of
 numbers. **A level stores linear gain**; one with an Off reads Off exactly where the DSP gets its
@@ -133,16 +134,13 @@ The parameters carry **no nice-plug smoother**: the DSP ramps every continuous c
 target over its `SMOOTHING_S` (`a_moved_control_ramps_and_is_heard` holds it through the shell), and
 takes a switch or a count as it comes ([NOTES.md § Smoothing](NOTES.md#smoothing)).
 
-## Still to come
-
-- High quality. None is a parameter yet: each id is fixed when its control arrives.
-
 ## Presets
 
 Through `mxm-preset` (`src/preset.rs`). **Twenty-one factory sounds**, category Fx, designed in
 `src/preset_designs.rs` as overrides on Init and written to `presets/` by
-`examples/fx_oldify_build_presets.rs`. **A recipe leaves out Mix** (`is_factory_preserved`), as
-mxm-fx-delay's do, so loading a sound keeps the player's Mix
+`examples/fx_oldify_build_presets.rs`. **A recipe leaves out Mix and Quality**
+(`preset::PRESERVED`, `is_factory_preserved`): Mix as mxm-fx-delay's do, Quality because it is the
+player's machine's to say, so loading a sound keeps both
 (`loading_a_factory_sound_keeps_the_players_mix`). Held by
 `every_shipped_recipe_is_what_the_generator_emits_today`,
 `the_factory_bank_is_complete_and_every_sound_its_own` and

@@ -13,10 +13,14 @@ zero → mono, the hiss at its level and silent after its hold, the hiss playing
 off, following noise at three input levels, noise steady through a drum machine's gaps, the ramps, the latency near 90 ms at 44.1, 48 and
 96 kHz, a warp's dip in step with its speed at the read, a tape stop falling in pitch to silence and
 starting again where an unstopped tape would be, its tail kept until its read has played out, a
-stop and a start the same at any block size, a locked groove playing on while held and a skip keeping
+stop and a start the same at any block size, an impulse at the latency at either Quality, a locked groove
+playing on while held and a skip keeping
 the tail, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
 tape table against the measurement, the curves' slope, bounds and asymmetry, treble saturating
-first, the oversampler's round trip, the transport's depths (the saw's, the random's and the
+first, the oversampler's round trip, both qualities' one latency and a switch between them without a
+step, High's aliases under Normal's (ignored, slow: run when the oversampling changes), the sinc
+read flat to 20 kHz between samples and exact on one, High keeping the treble a wobble moves, the
+transport's depths (the saw's, the random's and the
 warp's as the reference's), reach, the phase an extra wobble will have at the read, the random's straight reads between its points, seeds, unmoved read, a
 following flutter swung by a wow that moves no read, and its floor, the spacing loss against Wallace at every common rate and a sweep without a
 jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch and loss, the
@@ -298,6 +302,31 @@ print-through's wrap is the longer (`the_tail_outlasts_both_echoes`).
 thread, as the chain going quiet makes, sets the count of samples written to zero, and anything
 older reads as silence. The print-through's line forgets the same way.
 
+## Quality
+
+**Why these two stages.** The tape's saturation is the chain's hardest curve and runs on full-band
+music; the moving read is the only stage every sound passes between samples. Hermite's read dulls
+the top octave where it falls halfway between samples (1 dB at 12 kHz, 8 dB at 20 kHz at 48 kHz),
+and a wobble moves it through every fraction, so the treble flutters with the read; the windowed
+sinc is flat to 20 kHz. The record's tracing distortion and valves stay at the base rate: their
+input has passed the cutter, the curves and the scratch filter, and their harmonics are mild.
+
+**Measured** (2026-10-11, `high_quality_aliases_less_than_normal`): a 7 kHz tone at 48 kHz, its
+aliases between 100 Hz and 12 kHz against the tone. Driven as tapes are (Soft, saturation 0.5,
+level 0.5): Normal −37 dB, High −56 dB. At the hardest (Hard, saturation 1, level 0.9), whose
+harmonics fall as slowly as a square wave's: Normal −20 dB, High −26 dB, one doubling's worth. A
+16 kHz tone through a wow keeps its level within 0.2 dB read by the sinc
+(`high_quality_keeps_the_treble_a_wobble_moves`).
+
+**Why one latency.** Normal delays its curve by the inner pair's round trip and every read leaves
+room for the sinc ahead, so switching never moves the latency the host compensates. Together they
+cost 39 samples at 48 kHz, under a millisecond.
+
+**Why a switch is brought up to date.** The saturator keeps its last 45 doubled-rate samples: on
+a switch to High it runs the inner pair over them, on a switch to Normal it fills its delay with
+their curve, so the new path's memory is what it would have been, and no sample steps
+(`both_qualities_share_one_latency_and_switch_without_a_step`).
+
 ## Skips
 
 **Why only back.** A stylus thrown forward a groove skips the turn ahead, which has not arrived;
@@ -333,7 +362,7 @@ tape-stop convention's.
 **Why the start is as long as the base delay.** A slower tape lags its writing; a start that
 began at the base delay would end a start's worth late, and the latency would have moved. The read
 starts ahead of the base by exactly what a straight start loses, `(N − 1)/2` samples, and lands on
-it at full speed, which only fits in the base delay's own room: about 86 ms, a quick deck's start.
+it at full speed, which only fits in the base delay's own room: about 87 ms, a quick deck's start.
 Once at speed the tape plays exactly what an unstopped one plays
 (`a_stopped_tape_slows_to_silence_and_starts_again_where_it_would_be`).
 

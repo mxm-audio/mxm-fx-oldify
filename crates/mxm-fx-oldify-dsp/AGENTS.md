@@ -5,7 +5,7 @@ Parent: [`../../AGENTS.md`](../../AGENTS.md)
 # Purpose
 
 Framework-free DSP for `mxm-fx-oldify`: the chain, the **cassette engine**, the **record
-engine**, and the blocks they are built from. Still to come: High quality. The design and the measurements
+engine**, and the blocks they are built from. The design and the measurements
 behind it are private, `ops:notes/oldify/` (root *The design and its measurements are private*).
 
 # Ownership
@@ -33,7 +33,7 @@ input → Drive → [the record] → the cassette engine → ÷ Drive (a latency
   earlier. Why these three: [NOTES.md § The chain](NOTES.md#the-chain).
 - **One fixed latency**, `Oldify::latency`: the oversampler's, the transport's base delay (twice
   the wow's, flutter's, eccentricity's, turntable's and warp's reach) and the centre of azimuth's
-  delay between the tracks, about 87 ms, the same for every control and switch; the dry path is
+  delay between the tracks, about 88 ms, the same for every control and switch, Quality included; the dry path is
   delayed by it, so Mix never combs. The plugin reports it.
 - Width works about the mid; Mix is a linear crossfade with the delayed dry.
 - **The noise** is gated by the chain: it holds `NOISE_HOLD_S` after the input falls silent and
@@ -122,7 +122,8 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
 - **`saturate`**: emphasis shelves at the tape's time constant (`EMPHASIS_DB`) around a 2×
   oversampled curve, Soft (asymmetric tanh) or Hard (`v / (1 + v⁴)^¼`). **Saturation 0 is linear**
   (the curve fades in over `FADE_IN`); drive lowers the clip point by up to `MAX_DRIVE`.
-- **`oversample`**: an honest copy of mxm-mono-00's half-band pair; its latency is part of ours.
+- **`oversample`**: an honest copy of mxm-mono-00's half-band pair; its latency is part of ours,
+  and High nests a second pair inside the first.
 - **`transport`**: a delay line read by the integral of the speed error. **Every shape moves
   the read as far as a sine of its depth**, as the reference's do: the sine's speed a sine, the
   saw's read a saw's first two harmonics, the random shape's read straight between uniform points,
@@ -181,6 +182,17 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
 - **`spacing`**: Wallace's spacing loss from two fitted tables (`BASE` at 44.1 and 48 kHz, `HIGH`
   from 88.2 kHz; `ops:oldify/measure/fit_spacing.py`). Between two rows it **crossfades the two
   rows' outputs**; a slot takes a new row only at weight zero, so a moving spacing never clicks.
+
+## Quality (`Controls::quality`)
+
+- **High** runs the tape's saturation at four times the rate (a second half-band pair inside the
+  first) and reads the moving tape and record, and the tracks' delay, by a 32-tap Kaiser-windowed
+  sinc (`transport::Sinc`) instead of Hermite. **The latency is the same at either**: Normal delays
+  its curve by the inner pair's round trip, and every read leaves the sinc's `READ_AHEAD`.
+- **A switch never starts a stage cold**: the saturator keeps its last doubled-rate samples and
+  brings the stage it moves to up to date from them; the reads have no memory to switch.
+- The record's own curves (tracing, valves) stay at the base rate at either: their input is
+  band-limited by then ([NOTES.md § Quality](NOTES.md#quality)).
 
 ## Smoothing
 

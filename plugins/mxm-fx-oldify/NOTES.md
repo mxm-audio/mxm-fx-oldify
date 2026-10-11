@@ -30,9 +30,10 @@ error is a gain too, stored the same way (`params::level_error_db`).
 Twenty-one sounds: nine cassettes, ten records, two records taped to cassette. The design table
 (`src/preset_designs.rs`) is the bank's one readable statement, each sound as overrides on Init in
 panel units with a sentence saying what it is; a control a design does not name stays at Init. Its
-`generate` writes every parameter but Mix: Mix is factory-preserved, as in mxm-fx-delay, so
-browsing keeps the player's Mix (the coordinator, 2026-10-09: the collection's
-convention wins; "unlisted controls stay at Init" meant the sound controls, not Mix). The example only writes what `generate`
+`generate` writes every parameter but Mix and Quality: Mix is factory-preserved, as in
+mxm-fx-delay, so browsing keeps the player's Mix (the coordinator, 2026-10-09: the collection's
+convention wins; "unlisted controls stay at Init" meant the sound controls, not Mix), and Quality
+too (2026-10-11), being how hard the player's machine works rather than part of a sound. The example only writes what `generate`
 returns, so the stale-file test can hold the committed files to a fresh generation. The values are
 first estimates, to be tuned by ear (2026-10-09). The shared browser shows no text per preset, so a
 sound's sentence lives in the design table.
@@ -57,7 +58,7 @@ Generations; Age), **Tape transport** (Wow, Wow rate and its sync; Wow shape; Fl
 and its sync; Flutter shape; Flutter follows wow; Flange, Stop time and its sync; Tape stop), **Tape noise** (Hiss, Print-through; Noise reduction;
 Decode; NR amount, NR brightness, NR level error; Dropouts, Dropout intensity, Dropout width),
 **Tape deck** (Azimuth, Crosstalk; Wrong EQ) and **Output** (the In and Out levels; Drive, Width,
-Mix; Noise follows, Variation; Noise stops in silence). Noise follows and Variation share a knob row
+Mix; Noise follows, Variation; Noise stops in silence; Quality). Noise follows and Variation share a knob row
 so Output fits beside the seven group cards on one page at the budget.
 
 **Vinyl, not Record** (the owner, 2026-10-09: "'Record' should be 'Vinyl'"): the switch and

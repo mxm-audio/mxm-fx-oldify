@@ -92,6 +92,14 @@ pub fn db_to_gain(db: f32) -> f32 {
     10.0f32.powf(db * 0.05)
 }
 
+/// How hard the chain works: High runs the tape's saturation at four times the rate and reads the
+/// moving tape and record, and the tracks' delay, by a windowed sinc. The latency is the same.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Quality {
+    Normal,
+    High,
+}
+
 /// What one block asks for. Gains are linear, Width is a factor (1 is the image as it came), Mix is
 /// the wet share of a linear crossfade.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -113,6 +121,7 @@ pub struct Controls {
     /// The noise stops when the input does (after [`NOISE_HOLD_S`]); off, it plays on in silence
     /// and the chain never goes quiet.
     pub noise_stops: bool,
+    pub quality: Quality,
     pub cassette: CassetteControls,
     pub record: RecordControls,
 }
@@ -128,6 +137,7 @@ impl Controls {
         mix: 1.0,
         noise_follows: 0.0,
         noise_stops: true,
+        quality: Quality::Normal,
         cassette: CassetteControls::NEUTRAL,
         record: RecordControls::CLEAN,
     };
@@ -165,6 +175,7 @@ impl Controls {
             mix: within(self.mix, 1.0, 1.0),
             noise_follows: within(self.noise_follows, 1.0, 0.0),
             noise_stops: self.noise_stops,
+            quality: self.quality,
             cassette: self.cassette.bounded(),
             record: self.record.bounded(),
         }
@@ -429,6 +440,7 @@ impl Oldify {
         } else {
             controls.cassette
         });
+        self.cassette.set_high(controls.quality == Quality::High);
         self.record.reseed(seed_for(controls.cassette.variation));
         self.record.set_controls(controls.record);
         self.cassette.set_record_wobbles(if record_on {
@@ -776,6 +788,11 @@ mod tests {
                             mix,
                             noise_follows: 1.0,
                             noise_stops: true,
+                            quality: if width == 1.0 {
+                                Quality::High
+                            } else {
+                                Quality::Normal
+                            },
                             cassette,
                             record,
                         });
@@ -984,15 +1001,22 @@ mod tests {
 
     #[test]
     fn an_impulse_at_neutral_peaks_at_the_reported_latency() {
-        let mut oldify = settled_at(Controls::IDENTITY);
-        let latency = oldify.latency() as usize;
-        let mut impulse = vec![0.0f32; 4 * latency];
-        impulse[0] = 0.5;
-        let [left, _] = render(&mut oldify, &impulse, &impulse, Controls::IDENTITY);
-        let peak = (0..left.len())
-            .max_by(|&a, &b| left[a].abs().total_cmp(&left[b].abs()))
-            .unwrap();
-        assert_eq!(peak, latency);
+        // At either quality: High's stages are as long as Normal's.
+        for quality in [Quality::Normal, Quality::High] {
+            let controls = Controls {
+                quality,
+                ..Controls::IDENTITY
+            };
+            let mut oldify = settled_at(controls);
+            let latency = oldify.latency() as usize;
+            let mut impulse = vec![0.0f32; 4 * latency];
+            impulse[0] = 0.5;
+            let [left, _] = render(&mut oldify, &impulse, &impulse, controls);
+            let peak = (0..left.len())
+                .max_by(|&a, &b| left[a].abs().total_cmp(&left[b].abs()))
+                .unwrap();
+            assert_eq!(peak, latency, "{quality:?}");
+        }
     }
 
     /// **How a host cuts its blocks never changes a sample**, with every random source running:
