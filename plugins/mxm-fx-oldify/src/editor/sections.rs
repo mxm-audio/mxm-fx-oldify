@@ -178,6 +178,11 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
             "How far off centre the hole is, so the pitch sways once a turn. Past about 2.5 mm it sways further than any real record.",
         ),
         Bound::new(
+            "warp",
+            &params.warp,
+            "How warped the disc is, so the pitch lurches once a turn and the level dips with it. Real warps sit low on the knob; higher is for effect.",
+        ),
+        Bound::new(
             "crackle",
             &params.crackle,
             "How many tiny crackles a second, from a clean disc to a worn 78.",
@@ -736,7 +741,7 @@ pub fn card(ui: &Ui, index: usize, params: &MxmFxOldifyParams) -> Node<Leaf> {
         ]),
         1 => stack(vec![
             knobs(ui, params, &["wear", "dynamic_wear", "side"]),
-            knobs(ui, params, &["groove_distortion", "eccentricity"]),
+            knobs(ui, params, &["groove_distortion", "eccentricity", "warp"]),
         ]),
         2 => stack(vec![
             knobs(ui, params, &["crackle", "clicks", "surface_noise"]),

@@ -27,7 +27,7 @@ use mxm_fx_oldify_dsp::groove::GrooveControls;
 use mxm_fx_oldify_dsp::horn::{HORN_LONGEST_M, HORN_SHORTEST_M, HornControls};
 use mxm_fx_oldify_dsp::nr::{MAX_LEVEL_ERROR_DB, NoiseReduction, NrControls};
 use mxm_fx_oldify_dsp::player::Player;
-use mxm_fx_oldify_dsp::record::{Era, MAX_ECCENTRICITY_MM, Mains, RecordControls};
+use mxm_fx_oldify_dsp::record::{Era, MAX_ECCENTRICITY_MM, MAX_WARP, Mains, RecordControls};
 use mxm_fx_oldify_dsp::saturate::Character;
 use mxm_fx_oldify_dsp::tape::{Grade, Tape};
 use mxm_fx_oldify_dsp::transport::Shape;
@@ -711,6 +711,8 @@ pub struct MxmFxOldifyParams {
     pub groove_distortion: FloatParam,
     #[id = "eccentricity"]
     pub eccentricity: FloatParam,
+    #[id = "warp"]
+    pub warp: FloatParam,
 
     // ---- Surface ----
     #[id = "crackle"]
@@ -885,6 +887,19 @@ impl Default for MxmFxOldifyParams {
                     .parse::<f32>()
                     .ok()
             })),
+            // Skewed as Eccentricity, so the warps real records have, a fraction of the
+            // reference's, get the first half of the travel.
+            warp: FloatParam::new(
+                "Warp",
+                record.warp,
+                FloatRange::Skewed {
+                    min: 0.0,
+                    max: MAX_WARP,
+                    factor: FloatRange::skew_factor(-1.0),
+                },
+            )
+            .with_value_to_string(percent_to_string())
+            .with_string_to_value(string_to_percent()),
 
             crackle: per_second("Crackle", record.disc.crackle, MAX_CRACKLE_HZ, -2.0),
             clicks: per_second("Clicks", record.disc.clicks, MAX_CLICKS_HZ, -1.5),
@@ -1061,6 +1076,7 @@ impl MxmFxOldifyParams {
                     tip_um: Controls::INIT.record.groove.tip_um,
                 },
                 eccentricity_mm: self.eccentricity.value(),
+                warp: self.warp.value(),
                 mains: self.hum.value().dsp(),
                 hum_db: hum_db(self.hum_level.value()),
                 horn: HornControls {
@@ -1319,7 +1335,7 @@ mod tests {
     #[test]
     fn parameter_text_is_idempotent_through_the_host_conversion() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 33] = [
+        let continuous: [&FloatParam; 34] = [
             &params.horn,
             &params.horn_size,
             &params.age,
@@ -1336,6 +1352,7 @@ mod tests {
             &params.side,
             &params.groove_distortion,
             &params.eccentricity,
+            &params.warp,
             &params.crackle,
             &params.clicks,
             &params.surface_noise,

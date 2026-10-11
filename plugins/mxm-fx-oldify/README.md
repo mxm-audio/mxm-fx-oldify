@@ -13,8 +13,9 @@ off is dimmed but can still be set up.
   pick others; Horn and Horn size, the acoustic horns a record was made and played through, for
   the thin, honky, tinny sound of a real old 78 on any record and player.
 - **Vinyl groove** — wear, and dynamic wear, which wears the loud passages more (loud bass and sharp
-  treble go gritty, distorted and dull); where on the side the needle is, groove distortion and an
-  off-centre hole.
+  treble go gritty, distorted and dull); where on the side the needle is, groove distortion, an
+  off-centre hole, and a warp that lurches the pitch and dips the level once a turn, going far past
+  any real record.
 - **Vinyl surface** — crackle, clicks, surface noise, scratches and cracks that come round once a
   turn, rumble, and mains hum.
 - **Tape** — the Tape switch; Type I, II or IV at four grades (twelve measured responses) and how
@@ -32,7 +33,7 @@ off is dimmed but can still be set up.
   match, how far the noise follows the input, whether it stops in silence, and Variation, which
   picks another take of everything random (the same number always sounds the same).
 
-The chain has one fixed latency (about 70 ms), reported to the host,
+The chain has one fixed latency (about 87 ms), reported to the host,
 and a tail after which silence in is exact silence out, unless the noise is set to play on.
 Twenty-one factory sounds cover cassettes, records and records taped to cassette, from a home deck
 to an acoustic 78 on a wind-up gramophone.

@@ -43,6 +43,7 @@ pub mod saturate;
 pub mod spacing;
 pub mod tape;
 pub mod transport;
+pub mod warp;
 
 use cassette::{Cassette, CassetteControls, seed_for};
 use record::{Hum, Record, RecordControls};
@@ -402,7 +403,7 @@ impl Oldify {
         self.cassette.set_record_wobbles(if record_on {
             self.record.wobbles()
         } else {
-            [Wobble::NONE; 2]
+            [Wobble::NONE; 3]
         });
     }
 
@@ -413,6 +414,7 @@ impl Oldify {
         self.mix.snap();
         self.noise_follows.snap();
         self.cassette.snap();
+        self.record.snap();
         self.noise = Ramp::settled_at(0.0, self.noise.steps);
         self.clear();
         self.silent_for = u64::MAX;
@@ -439,6 +441,7 @@ impl Oldify {
             && self.width.is_settled()
             && self.mix.is_settled()
             && self.cassette.is_settled()
+            && self.record.is_settled()
     }
 
     /// Processes one block in place. `controls` are this block's targets.
@@ -478,6 +481,7 @@ impl Oldify {
         self.mix.advance(samples);
         self.noise_follows.advance(samples);
         self.cassette.advance(samples);
+        self.record.advance(samples);
         self.noise.advance(samples);
         self.silent_for = self.silent_for.saturating_add(frames as u64);
     }
@@ -507,6 +511,7 @@ impl Oldify {
         if self.quiet {
             if !active && !endless {
                 self.cassette.advance(1);
+                self.record.advance(1);
                 return [0.0, 0.0];
             }
             self.quiet = false;
@@ -530,8 +535,11 @@ impl Oldify {
         let driven = [input[0] * drive, input[1] * drive];
         let record_on = self.record_on;
         let played = if record_on {
-            self.record.process(driven, noise)
+            // The warp's dip, by where the warp will be when this is read: dip and speed in step.
+            let turn = self.cassette.record_phase_when_read(record::WARP_WOBBLE);
+            self.record.process(driven, noise, turn)
         } else {
+            self.record.advance(1);
             driven
         };
         let taped = self.cassette.process(played, noise);
@@ -691,6 +699,7 @@ mod tests {
                 tip_um: 100.0,
             },
             eccentricity_mm: crate::record::MAX_ECCENTRICITY_MM,
+            warp: crate::record::MAX_WARP,
             mains: crate::record::Mains::Sixty,
             hum_db: -20.0,
             horn: crate::horn::HornControls {
@@ -797,6 +806,60 @@ mod tests {
         let rms = |x: &[f32]| (x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32).sqrt();
         let db = 20.0 * (rms(&left[latency + 4_000..]) / rms(&source[4_000..n - latency])).log10();
         assert!(db.abs() < 0.5, "{db:.2} dB");
+    }
+
+    /// **A warp's dip lines up with its speed at the read**: on a 78, where a dip a base delay out
+    /// of step would be furthest off, the level falls as the speed rises, period by period.
+    #[test]
+    fn a_warps_dip_lines_up_with_its_speed() {
+        let controls = Controls {
+            record_on: true,
+            tape_on: false,
+            record: RecordControls {
+                disc: crate::disc::DiscControls {
+                    speed: crate::disc::Speed::Shellac78,
+                    ..crate::disc::DiscControls::SILENT
+                },
+                warp: crate::record::MAX_WARP,
+                ..RecordControls::CLEAN
+            },
+            ..Controls::IDENTITY
+        };
+        let hz = 3_150.0;
+        let source: Vec<f32> = (0..(4.0 * RATE) as usize)
+            .map(|i| 0.25 * (std::f32::consts::TAU * hz * i as f32 / RATE).sin())
+            .collect();
+        let mut oldify = settled_at(controls);
+        let latency = oldify.latency() as usize;
+        let [out, _] = render(&mut oldify, &source, &source, controls);
+        let out = &out[latency + 4_800..];
+        let crossings: Vec<f64> = (1..out.len())
+            .filter(|&n| out[n - 1] <= 0.0 && out[n] > 0.0)
+            .map(|n| n as f64 - 1.0 + f64::from(out[n - 1] / (out[n - 1] - out[n])))
+            .collect();
+        // Each period's speed, and its level as the mean square of the samples inside it.
+        let (speeds, levels): (Vec<f64>, Vec<f64>) = crossings
+            .windows(2)
+            .map(|pair| {
+                let inside = &out[pair[0].ceil() as usize..=pair[1].floor() as usize];
+                let power =
+                    inside.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>() / inside.len() as f64;
+                (
+                    f64::from(RATE) / (pair[1] - pair[0]) / f64::from(hz) - 1.0,
+                    10.0 * power.log10(),
+                )
+            })
+            .unzip();
+        let mean = |x: &[f64]| x.iter().sum::<f64>() / x.len() as f64;
+        let (ms, ml) = (mean(&speeds), mean(&levels));
+        let (mut sl, mut ss, mut ll) = (0.0, 0.0, 0.0);
+        for (s, l) in speeds.iter().zip(&levels) {
+            sl += (s - ms) * (l - ml);
+            ss += (s - ms).powi(2);
+            ll += (l - ml).powi(2);
+        }
+        let correlation = sl / (ss * ll).sqrt();
+        assert!(correlation < -0.97, "level against speed: {correlation}");
     }
 
     #[test]
@@ -1154,12 +1217,13 @@ mod tests {
     }
 
     #[test]
-    fn the_latency_is_the_same_for_every_control_and_near_seventy_milliseconds() {
-        // Twice the cassette's and the record's reach (wow, flutter, eccentricity, turntable).
+    fn the_latency_is_the_same_for_every_control_and_near_ninety_milliseconds() {
+        // Twice the cassette's and the record's reach (wow, flutter, eccentricity, turntable,
+        // warp).
         for rate in [44_100.0, RATE, 96_000.0] {
             let oldify = Oldify::new(rate).unwrap();
             let ms = oldify.latency() as f32 / rate * 1_000.0;
-            assert!((68.0..76.0).contains(&ms), "{rate} Hz: {ms} ms");
+            assert!((84.0..92.0).contains(&ms), "{rate} Hz: {ms} ms");
         }
     }
 

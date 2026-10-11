@@ -44,6 +44,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | Vinyl groove | `wear`, `dynamic_wear`, `side` | Wear, Dynamic wear, Side position | 0–100 %, linear; Dynamic wear wears the loud passages beyond the rest; side runs from the outer groove to the inner |
 | | `groove_distortion` | Groove distortion | 0–200 %, linear; 100 % is the groove's own |
 | | `eccentricity` | Eccentricity | 0…`record::MAX_ECCENTRICITY_MM` mm, skewed so the everyday tenths get the first half |
+| | `warp` | Warp | 0…`record::MAX_WARP`, read in %: 100 % is the measured reference's full warp, past it for effect; skewed as Eccentricity, so real warps get the first half |
 | Vinyl surface | `crackle`, `clicks` | Crackle, Clicks | 0…`disc::MAX_CRACKLE_HZ` / `MAX_CLICKS_HZ` a second, read `60/s`, skewed so the low counts get the travel |
 | | `surface_noise`, `rumble` | Surface noise, Rumble | `disc::NOISE_OFF_DB` (Off)…`MAX_SURFACE_DB` / `MAX_RUMBLE_DB`, as Hiss |
 | | `scratches`, `cracks` | Scratches, Cracks | Integers 0…`disc::MAX_SCRATCHES` / `MAX_CRACKS`; Cracks drawn as buttons |
@@ -125,8 +126,7 @@ takes a switch or a count as it comes ([NOTES.md § Smoothing](NOTES.md#smoothin
 
 ## Still to come
 
-- The record's warp and groove echo, and skips; the cassette's print-through, tape stop and High
-  quality. None is a parameter yet: each id is fixed when its control arrives.
+- The record's groove echo and skips; the cassette's print-through, tape stop and High quality. None is a parameter yet: each id is fixed when its control arrives.
 
 ## Presets
 

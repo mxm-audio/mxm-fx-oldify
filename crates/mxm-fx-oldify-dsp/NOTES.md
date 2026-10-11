@@ -9,11 +9,11 @@ zero → the delayed input to the bit, a clean record → the delayed input at i
 cassette → the delayed input to −50 dB, an impulse at the latency, blocks of 1, 37 and 512 bit-identical
 through a quiet stretch and a retarget, a reset rendering the same again, finite bounded output at every extreme, Width
 zero → mono, the hiss at its level and silent after its hold, the hiss playing on with Noise stops
-off, following noise at three input levels, the ramps, the latency near 50 ms at 44.1, 48 and
-96 kHz, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
+off, following noise at three input levels, the ramps, the latency near 90 ms at 44.1, 48 and
+96 kHz, a warp's dip in step with its speed at the read, and the refused rates. Each block's own tests hold its contract (the cookbook gains, the
 tape table against the measurement, the curves' slope, bounds and asymmetry, treble saturating
-first, the oversampler's round trip, the transport's depths (the saw's and the random's as the
-reference's), reach, the random's straight reads between its points, seeds, unmoved read, a
+first, the oversampler's round trip, the transport's depths (the saw's, the random's and the
+warp's as the reference's), reach, the phase an extra wobble will have at the read, the random's straight reads between its points, seeds, unmoved read, a
 following flutter swung by a wow that moves no read, and its floor, the spacing loss against Wallace at every common rate and a sweep without a
 jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch and loss, the
 skew's exact split, and the noise reduction's lift, two-band's reach, exact decode, undecoded and
@@ -26,7 +26,9 @@ was, wearing a loud one, a loud bass note where a middle one as fast is not, and
 apart, the horn keeping only the middle at full, honking at `c / 2L` and staying bounded at full
 scale, the players' bands, crystal, radio and mono, and the record side's
 brick wall, acoustic band, wrong-curve dullness, eccentricity reaching twice the reference's and
-its full travel fitting the reach, and gated noise).
+its full travel fitting the reach, a warp alike on every disc and groove within its reach and
+dipping the level where its speed is highest, and gated noise; the warp's shape constants and the
+slope of its read).
 
 ## Chosen constants
 
@@ -45,16 +47,16 @@ measured; the horn's lengths and its diaphragm's place come from Copeland's figu
 `CRACK_SIZE` puts a crack's pop near −16 dBFS peak on an LP played on a modern deck and near
 −12 dBFS on a 78 played on a radiogram (2026-10-10). The tape table, the spacing law, the dropout
 statistics and lift, azimuth's geometry, the wobbles' law (`full_depth`), their shapes, the
-random's `POINTS_PER_CYCLE`, `FOLLOW_HZ`, `FOLLOW_FLOOR` and the saturation extremes come from
-measurement or physics and say so; `MOTION_MAX` and `MAX_ECCENTRICITY_MM` are twice the references'
-travel, chosen.
+random's `POINTS_PER_CYCLE`, `FOLLOW_HZ`, `FOLLOW_FLOOR`, the warp's `HARMONICS`, `FULL` and
+`DIP_DB`, and the saturation extremes come from measurement or physics and say so; `MOTION_MAX`,
+`MAX_ECCENTRICITY_MM` and `MAX_WARP` are twice the references' travel, chosen.
 
 ## The chain
 
 **Two switches, `record_on` and `tape_on`** (the owner, 2026-10-09: which controls belong to the
 record and which to the tape must be plain).
 
-**One moving read for both media.** The record's eccentricity and turntable wobble ride the
+**One moving read for both media.** The record's eccentricity, turntable wobble and warp ride the
 cassette transport's line (`Cassette::set_record_wobbles`, `Transport::set_extras`): a time-warp
 passes through the curves and the player almost unchanged and through a memoryless curve exactly,
 so the record needs no delay line of its own and the latency is one, whichever are on.
@@ -182,3 +184,35 @@ tone, demodulated (`ops: notes/oldify/measurements`, the modulations, with every
 
 **Past the references.** Wow and Flutter go to twice the reference's travel, Eccentricity to 5 mm.
 The presets and Init were rescaled to keep each one's RMS speed error as it was.
+
+## The warp, fitted
+
+The owner, 2026-10-11, offered the record reference's warp as measured (a once-a-turn wobble up to
+±1.1 % with strong harmonics, and a level swing up to 2.4 dB): "build the warp". Measured as the
+modulations above (`ops: notes/oldify/measurements`, the modulations):
+
+- **The speed** is the reference's at an LP's outer groove, a Warp of 1 its full travel: the
+  turn's fundamental at ±1.128 %, the second harmonic −5.8 dB and the third −17.5 dB at fixed
+  phases (`HARMONICS`), 2.99 % peak to peak; a fourth and fifth near −34 dB are left out. Ours
+  measures ±1.125 %, −5.7 dB and −17.4 dB, at its phases within 0.03 rad.
+- **Alike on every disc and groove.** A warp's speed error is its height's slope against the
+  angle over the groove's radius, whatever the disc's speed (`ops: notes/oldify/research_notes`,
+  the vinyl mechanics); a disc bent from its label, its height growing with the radius, errs alike
+  everywhere. The reference's grows toward the middle (1.6 times at its inner groove), is a fifth
+  deeper at 45 and turns its harmonics' phases across the side, which one bend does not give: ours
+  keeps one shape. A real warp's wow, about 0.05–0.4 %, is up to a third of the reference's full.
+- **The level dips once a turn**, deepest where the speed is highest. The reference's swing is a
+  plain gain: 2.43 dB peak to peak at its full warp at 250 Hz, 1 kHz and 3150 Hz alike, always
+  below the unwarped level, the same at 33 and 45. Ours dips from 0 to `DIP_DB` times Warp in step
+  with the speed. No source gives its size: it is the reference's, as the owner asked for it.
+- **The dip rides the record, before any tape**, so a tape's noise reduction encodes it as it would
+  a played record's; the speed rides the shared read, a base delay later. The record takes its
+  phase from where the warp will be when the sample is read (`Transport::extra_phase_when_read`),
+  so the two line up: on a 78, where they would be furthest apart, the level follows the speed at a
+  correlation of −0.996, and −0.60 without it (`a_warps_dip_lines_up_with_its_speed`).
+- **The law and the knob.** The value is linear in the speed: 100 % is the reference's full warp,
+  200 % twice it, for effect. The reference's own knob goes as about its 1.55th power, so ours is
+  skewed as Eccentricity, giving real warps the first half of the travel. `WARP_REACH_S` holds
+  200 % on an LP, the slowest disc: the latency grew by 16 ms for it.
+- **Presets**: the early single on a portable (20 %) and the worn LP (15 %) carry a warp; Init has
+  none.

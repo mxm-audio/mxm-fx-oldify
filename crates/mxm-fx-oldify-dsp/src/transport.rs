@@ -13,7 +13,8 @@
 //! there. The sine's speed is a sine. The saw's read is a saw's first two harmonics (the second
 //! half the first): the tape falls behind slowly and catches up quickly, the reverse saw the other
 //! way about. The random shape's read is drawn straight between points uniform across its reach,
-//! [`POINTS_PER_CYCLE`] a cycle: its speed holds, then steps, about the rate.
+//! [`POINTS_PER_CYCLE`] a cycle: its speed holds, then steps, about the rate. The warp's read is
+//! a warped record's turn ([`crate::warp`]).
 //!
 //! **Centring.** Each shape's read is centred, so its speed has exactly its shape. A change of
 //! depth, rate or shape would make the read jump; the jump goes into a drift term instead, so the
@@ -43,6 +44,8 @@ pub enum Shape {
     Saw,
     /// Getting ahead slowly, then dropping back.
     ReverseSaw,
+    /// A warped record's turn: [`crate::warp::read`].
+    Warp,
 }
 
 /// One wobble: a depth, a rate and a shape.
@@ -128,6 +131,7 @@ fn wave(shape: Shape, phase: f64, point: f64) -> f64 {
         Shape::Saw => saw(),
         Shape::ReverseSaw => -saw(),
         Shape::Random => point,
+        Shape::Warp => crate::warp::read(phase),
     }
 }
 
@@ -204,10 +208,10 @@ pub struct Transport {
     base: f64,
     wow: Oscillator,
     flutter: Oscillator,
-    /// Two more wobbles the read follows, set from outside: a record's eccentricity and its
-    /// turntable's own wobble.
-    extras: [Wobble; 2],
-    extra: [Oscillator; 2],
+    /// Three more wobbles the read follows, set from outside: a record's eccentricity, its
+    /// turntable's own wobble and its warp.
+    extras: [Wobble; 3],
+    extra: [Oscillator; 3],
     rng: Rng,
     seed: u32,
 }
@@ -229,8 +233,8 @@ impl Transport {
             base,
             wow: Oscillator::default(),
             flutter: Oscillator::default(),
-            extras: [Wobble::NONE; 2],
-            extra: [Oscillator::default(); 2],
+            extras: [Wobble::NONE; 3],
+            extra: [Oscillator::default(); 3],
             rng: Rng::new(seed),
             seed,
         }
@@ -248,14 +252,22 @@ impl Transport {
         self.write = 0;
         self.wow = Oscillator::default();
         self.flutter = Oscillator::default();
-        self.extra = [Oscillator::default(); 2];
+        self.extra = [Oscillator::default(); 3];
         self.rng = Rng::new(self.seed);
     }
 
-    /// The two further wobbles the read follows from the next sample on; their reach counts
+    /// The three further wobbles the read follows from the next sample on; their reach counts
     /// against the reach the transport was made with.
-    pub fn set_extras(&mut self, extras: [Wobble; 2]) {
+    pub fn set_extras(&mut self, extras: [Wobble; 3]) {
         self.extras = extras;
+    }
+
+    /// Where extra wobble `index` will be in its cycle (0..1) when a sample written next is read,
+    /// a base delay on: what something riding that wobble before the line goes by, so the two
+    /// line up at the read.
+    pub fn extra_phase_when_read(&self, index: usize) -> f64 {
+        let ahead = (self.base + 1.0) * self.extras[index].hz / self.rate;
+        (self.extra[index].phase + ahead).fract()
     }
 
     /// A new seed for the random shapes, from the next draw on; the line and phases stay.
@@ -414,6 +426,65 @@ mod tests {
             "rms {rms}, expected {expected}"
         );
         assert!(furthest < 1.001, "the read went {furthest} times its reach");
+    }
+
+    /// A warp's speed is the reference's shape at [`crate::warp::FULL`] for a warp of 1, its read
+    /// as far as a sine of its depth.
+    #[test]
+    fn a_warp_moves_the_speed_in_the_references_shape_within_its_reach() {
+        let wow = Wobble {
+            depth: crate::warp::depth(1.0),
+            hz: 0.5,
+            shape: Shape::Warp,
+        };
+        let (out, furthest) = render(wow, Wobble::NONE, 9.0, 1);
+        let mut crossings = Vec::new();
+        for n in RATE as usize..out.len() {
+            if out[n - 1] <= 0.0 && out[n] > 0.0 {
+                let t = f64::from(out[n - 1]) / f64::from(out[n - 1] - out[n]);
+                crossings.push(n as f64 - 1.0 + t);
+            }
+        }
+        // Against the shape, 32 periods at a time (10 ms), which averages the measurement's own
+        // jitter away and keeps any error of the shape.
+        let (mut off, mut shape) = (Vec::new(), Vec::new());
+        for block in crossings.chunks(32).filter(|block| block.len() == 32) {
+            let (first, last) = (block[0], block[31]);
+            let measured = RATE * 31.0 / (last - first) / 3150.0 - 1.0;
+            let samples = (first.ceil() as usize..=last.floor() as usize).step_by(8);
+            let expected: Vec<f64> = samples
+                .map(|n| crate::warp::FULL * crate::warp::speed((n as f64 / RATE * wow.hz).fract()))
+                .collect();
+            let expected = expected.iter().sum::<f64>() / expected.len() as f64;
+            off.push(measured - expected);
+            shape.push(expected);
+        }
+        let share = rms(&off) / rms(&shape);
+        assert!(share < 0.005, "{share} of the shape off it");
+        assert!(furthest < 1.001, "the read went {furthest} times its reach");
+    }
+
+    /// What rides an extra wobble before the line, by its phase when read, lines up with the
+    /// read: a base delay and a sample on, the wobble is there.
+    #[test]
+    fn an_extra_wobbles_phase_when_read_is_where_it_is_at_the_read() {
+        let warp = Wobble {
+            depth: 1e-4,
+            hz: 1.3,
+            shape: Shape::Warp,
+        };
+        let mut transport = Transport::new(RATE, 0.01, 1);
+        transport.set_extras([Wobble::NONE, Wobble::NONE, warp]);
+        let step = |t: &mut Transport| t.process([0.0, 0.0], &Wobble::NONE, &Wobble::NONE);
+        for _ in 0..1_000 {
+            step(&mut transport);
+        }
+        let predicted = transport.extra_phase_when_read(2);
+        for _ in 0..=transport.latency() {
+            step(&mut transport);
+        }
+        let apart = (transport.extra[2].phase - predicted).abs();
+        assert!(apart.min(1.0 - apart) < 1e-9, "{apart}");
     }
 
     #[test]

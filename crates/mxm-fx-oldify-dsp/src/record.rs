@@ -9,11 +9,13 @@
 //!
 //! The two horns are [`crate::horn`]'s, set by Horn and Horn size on any record and any player.
 //!
-//! The record's read-out (eccentricity, the turntable's wobble) is the chain's one moving read,
-//! shared with the cassette ([`Record::wobbles`]): a time-warp passes through the curves and the
-//! player almost unchanged and through a memoryless curve exactly, so one delay line serves both
-//! media, and the latency stays what the cassette alone needs plus the record's reach. Hum is added
-//! after the read ([`Hum`]), so it does not wobble.
+//! The record's read-out (eccentricity, the turntable's wobble, the warp) is the chain's one moving
+//! read, shared with the cassette ([`Record::wobbles`]): a time-warp passes through the curves and
+//! the player almost unchanged and through a memoryless curve exactly, so one delay line serves
+//! both media, and the latency stays what the cassette alone needs plus the record's reach. Hum is
+//! added after the read ([`Hum`]), so it does not wobble. The warp's level dips at the stylus,
+//! before any tape, by where in its turn the warp will be when the sample is read, so the dip and
+//! the speed line up ([`crate::warp`]).
 //!
 //! **The era layer** (`ops: notes/oldify/reports`, from Copeland's *Manual of Analogue Sound
 //! Restoration* §6, §11, §13): cutter resonances near 4.5–5.5 kHz in the first electrical years;
@@ -30,15 +32,22 @@ use crate::groove::{Groove, GrooveControls};
 use crate::horn::{Horn, HornControls};
 use crate::player::{Player, PlayerChain};
 use crate::transport::{Shape, Wobble, random_rms_share};
+use crate::{Ramp, SMOOTHING_S, warp};
 use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2, TAU};
 
 /// How far the record may move the read, in seconds either way: eccentricity's (the measured
 /// reference's full eccentricity at its inner groove) and the turntable's share.
 pub const ECCENTRIC_REACH_S: f64 = 0.012;
 pub const TABLE_REACH_S: f64 = 0.004;
+/// The warp's: its whole travel on the slowest disc.
+pub const WARP_REACH_S: f64 = 0.008;
 /// The most eccentricity, millimetres: offsets above 1 mm are common on old shellac, the measured
 /// reference's full travel is about 2.5 mm on an LP's outer groove, and twice that is for effect.
 pub const MAX_ECCENTRICITY_MM: f32 = 5.0;
+/// The most warp: twice the measured reference's full warp (a Warp of 1), for effect.
+pub const MAX_WARP: f32 = 2.0;
+/// Which of [`Record::wobbles`] is the warp.
+pub const WARP_WOBBLE: usize = 2;
 /// The loudest hum, RMS re full scale.
 pub const MAX_HUM_DB: f32 = -20.0;
 /// Wear raises the surface noise by up to this much.
@@ -161,6 +170,8 @@ pub struct RecordControls {
     /// Side, wear and distortion; the tip comes from the player.
     pub groove: GrooveControls,
     pub eccentricity_mm: f32,
+    /// How warped the disc is: 1 is the measured reference's full warp, up to [`MAX_WARP`].
+    pub warp: f32,
     pub mains: Mains,
     /// RMS re full scale, [`NOISE_OFF_DB`] (off) ..= [`MAX_HUM_DB`].
     pub hum_db: f32,
@@ -178,6 +189,7 @@ impl RecordControls {
         replay: None,
         groove: GrooveControls::CLEAN,
         eccentricity_mm: 0.0,
+        warp: 0.0,
         mains: Mains::Off,
         hum_db: NOISE_OFF_DB,
         horn: HornControls::OFF,
@@ -213,6 +225,11 @@ impl RecordControls {
             groove: self.groove.bounded(),
             eccentricity_mm: if self.eccentricity_mm.is_finite() {
                 self.eccentricity_mm.clamp(0.0, MAX_ECCENTRICITY_MM)
+            } else {
+                0.0
+            },
+            warp: if self.warp.is_finite() {
+                self.warp.clamp(0.0, MAX_WARP)
             } else {
                 0.0
             },
@@ -300,6 +317,8 @@ pub struct Record {
     disc: Disc,
     player: PlayerChain,
     horn: Horn,
+    /// The warp, ramped: the level's dip follows it.
+    warp: Ramp,
     targets: RecordControls,
 }
 
@@ -327,6 +346,10 @@ impl Record {
             disc: Disc::new(sample_rate, seed),
             player: PlayerChain::new(sample_rate),
             horn: Horn::new(sample_rate),
+            warp: Ramp::settled_at(
+                0.0,
+                ((sample_rate * f64::from(SMOOTHING_S)).round() as u32).max(1),
+            ),
             targets: RecordControls::CLEAN,
         }
     }
@@ -345,6 +368,20 @@ impl Record {
     /// The hum's mains and level, as set.
     pub fn mains(&self) -> (Mains, f32) {
         (self.targets.mains, self.targets.hum_db)
+    }
+
+    /// Moves the warp's ramp on by `samples`, playing nothing.
+    pub fn advance(&mut self, samples: u32) {
+        self.warp.advance(samples);
+    }
+
+    /// Ends the warp's ramp at its target.
+    pub fn snap(&mut self) {
+        self.warp.snap();
+    }
+
+    pub fn is_settled(&self) -> bool {
+        self.warp.is_settled()
     }
 
     /// Clears every memory; the disc goes back to its seed's first turn.
@@ -388,6 +425,7 @@ impl Record {
         }
         self.player.set_player(c.player);
         self.horn.set(c.horn);
+        self.warp.retarget(c.warp);
         let cut = c.cut.unwrap_or(c.era.model().cut);
         if self.cut_curve != Some(cut) {
             self.cut_curve = Some(cut);
@@ -422,9 +460,9 @@ impl Record {
         self.disc.set_controls(disc);
     }
 
-    /// The record's moving read this sample: eccentricity locked to the turn, and the turntable's
-    /// own wobble. Each is held within its reach.
-    pub fn wobbles(&self) -> [Wobble; 2] {
+    /// The record's moving read this sample: eccentricity locked to the turn, the turntable's own
+    /// wobble, and the warp ([`WARP_WOBBLE`]), at the turn too. Each is held within its reach.
+    pub fn wobbles(&self) -> [Wobble; 3] {
         let c = &self.targets;
         let speed = c.disc.speed;
         let eccentric = Wobble {
@@ -438,13 +476,25 @@ impl Record {
             hz,
             shape: Shape::Random,
         };
-        [fit(eccentric, ECCENTRIC_REACH_S), fit(table, TABLE_REACH_S)]
+        let warp = Wobble {
+            depth: warp::depth(f64::from(c.warp)),
+            hz: speed.hz(),
+            shape: Shape::Warp,
+        };
+        [
+            fit(eccentric, ECCENTRIC_REACH_S),
+            fit(table, TABLE_REACH_S),
+            fit(warp, WARP_REACH_S),
+        ]
     }
 
-    /// One frame through the record. `noise` (0–1) gates the disc's own sound.
+    /// One frame through the record. `noise` (0–1) gates the disc's own sound; `turn` is where the
+    /// warp will be in its turn when this frame is read
+    /// ([`crate::cassette::Cassette::record_phase_when_read`]).
     #[inline]
-    pub fn process(&mut self, frame: [f32; 2], noise: f32) -> [f32; 2] {
+    pub fn process(&mut self, frame: [f32; 2], noise: f32, turn: f64) -> [f32; 2] {
         let c = self.targets;
+        let warped = f64::from(self.warp.next());
         let era = c.era.model();
         let horned = self.horn.sounds();
         let mut x = [f64::from(frame[0]), f64::from(frame[1])];
@@ -493,9 +543,16 @@ impl Record {
         } else {
             0.0
         };
-        let picked = self
-            .player
-            .pickup([f64::from(grooved[0]) + own, f64::from(grooved[1]) + own]);
+        // The warp's dip, at the stylus: the music and the disc's own sound alike.
+        let lift = if warped > 0.0 {
+            10f64.powf(-warp::DIP_DB * warped * warp::dip(turn) / 20.0)
+        } else {
+            1.0
+        };
+        let picked = self.player.pickup([
+            (f64::from(grooved[0]) + own) * lift,
+            (f64::from(grooved[1]) + own) * lift,
+        ]);
         let replayed = [
             self.replay[0].process(picked[0]),
             self.replay[1].process(picked[1]),
@@ -515,13 +572,18 @@ mod tests {
     const RATE: f64 = 48_000.0;
 
     fn tone_db(c: RecordControls, hz: f64) -> f64 {
+        tone_db_at(c, hz, 0.0)
+    }
+
+    /// A tone's gain through the record, the warp held at `turn`.
+    fn tone_db_at(c: RecordControls, hz: f64, turn: f64) -> f64 {
         let mut record = Record::new(RATE, 1);
         record.set_controls(c);
         let n = 48_000;
         let (mut input, mut output) = (0.0, 0.0);
         for i in 0..n {
             let x = (0.05 * (TAU * hz * i as f64 / RATE).sin()) as f32;
-            let y = record.process([x, x], 0.0)[0];
+            let y = record.process([x, x], 0.0, turn)[0];
             if i > n / 2 {
                 input += f64::from(x).powi(2);
                 output += f64::from(y).powi(2);
@@ -629,6 +691,57 @@ mod tests {
         );
     }
 
+    /// **A warp errs alike on every disc and groove** (the disc bent from its label), its whole
+    /// travel within its reach unlowered.
+    #[test]
+    fn a_warp_errs_alike_everywhere_and_its_full_travel_fits_the_reach() {
+        let mut record = Record::new(RATE, 1);
+        for speed in [Speed::Lp33, Speed::Single45, Speed::Shellac78] {
+            for side in [0.0, 1.0] {
+                record.set_controls(RecordControls {
+                    disc: DiscControls {
+                        speed,
+                        ..DiscControls::SILENT
+                    },
+                    groove: GrooveControls {
+                        side,
+                        ..GrooveControls::CLEAN
+                    },
+                    warp: MAX_WARP,
+                    ..RecordControls::CLEAN
+                });
+                let warp = record.wobbles()[WARP_WOBBLE];
+                assert_eq!(warp.shape, Shape::Warp);
+                assert_eq!(warp.hz, speed.hz());
+                assert_eq!(
+                    warp.depth,
+                    warp::depth(f64::from(MAX_WARP)),
+                    "{speed:?}, {side}"
+                );
+            }
+        }
+    }
+
+    /// **The level dips where the warp's speed is highest**, by [`warp::DIP_DB`] at a Warp of 1,
+    /// and not at all where it is lowest; no warp, no dip.
+    #[test]
+    fn a_warp_dips_the_level_where_its_speed_is_highest() {
+        let (fastest, slowest) = (0.161_36, 0.785_13);
+        let warped = RecordControls {
+            warp: 1.0,
+            ..RecordControls::CLEAN
+        };
+        let dip = tone_db_at(warped, 1_000.0, slowest) - tone_db_at(warped, 1_000.0, fastest);
+        assert!((dip - warp::DIP_DB).abs() < 0.01, "{dip} dB");
+        let plain = RecordControls::CLEAN;
+        let undipped = tone_db_at(warped, 1_000.0, slowest) - tone_db_at(plain, 1_000.0, slowest);
+        assert!(undipped.abs() < 1e-4, "{undipped} dB");
+        assert_eq!(
+            tone_db_at(plain, 1_000.0, fastest),
+            tone_db_at(plain, 1_000.0, slowest)
+        );
+    }
+
     #[test]
     fn the_disc_sounds_only_through_the_gate() {
         let mut record = Record::new(RATE, 1);
@@ -641,10 +754,10 @@ mod tests {
             ..RecordControls::CLEAN
         });
         let closed: f32 = (0..9_600)
-            .map(|_| record.process([0.0, 0.0], 0.0)[0].abs())
+            .map(|_| record.process([0.0, 0.0], 0.0, 0.0)[0].abs())
             .sum();
         let open: f32 = (0..9_600)
-            .map(|_| record.process([0.0, 0.0], 1.0)[0].abs())
+            .map(|_| record.process([0.0, 0.0], 1.0, 0.0)[0].abs())
             .sum();
         assert_eq!(closed, 0.0);
         assert!(open > 0.0);
@@ -673,7 +786,7 @@ mod tests {
                 ..RecordControls::INIT
             });
             let out: Vec<f64> = (0..(2.0 * RATE) as usize)
-                .map(|_| f64::from(record.process([0.0, 0.0], 1.0)[0]))
+                .map(|_| f64::from(record.process([0.0, 0.0], 1.0, 0.0)[0]))
                 .collect();
             let peak = (0..out.len())
                 .max_by(|&a, &b| out[a].abs().total_cmp(&out[b].abs()))

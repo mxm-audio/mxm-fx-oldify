@@ -6,7 +6,7 @@ Parent: [`../../AGENTS.md`](../../AGENTS.md)
 
 Framework-free DSP for `mxm-fx-oldify`: the chain, the **cassette engine**, the **record
 engine**, and the blocks they are built from. Still to come: the cassette's print-through, tape
-stop and High quality; the record's warp, groove echo and skips. The design and the measurements
+stop and High quality; the record's groove echo and skips. The design and the measurements
 behind it are private, `ops:notes/oldify/` (root *The design and its measurements are private*).
 
 # Ownership
@@ -27,14 +27,14 @@ input → Drive → [the record] → the cassette engine → ÷ Drive (a latency
   cassette engine; both, a record taped to cassette; with the tape off the cassette engine still
   runs **neutral**, for its moving read alone; both off leaves Drive, Width and Mix.
   Switching the record on clears it first.
-- **One moving read for both media.** The record's eccentricity and turntable wobble ride the
-  cassette transport's line (`Cassette::set_record_wobbles`, `Transport::set_extras`), so the
+- **One moving read for both media.** The record's eccentricity, turntable wobble and warp ride
+  the cassette transport's line (`Cassette::set_record_wobbles`, `Transport::set_extras`), so the
   latency is one, whichever are on. Hum is added after the read and does not wobble.
 - **Drive is compensated** by the drive the sound leaving the media went in with, one latency
   earlier. Why these three: [NOTES.md § The chain](NOTES.md#the-chain).
 - **One fixed latency**, `Oldify::latency`: the oversampler's, the transport's base delay (twice
-  the wow's, flutter's, eccentricity's and turntable's reach) and the centre of azimuth's delay
-  between the tracks, about 71 ms, the same for every control and switch; the dry path is
+  the wow's, flutter's, eccentricity's, turntable's and warp's reach) and the centre of azimuth's
+  delay between the tracks, about 87 ms, the same for every control and switch; the dry path is
   delayed by it, so Mix never combs. The plugin reports it.
 - Width works about the mid; Mix is a linear crossfade with the delayed dry.
 - **The noise** is gated by the chain: it holds `NOISE_HOLD_S` after the input falls silent and
@@ -85,7 +85,6 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   it is a parameter or two. Not just baked in"): Horn and Horn size (`horn.rs`). The recording
   half colours the music alone, the playback half the disc's own sound too; Horn 0 skips both,
   exactly.
-
 - **The record side and the player side are apart** (`Era`, `Player`): any record meets any
   player, and a wrong replay curve errs by itself. `cut: None` follows the era, `replay: None` the
   player.
@@ -97,6 +96,10 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   disc's. Eccentricity is `d / R` at the turn, R from the disc's size and the side position, held
   within `ECCENTRIC_REACH_S`; `MAX_ECCENTRICITY_MM` is twice the reference's full travel. The
   turntable's wobble, its random shape at the player's RMS, within `TABLE_REACH_S`.
+- **Warp** (`warp.rs`): at 1 the reference's once-a-turn shape and size (`HARMONICS`, `FULL`), on
+  to `MAX_WARP`, alike on every disc and groove, within `WARP_REACH_S`. Its level dips at the
+  stylus, up to `DIP_DB` times Warp where the speed is highest, at the turn the read will have
+  (`Cassette::record_phase_when_read`): [NOTES.md § The warp, fitted](NOTES.md#the-warp-fitted).
 
 ## The blocks
 
@@ -111,7 +114,8 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
 - **`transport`**: a delay line read by the integral of the speed error. **Every shape moves
   the read as far as a sine of its depth**, as the reference's do: the sine's speed a sine, the
   saw's read a saw's first two harmonics, the random shape's read straight between uniform points,
-  `POINTS_PER_CYCLE` a cycle (its speed holds, then steps). A change goes into a drift term that
+  `POINTS_PER_CYCLE` a cycle (its speed holds, then steps), the warp's a warped record's turn. A
+  change goes into a drift term that
   leaks away at an eighth of the rate, so the read never jumps. The base delay is twice the reach.
   Wow and flutter are the same in both channels, as measured.
 - **`nr`**: noise reduction, a sliding-band compander: `y = x + k · H(x)`, `H` a high-pass whose

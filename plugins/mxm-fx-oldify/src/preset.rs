@@ -37,6 +37,7 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
             ("side", &self.side),
             ("groove_distortion", &self.groove_distortion),
             ("eccentricity", &self.eccentricity),
+            ("warp", &self.warp),
             ("crackle", &self.crackle),
             ("clicks", &self.clicks),
             ("surface_noise", &self.surface_noise),

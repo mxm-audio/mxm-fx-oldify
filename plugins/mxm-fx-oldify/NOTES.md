@@ -41,7 +41,7 @@ sound's sentence lives in the design table.
 
 Eight Effects cards in signal order: **Vinyl** (the Vinyl switch; Disc; Era, Player, Cut curve
 and Replay curve as lists; Horn, Horn size), **Vinyl groove** (Wear, Dynamic wear, Side position; Groove
-distortion, Eccentricity), **Vinyl surface** (Crackle, Clicks, Surface noise; Scratches, Rumble; Cracks; Hum;
+distortion, Eccentricity, Warp), **Vinyl surface** (Crackle, Clicks, Surface noise; Scratches, Rumble; Cracks; Hum;
 Hum level), **Tape** (the Tape switch; Tape type; Grade; Tape tone, Saturation; Character;
 Generations; Age), **Tape transport** (Wow, Wow rate and its sync; Wow shape; Flutter, Flutter rate
 and its sync; Flutter shape; Flutter follows wow; Flange), **Tape noise** (Hiss; Noise reduction;
