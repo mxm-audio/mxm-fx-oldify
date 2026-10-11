@@ -22,6 +22,12 @@
 //! wobble's rate, within a cycle or two. Until a change has leaked away the read can swing up to
 //! twice its reach one way, so the base delay is twice the reach.
 //!
+//! **One room for every wobble.** The wobbles share the reach the transport was made with: while
+//! together they would move the read further, each is lowered by the same share, so any one alone
+//! keeps its whole depth and only an extreme stack gives way. The tracks' delay, the two channels
+//! read a little apart (a tilted head), is read here too, either side of the moving read, and
+//! counts against the room first.
+//!
 //! **Reading between samples:** four-point, third-order Hermite interpolation (Catmull–Rom; Olli
 //! Niemitalo, "Polynomial Interpolators for High-Quality Resampling of Oversampled Audio", 2001),
 //! flat enough at these small speed changes, though it dulls the top octave by a few decibels where
@@ -350,6 +356,11 @@ pub struct Transport {
     extra: [Oscillator; 3],
     rng: Rng,
     seed: u32,
+    /// The reach the wobbles share, seconds either way.
+    room_s: f64,
+    /// The delay between the two tracks' reads, samples: the left half of it sooner, the right as
+    /// much later.
+    tracks: f64,
     /// How far the wobbles may take the read past the base, in samples: twice their reach.
     wobble_room: f64,
     /// How far a stop may take it on past that.
@@ -364,9 +375,9 @@ pub struct Transport {
 }
 
 impl Transport {
-    /// A transport at `rate` whose wobbles reach up to `reach_seconds` (the sum of their
-    /// [`Wobble::reach_seconds`] at the most the parameters allow), with no room for a stop.
-    /// Allocates; call it outside the audio thread.
+    /// A transport at `rate` whose wobbles share `reach_seconds`: together they move the read no
+    /// further either way, lowered alike if they would. No room for a stop. Allocates; call it
+    /// outside the audio thread.
     pub fn new(rate: f64, reach_seconds: f64, seed: u32) -> Self {
         Self::with_stop(rate, reach_seconds, seed, 0.0)
     }
@@ -397,6 +408,8 @@ impl Transport {
             extra: [Oscillator::default(); 3],
             rng: Rng::new(seed),
             seed,
+            room_s: reach_seconds,
+            tracks: 0.0,
             wobble_room,
             stop_room,
             stop: Stop::at_rest(false),
@@ -447,6 +460,13 @@ impl Transport {
     pub fn extra_phase_when_read(&self, index: usize) -> f64 {
         let ahead = (self.base + 1.0) * self.extras[index].hz / self.rate;
         (self.extra[index].phase + ahead).fract()
+    }
+
+    /// The delay between the two tracks' reads, samples, from the next sample on: the left read
+    /// half of it sooner than the moving read, the right as much later. It counts against the
+    /// room the wobbles share.
+    pub fn set_tracks(&mut self, samples: f64) {
+        self.tracks = samples.max(0.0);
     }
 
     /// The tape stop: held, the tape slows to a halt over `seconds` from full speed and stays
@@ -562,6 +582,30 @@ impl Transport {
             Some(_) => Wobble { depth: 0.0, ..*wow },
             None => *wow,
         };
+        // The room: what the tracks' delay leaves, shared by every wobble, a following flutter at
+        // its floor. Past it, each is lowered by the same share.
+        let floor = if follow.is_some() { FOLLOW_FLOOR } else { 1.0 };
+        let total = wow.reach_seconds()
+            + Wobble {
+                hz: flutter.hz * floor,
+                ..*flutter
+            }
+            .reach_seconds()
+            + self.extras.iter().map(Wobble::reach_seconds).sum::<f64>();
+        let room = (self.room_s - 0.5 * self.tracks / self.rate).max(0.0);
+        let share = if total > room { room / total } else { 1.0 };
+        let fit = |wobble: Wobble| {
+            if share < 1.0 {
+                Wobble {
+                    depth: wobble.depth * share,
+                    ..wobble
+                }
+            } else {
+                wobble
+            }
+        };
+        let wow = fit(wow);
+        let flutter = &fit(*flutter);
         let wow_offset = self.wow.next(&wow, self.rate, &mut self.rng);
         let flutter = match follow {
             Some(swing) => Wobble {
@@ -572,7 +616,7 @@ impl Transport {
         };
         let mut offset = wow_offset + self.flutter.next(&flutter, self.rate, &mut self.rng);
         for (oscillator, wobble) in self.extra.iter_mut().zip(&self.extras) {
-            offset += oscillator.next(wobble, self.rate, &mut self.rng);
+            offset += oscillator.next(&fit(*wobble), self.rate, &mut self.rng);
         }
         self.step_stop();
         let (out, fixed) = if self.stop.speed == 0.0 {
@@ -582,13 +626,19 @@ impl Transport {
             let wobbled = offset.clamp(-(self.base - READ_AHEAD), self.wobble_room);
             let lag = self.stop.lag;
             let most = self.base + self.wobble_room + self.stop_room;
-            let delay = (self.base + wobbled + lag).clamp(READ_AHEAD, most);
-            let moving = self.read(delay);
-            let fixed = if lag == 0.0 {
+            let half = 0.5 * self.tracks;
+            let at = |centre: f64| {
+                [
+                    (centre - half).clamp(READ_AHEAD, most),
+                    (centre + half).clamp(READ_AHEAD, most),
+                ]
+            };
+            let moving = self.read(at(self.base + wobbled + lag));
+            let fixed = if lag == 0.0 && half == 0.0 {
                 let still = (self.write + length - self.base as usize) % length;
                 [self.lines[0][still], self.lines[1][still]]
             } else {
-                self.read((self.base + lag).clamp(READ_AHEAD, most))
+                self.read(at(self.base + lag))
             };
             (moving, fixed)
         };
@@ -596,16 +646,16 @@ impl Transport {
         (out, fixed)
     }
 
-    /// Both channels read `delay` samples behind the sample just written.
+    /// Each channel read its own `delays` samples behind the sample just written.
     #[inline]
-    fn read(&self, delay: f64) -> [f32; 2] {
+    fn read(&self, delays: [f64; 2]) -> [f32; 2] {
         let length = self.lines[0].len();
-        let position = self.write as f64 - delay + length as f64;
-        let whole = position.floor();
-        let fraction = position - whole;
-        let index = whole as usize;
         let mut out = [0.0f32; 2];
-        for (y, line) in out.iter_mut().zip(&self.lines) {
+        for ((y, line), delay) in out.iter_mut().zip(&self.lines).zip(delays) {
+            let position = self.write as f64 - delay + length as f64;
+            let whole = position.floor();
+            let fraction = position - whole;
+            let index = whole as usize;
             *y = if self.high && fraction != 0.0 {
                 self.sinc.read(line, index % length, fraction) as f32
             } else {
@@ -1055,6 +1105,53 @@ mod tests {
             normal < high - 1.0,
             "normal {normal:.2} dB, high {high:.2} dB"
         );
+    }
+
+    /// **The wobbles share one room**: together past it, each is lowered by the same share and the
+    /// read stays inside it.
+    #[test]
+    fn wobbles_past_the_room_together_shrink_together() {
+        let room = 0.002;
+        let sine = |hz: f64| Wobble {
+            depth: room * TAU * hz,
+            hz,
+            shape: Shape::Sine,
+        };
+        let mut transport = Transport::new(RATE, room, 1);
+        transport.set_extras([sine(1.3), Wobble::NONE, Wobble::NONE]);
+        let (mut together, mut wow) = (0.0f64, 0.0f64);
+        for _ in 0..(8.0 * RATE) as usize {
+            transport.process([0.0, 0.0], &sine(0.5), &Wobble::NONE);
+            together = together.max((transport.wow.offset + transport.extra[0].offset).abs());
+            wow = wow.max(transport.wow.offset.abs());
+        }
+        assert!(together <= room * RATE * 1.0001, "{together} samples");
+        assert!(
+            (wow / (0.5 * room * RATE) - 1.0).abs() < 0.01,
+            "{wow} samples"
+        );
+    }
+
+    /// **The tracks' delay reads the left half of it sooner and the right as much later**, about
+    /// the read itself, so the latency stays.
+    #[test]
+    fn the_tracks_delay_splits_either_side_of_the_read() {
+        let mut transport = Transport::new(RATE, 0.001, 1);
+        transport.set_tracks(4.0);
+        let latency = transport.latency() as usize;
+        let out: Vec<[f32; 2]> = (0..2 * latency)
+            .map(|n| {
+                let x = if n == 3 { 1.0 } else { 0.0 };
+                transport.process([x, x], &Wobble::NONE, &Wobble::NONE)
+            })
+            .collect();
+        let peak = |ch: usize| {
+            (0..out.len())
+                .max_by(|&a, &b| out[a][ch].abs().total_cmp(&out[b][ch].abs()))
+                .unwrap()
+        };
+        assert_eq!(peak(0), 3 + latency - 2);
+        assert_eq!(peak(1), 3 + latency + 2);
     }
 
     #[test]

@@ -11,7 +11,7 @@ The cassette: tape type and grade, saturation, generations of copies, wow and fl
 (tempo-synced if you like, with flange), a tape stop, hiss and noise reduction, print-through, dropouts, a
 misaligned deck and age. Drive, width and mix sit around them, and twenty-one factory sounds start from
 both media, and a High quality that saturates the tape at four times the rate and reads the moving
-tape and record more finely. The effect has a fixed latency of about 88 ms,
+tape and record more finely. The effect has a fixed latency of about 41 ms,
 which it reports to the host.
 
 Part of the MXM collection: every instrument, effect and tool lives in its own repository under

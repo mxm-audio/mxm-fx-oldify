@@ -59,7 +59,7 @@ framework-free product crate; visual geometry remains in `mxm-ui`.
 | | `tape_tone`, `saturation` | Tape tone, Saturation | 0–100 %, linear; zero Saturation is linear |
 | | `character` | Character | Soft / Hard (`soft`, `hard`) |
 | | `generations` | Generations | Integer 1…`MAX_GENERATIONS`, drawn as buttons |
-| Transport | `wow`, `flutter` | Wow, Flutter | 0–`cassette::MOTION_MAX`, linear, read in %: 100 % is the measured reference's full travel at the rate, past it for effect |
+| Transport | `wow`, `flutter` | Wow, Flutter | 0–`cassette::MOTION_MAX` (100 %), linear: the measured reference's full travel at the rate, and no further, which would cost latency |
 | | `wow_rate`, `flutter_rate` | Wow rate, Flutter rate | `cassette::WOW_HZ`, `FLUTTER_HZ`, skewed so the geometric mean is mid-travel, read in Hz |
 | | `wow_sync`, `flutter_sync` | Wow sync, Flutter sync | Off / On: the rate beside it on `params::WOW_SYNC` / `FLUTTER_SYNC` |
 | | `wow_shape`, `flutter_shape` | Wow shape, Flutter shape | Sine / Random / Saw / Reverse saw (`sine`, `random`, `saw`, `reverse-saw`); Flutter's the first two |

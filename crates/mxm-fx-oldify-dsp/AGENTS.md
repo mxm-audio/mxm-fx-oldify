@@ -31,9 +31,9 @@ input → Drive → [the record] → the cassette engine → ÷ Drive (a latency
   latency is one, whichever are on. Hum is added after the read and does not wobble.
 - **Drive is compensated** by the drive the sound leaving the media went in with, one latency
   earlier. Why these three: [NOTES.md § The chain](NOTES.md#the-chain).
-- **One fixed latency**, `Oldify::latency`: the oversampler's, the transport's base delay (twice
-  the wow's, flutter's, eccentricity's, turntable's and warp's reach) and the centre of azimuth's
-  delay between the tracks, about 88 ms, the same for every control and switch, Quality included; the dry path is
+- **One fixed latency**, `Oldify::latency`: the oversampler's and the transport's base delay,
+  twice the room every wobble shares (`cassette::WOBBLE_ROOM_S`), about 41 ms, the same for every
+  control and switch, Quality included; the dry path is
   delayed by it, so Mix never combs. The plugin reports it.
 - Width works about the mid; Mix is a linear crossfade with the delayed dry.
 - **The noise** is gated by the chain: it holds `NOISE_HOLD_S` after the input falls silent and
@@ -46,19 +46,22 @@ input → Drive → [the record] → the cassette engine → ÷ Drive (a latency
 
 ```text
 NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape response × Tape tone
-  → + print-through → transport (wow, flutter; Flange against the unmoved read) → crosstalk → + hiss
+  → + print-through → transport (wow, flutter, azimuth's delay between the tracks; Flange
+  against the unmoved read) → crosstalk → + hiss
   → spacing loss (Age, generations, azimuth, a dropout's lift) → a dropout's dip
-  → the head at a stopping tape's speed → wrong playback EQ → azimuth's delay between the tracks
-  → NR decode
+  → the head at a stopping tape's speed → wrong playback EQ → NR decode
 ```
 
 - The physics' order, not the reference's (which filters before saturating): a known difference.
 - **Laws** (named in `cassette.rs`): wow and flutter depth go as the control, as the reference's
   do; **a control of 1 is the reference's full travel at its rate** (`full_depth`, its measured
-  law), and the controls go on to `MOTION_MAX`, past it, for effect (the owner, 2026-10-11). Age,
-  chosen, as a spacing of `AGE_MAX_UM` times the control to the 1.5. **The transport's reach is
-  bounded** (`WOW_REACH_S`, `FLUTTER_REACH_S`), so the latency never moves; only wow past the
-  reference, with copies, is lowered to fit. The fit: [NOTES.md § The modulations,
+  law), and the controls stop there, `MOTION_MAX` (the owner, 2026-10-11: past it they cost
+  latency). Age,
+  chosen, as a spacing of `AGE_MAX_UM` times the control to the 1.5. **Every wobble shares one
+  room** (`WOBBLE_ROOM_S`): wow, flutter, the record's eccentricity, turntable and warp, and
+  azimuth's delay between the tracks, so the latency never moves; any one alone at its full
+  travel fits, and a stack past the room is lowered alike ([NOTES.md § One room for every
+  wobble](NOTES.md#one-room-for-every-wobble)). The fit: [NOTES.md § The modulations,
   fitted](NOTES.md#the-modulations-fitted).
 - Hiss is seeded, independent per channel, 4 dB lower on the 70 µs tapes, and gated by the chain.
 - **Tape stop**: held, the transport's speed falls straight to nothing over `stop_s` and the
@@ -77,8 +80,8 @@ NR encode → saturator (pre-emphasis → 2× curve → de-emphasis) → tape re
   tape flanging. **Flutter follows wow** is the reference's: the wow moves no read of its own and
   swings the flutter's rate by `FOLLOW_HZ` times Wow, never below `FOLLOW_FLOOR` of it.
 - **Azimuth**: across a track, the sinc's main lobe as a spacing loss; between the tracks,
-  `TRACK_PITCH_M` · tan θ / speed of delay about a fixed centre, so the latency never moves
-  ([NOTES.md § Azimuth](NOTES.md#azimuth)). **Crosstalk** bleeds each channel into the other;
+  `TRACK_PITCH_M` · tan θ / speed of delay, the transport reading the two channels that far apart
+  about its moving read, inside the shared room ([NOTES.md § Azimuth](NOTES.md#azimuth)). **Crosstalk** bleeds each channel into the other;
   **Wrong EQ** is the other time constant's ±`WRONG_EQ_DB` shelf.
 - **Variation** picks the seed (`seed_for`) of every random source: transport, hiss, dropouts.
   A change reseeds from the next draw; a clear goes back to the seed's start.
@@ -105,11 +108,11 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   **The players' speakers, horns and crystal resonance are not sourced**: chosen, the weakest
   numbers here.
 - Wear raises the surface noise by up to `WEAR_NOISE_DB`; a player's own rumble adds to the
-  disc's. Eccentricity is `d / R` at the turn, R from the disc's size and the side position, held
-  within `ECCENTRIC_REACH_S`; `MAX_ECCENTRICITY_MM` is twice the reference's full travel. The
-  turntable's wobble, its random shape at the player's RMS, within `TABLE_REACH_S`.
+  disc's. Eccentricity is `d / R` at the turn, R from the disc's size and the side position;
+  `MAX_ECCENTRICITY_MM` is twice the reference's full travel. The turntable's wobble, its random
+  shape at the player's RMS. Both, and the warp, inside the room every wobble shares.
 - **Warp** (`warp.rs`): at 1 the reference's once-a-turn shape and size (`HARMONICS`, `FULL`), on
-  to `MAX_WARP`, alike on every disc and groove, within `WARP_REACH_S`. Its level dips at the
+  to `MAX_WARP`, alike on every disc and groove. Its level dips at the
   stylus, up to `DIP_DB` times Warp where the speed is highest, at the turn the read will have
   (`Cassette::record_phase_when_read`): [NOTES.md § The warp, fitted](NOTES.md#the-warp-fitted).
 
@@ -129,7 +132,9 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
   saw's read a saw's first two harmonics, the random shape's read straight between uniform points,
   `POINTS_PER_CYCLE` a cycle (its speed holds, then steps), the warp's a warped record's turn. A
   change goes into a drift term that
-  leaks away at an eighth of the rate, so the read never jumps. The base delay is twice the reach.
+  leaks away at an eighth of the rate, so the read never jumps. The wobbles share the reach,
+  lowered alike past it; the base delay is twice it. The tracks' delay reads each channel either
+  side of the moving read.
   Wow and flutter are the same in both channels, as measured. The line holds the longest stop's
   lag beside the reach (`Transport::with_stop`); a reset empties only what a running read reaches.
 - **`nr`**: noise reduction, a sliding-band compander: `y = x + k · H(x)`, `H` a high-pass whose

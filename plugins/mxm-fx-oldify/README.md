@@ -24,7 +24,7 @@ off is dimmed but can still be set up.
   much of it is heard; saturation, Soft or Hard; up to four generations of copies, each adding its
   own hiss, wobble and dullness; Age, worn from new to battered.
 - **Tape transport** — wow and flutter (depth, rate, shape), each rate syncable to the host's tempo
-  and each depth going far past any real tape; flutter that follows the wow, its rate swung by
+  and each depth going past any real tape; flutter that follows the wow, its rate swung by
   it; Flange, a steady copy of the tape mixed against the moving one; and Tape stop, which slows
   the tape to a halt over the stop time (syncable too) and starts it again when let go.
 - **Tape noise** — hiss; print-through, a faint muffled copy of the music a wrap of the reel later;
@@ -39,7 +39,7 @@ off is dimmed but can still be set up.
   High saturates the tape at four times the rate and reads the moving tape and record more finely,
   for cleaner treble at more CPU. Loading a factory sound keeps your Mix and Quality.
 
-The chain has one fixed latency (about 88 ms), reported to the host,
+The chain has one fixed latency (about 41 ms), reported to the host,
 and a tail after which silence in is exact silence out, unless the noise is set to play on.
 Twenty-one factory sounds cover cassettes, records and records taped to cassette, from a home deck
 to an acoustic 78 on a wind-up gramophone.

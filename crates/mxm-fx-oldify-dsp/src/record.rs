@@ -15,7 +15,7 @@
 //! The record's read-out (eccentricity, the turntable's wobble, the warp) is the chain's one moving
 //! read, shared with the cassette ([`Record::wobbles`]): a time-warp passes through the curves and
 //! the player almost unchanged and through a memoryless curve exactly, so one delay line serves
-//! both media, and the latency stays what the cassette alone needs plus the record's reach. Hum is
+//! both media, and every wobble shares its one room ([`crate::cassette::WOBBLE_ROOM_S`]). Hum is
 //! added after the read ([`Hum`]), so it does not wobble. The warp's level dips at the stylus,
 //! before any tape, by where in its turn the warp will be when the sample is read, so the dip and
 //! the speed line up ([`crate::warp`]).
@@ -40,12 +40,6 @@ use crate::transport::{Shape, Wobble, random_rms_share};
 use crate::{Ramp, SMOOTHING_S, warp};
 use std::f64::consts::{FRAC_1_SQRT_2, SQRT_2, TAU};
 
-/// How far the record may move the read, in seconds either way: eccentricity's (the measured
-/// reference's full eccentricity at its inner groove) and the turntable's share.
-pub const ECCENTRIC_REACH_S: f64 = 0.012;
-pub const TABLE_REACH_S: f64 = 0.004;
-/// The warp's: its whole travel on the slowest disc.
-pub const WARP_REACH_S: f64 = 0.008;
 /// The most eccentricity, millimetres: offsets above 1 mm are common on old shellac, the measured
 /// reference's full travel is about 2.5 mm on an LP's outer groove, and twice that is for effect.
 pub const MAX_ECCENTRICITY_MM: f32 = 5.0;
@@ -279,15 +273,6 @@ fn radius_m(speed: Speed, side: f64) -> f64 {
     outer - (outer - inner) * side
 }
 
-/// A wobble, its depth lowered to fit `reach_s`.
-fn fit(mut wobble: Wobble, reach_s: f64) -> Wobble {
-    let reach = wobble.reach_seconds();
-    if reach > reach_s {
-        wobble.depth *= reach_s / reach;
-    }
-    wobble
-}
-
 /// Mains hum: the mains and its next two harmonics, added after the read.
 #[derive(Clone, Debug, Default)]
 pub struct Hum {
@@ -512,7 +497,8 @@ impl Record {
     }
 
     /// The record's moving read this sample: eccentricity locked to the turn, the turntable's own
-    /// wobble, and the warp ([`WARP_WOBBLE`]), at the turn too. Each is held within its reach.
+    /// wobble, and the warp ([`WARP_WOBBLE`]), at the turn too. The transport fits them into the
+    /// room every wobble shares.
     pub fn wobbles(&self) -> [Wobble; 3] {
         let c = &self.targets;
         let speed = c.disc.speed;
@@ -532,11 +518,7 @@ impl Record {
             hz: speed.hz(),
             shape: Shape::Warp,
         };
-        [
-            fit(eccentric, ECCENTRIC_REACH_S),
-            fit(table, TABLE_REACH_S),
-            fit(warp, WARP_REACH_S),
-        ]
+        [eccentric, table, warp]
     }
 
     /// One frame through the record. `noise` (0–1) gates the disc's own sound; `turn` is where the
@@ -724,7 +706,7 @@ mod tests {
     }
 
     #[test]
-    fn eccentricity_reaches_twice_the_reference_and_its_full_travel_fits_the_reach() {
+    fn eccentricity_reaches_twice_the_reference_and_its_full_travel_fits_the_room() {
         // The reference's full eccentricity, measured: ±1.74 % on an LP's outer groove, ±3.48 %
         // on its inner.
         let mut record = Record::new(RATE, 1);
@@ -741,7 +723,7 @@ mod tests {
         };
         let full = at(&mut record, MAX_ECCENTRICITY_MM, 0.0);
         assert!(full > 2.0 * 0.0174 * 0.95, "{} % at full", 100.0 * full);
-        // Half our travel is the reference's: on the inner groove it is not lowered to fit.
+        // Half our travel is the reference's: on the inner groove it fits the room unlowered.
         let half = 0.5 * MAX_ECCENTRICITY_MM;
         let inner = at(&mut record, half, 1.0);
         let unlowered = f64::from(half) * 1e-3 / radius_m(Speed::Lp33, 1.0);
@@ -749,12 +731,14 @@ mod tests {
             inner > 0.0348 && (inner - unlowered).abs() < 1e-12,
             "{inner}"
         );
+        let reach = record.wobbles()[0].reach_seconds();
+        assert!(reach < crate::cassette::WOBBLE_ROOM_S, "{reach} s");
     }
 
     /// **A warp errs alike on every disc and groove** (the disc bent from its label), its whole
-    /// travel within its reach unlowered.
+    /// travel inside the room every wobble shares.
     #[test]
-    fn a_warp_errs_alike_everywhere_and_its_full_travel_fits_the_reach() {
+    fn a_warp_errs_alike_everywhere_and_its_full_travel_fits_the_room() {
         let mut record = Record::new(RATE, 1);
         for speed in [Speed::Lp33, Speed::Single45, Speed::Shellac78] {
             for side in [0.0, 1.0] {
@@ -778,6 +762,7 @@ mod tests {
                     warp::depth(f64::from(MAX_WARP)),
                     "{speed:?}, {side}"
                 );
+                assert!(warp.reach_seconds() < crate::cassette::WOBBLE_ROOM_S);
             }
         }
     }

@@ -287,7 +287,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "wow",
             &params.wow,
-            "How much the pitch drifts slowly up and down, as an uneven tape speed does. Past 100 % it drifts further than any real tape.",
+            "How much the pitch drifts slowly up and down, as an uneven tape speed does. The top is already more than a real tape drifts.",
         ),
         Bound::new("wow_rate", &params.wow_rate, "How fast the slow drift goes."),
         Bound::new(
@@ -303,7 +303,7 @@ pub fn all_parameters(params: &MxmFxOldifyParams) -> Vec<Bound<'_>> {
         Bound::new(
             "flutter",
             &params.flutter,
-            "How much the pitch trembles quickly, roughening the sound. Past 100 % it trembles further than any real tape.",
+            "How much the pitch trembles quickly, roughening the sound. The top is already more than a real tape trembles.",
         ),
         Bound::new(
             "flutter_rate",

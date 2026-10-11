@@ -15,8 +15,9 @@
 //! driving harder saturates more and lowers the noise against the music without getting louder
 //! (`ops: notes/oldify/reports`, the cassette signal chain).
 //!
-//! **The chain has a fixed latency**, [`Oldify::latency`]: the tape's oversampler, its transport's
-//! base delay and azimuth's centre, the same for every control and either engine on or off. The
+//! **The chain has a fixed latency**, [`Oldify::latency`]: the tape's oversampler and its
+//! transport's base delay, twice the room every wobble shares, the same for every control and
+//! either engine on or off. The
 //! dry input is delayed by it, so Mix never combs, and the plugin reports it to the host.
 //!
 //! **Silence in is exact zero out** once the tails have run out: the noise stops after
@@ -1539,13 +1540,12 @@ mod tests {
     }
 
     #[test]
-    fn the_latency_is_the_same_for_every_control_and_near_ninety_milliseconds() {
-        // Twice the cassette's and the record's reach (wow, flutter, eccentricity, turntable,
-        // warp).
+    fn the_latency_is_the_same_for_every_control_and_near_forty_milliseconds() {
+        // Twice the room every wobble shares, and the saturator's oversampling.
         for rate in [44_100.0, RATE, 96_000.0] {
             let oldify = Oldify::new(rate).unwrap();
             let ms = oldify.latency() as f32 / rate * 1_000.0;
-            assert!((84.0..92.0).contains(&ms), "{rate} Hz: {ms} ms");
+            assert!((40.0..43.0).contains(&ms), "{rate} Hz: {ms} ms");
         }
     }
 

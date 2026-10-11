@@ -24,7 +24,8 @@ transport's depths (the saw's, the random's and the
 warp's as the reference's), reach, the phase an extra wobble will have at the read, the random's straight reads between its points, seeds, unmoved read, a
 following flutter swung by a wow that moves no read, and its floor, the spacing loss against Wallace at every common rate and a sweep without a
 jump, the dropouts' rate, lengths, depths, width and smoothness, azimuth's notch and loss, the
-skew's exact split, and the noise reduction's lift, two-band's reach, exact decode, undecoded and
+tracks' delay split either side of the read, wobbles past the shared room shrinking together, and
+the noise reduction's lift, two-band's reach, exact decode, undecoded and
 off paths, mistracking and hiss reduction, the curves' shapes, exact cut-and-replay and the UK 78
 error, the disc's rate, heavy tail, turn-locked renewal, a swish of a few decibels, clicks that are noise and not a tone,
 scratches the same tick every turn, scratches and cracks moving on after `GAP_LIFE_S`, clicks, scratches and cracks with no net push, a crack
@@ -63,8 +64,9 @@ measured; the horn's lengths and its diaphragm's place come from Copeland's figu
 −12 dBFS on a 78 played on a radiogram (2026-10-10). The tape table, the spacing law, the dropout
 statistics and lift, azimuth's geometry, the wobbles' law (`full_depth`), their shapes, the
 random's `POINTS_PER_CYCLE`, `FOLLOW_HZ`, `FOLLOW_FLOOR`, the warp's `HARMONICS`, `FULL` and
-`DIP_DB`, and the saturation extremes come from measurement or physics and say so; `MOTION_MAX`,
-`MAX_ECCENTRICITY_MM` and `MAX_WARP` are twice the references' travel, chosen.
+`DIP_DB`, and the saturation extremes come from measurement or physics and say so;
+`MAX_ECCENTRICITY_MM` and `MAX_WARP` are twice the references' travel, chosen, `MOTION_MAX` is the
+tape reference's own, and `WOBBLE_ROOM_S` is chosen.
 
 ## The chain
 
@@ -87,8 +89,10 @@ fitted](#the-modulations-fitted)).
 ## Azimuth
 
 **Azimuth**: across a track, the sinc's main lobe as the spacing losing the same at half its first
-null; between the tracks, `TRACK_PITCH_M` · tan θ / speed of delay, split either side of a fixed
-centre so the latency never moves. 15′ gives the mono notch at 6.1 kHz.
+null; between the tracks, `TRACK_PITCH_M` · tan θ / speed of delay, the two channels read that
+far apart either side of the moving read, which is where a tilted head reads them: no line of its
+own, and its half counts against the room every wobble shares. 15′ gives the mono notch at
+6.1 kHz.
 
 ## Subnormals
 
@@ -239,8 +243,27 @@ tone, demodulated (`ops: notes/oldify/measurements`, the modulations, with every
   further out). Its own law adds a second harmonic up to −13 dB and stays at 33⅓'s rate at 45: an
   off-centre hole gives neither, so ours keeps one sine at the turn.
 
-**Past the references.** Wow and Flutter go to twice the reference's travel, Eccentricity to 5 mm.
-The presets and Init were rescaled to keep each one's RMS speed error as it was.
+**Past the references.** Eccentricity goes to 5 mm, twice the reference's. Wow and Flutter stop at
+the reference's full travel (the owner, 2026-10-11: "We probably dont need the wow and flutter
+that high then"; "Do the shared room, the 100 % cap"): already past a real deck, and past it they
+cost latency. No preset or Init went past it.
+
+## One room for every wobble
+
+**Why one room.** Each wobble moves the one read; sized one by one, the room would be every
+wobble at its extreme at once, a setting nobody makes, and the latency twice that. Shared, the room holds the largest one alone at its reference's full travel,
+eccentricity on an LP's inner groove (12 ms), with the tape's full wow and copies under it (7 ms):
+`WOBBLE_ROOM_S`, 20 ms, the latency about 41 ms. Past it, every wobble is lowered by the same share,
+sample by sample, through the transport's drift term, so nothing jumps
+(`wobbles_past_the_room_together_shrink_together`).
+
+**Why the tracks' delay is in it.** Azimuth's delay is the two tracks read a little apart by the
+same head: a read, as the wobbles are. Read either side of the moving read, it needs no line or
+interpolation of its own, and its half span, a fraction of a millisecond, is taken from the room
+first.
+
+**What stays outside.** The saturator's oversampling is a filter's delay, not a read: it cannot
+share a room. The tape stop's start is as long as the base delay, about 40 ms now.
 
 ## The warp, fitted
 
@@ -269,8 +292,8 @@ modulations above (`ops: notes/oldify/measurements`, the modulations):
   correlation of −0.996, and −0.60 without it (`a_warps_dip_lines_up_with_its_speed`).
 - **The law and the knob.** The value is linear in the speed: 100 % is the reference's full warp,
   200 % twice it, for effect. The reference's own knob goes as about its 1.55th power, so ours is
-  skewed as Eccentricity, giving real warps the first half of the travel. `WARP_REACH_S` holds
-  200 % on an LP, the slowest disc: the latency grew by 16 ms for it.
+  skewed as Eccentricity, giving real warps the first half of the travel. Its 200 % on an LP, the
+  slowest disc, moves the read 8 ms, inside the room every wobble shares.
 - **Presets**: the early single on a portable (20 %) and the worn LP (15 %) carry a warp; Init has
   none.
 
@@ -370,7 +393,7 @@ tape-stop convention's.
 **Why the start is as long as the base delay.** A slower tape lags its writing; a start that
 began at the base delay would end a start's worth late, and the latency would have moved. The read
 starts ahead of the base by exactly what a straight start loses, `(N − 1)/2` samples, and lands on
-it at full speed, which only fits in the base delay's own room: about 87 ms, a quick deck's start.
+it at full speed, which only fits in the base delay's own room: about 40 ms, a quick deck's start.
 Once at speed the tape plays exactly what an unstopped one plays
 (`a_stopped_tape_slows_to_silence_and_starts_again_where_it_would_be`).
 

@@ -3,10 +3,10 @@
 //! ```text
 //! noise-reduction encode → saturator (pre-emphasis → 2× curve → de-emphasis)
 //!   → tape response, by Tape tone → + print-through
-//!   → transport (wow and flutter; Flange against the unmoved read)
-//!   → crosstalk → + hiss → spacing loss (Age, generations, azimuth, a dropout's lift)
+//!   → transport (wow and flutter; azimuth's delay between the tracks; Flange against the unmoved
+//!   read) → crosstalk → + hiss → spacing loss (Age, generations, azimuth, a dropout's lift)
 //!   → a dropout's dip → the head at a stopping tape's speed → wrong playback EQ
-//!   → azimuth's delay between the tracks → noise-reduction decode
+//!   → noise-reduction decode
 //! ```
 //!
 //! The order is the physics' (`ops: notes/oldify/reports`, the cassette signal chain): the record
@@ -19,13 +19,15 @@
 //! flutter depth go as their controls, as the reference's do, and a control of 1 is the
 //! reference's full travel at its rate, measured from 0.1 to 12 Hz: a sine's peak speed error
 //! grows with the rate as the reach it moves the read falls (`ops: notes/oldify/measurements`, the
-//! modulations). The controls go on to [`MOTION_MAX`], past the reference, for effect. Age is a
+//! modulations). The controls stop there, at [`MOTION_MAX`]: past it they cost latency the
+//! effect is better without (the owner, 2026-10-11). Age is a
 //! spacing of up to [`AGE_MAX_UM`] (the reference's full Age reads as about 1.7 µm), as the 1.5
 //! power of the control, a law chosen here.
 //!
-//! **The transport's reach is bounded**, so its delay, which the plugin reports as latency, stays
-//! put: a wobble whose read would go further than [`WOW_REACH_S`] or [`FLUTTER_REACH_S`] has its
-//! depth lowered to fit. Only wow past the reference's travel, with copies, meets it.
+//! **Every wobble shares one room**, [`WOBBLE_ROOM_S`]: the tape's wow and flutter, the record's
+//! eccentricity, turntable and warp, and azimuth's delay between the tracks, so the transport's
+//! delay, which the plugin reports as latency, stays put. Any one alone at its full travel fits;
+//! an extreme stack is lowered alike ([`crate::transport`]).
 //!
 //! **Generations** is a dub of a dub: each copy adds its own noise (the hiss's power times the
 //! count), its own wobble (the depth times the count's square root, the copies being
@@ -35,7 +37,8 @@
 //! (15 arc-minutes costs 4.9 dB at 10 kHz); here its main lobe is taken as the spacing that loses
 //! the same 3.9 dB at half the sinc's first null, so it rides the spacing filter. Between the two
 //! tracks it is a delay, [`TRACK_PITCH_M`] · tan θ / speed: summed to mono, 15′ puts a notch at
-//! 6.1 kHz (`ops: notes/oldify/reports`, the physics).
+//! 6.1 kHz (`ops: notes/oldify/reports`, the physics). The transport reads the two channels that
+//! far apart, either side of its moving read.
 //!
 //! **Tape stop**: held, the transport slows the tape to a halt over the stop time and holds it
 //! there; let go, it starts again ([`crate::transport`]). A head reads a slower tape more quietly,
@@ -57,16 +60,14 @@ use crate::biquad::{Biquad, Kind, Section};
 use crate::dropouts::{DropoutControls, Dropouts, LIFT_UM_PER_DB};
 use crate::nr::{Nr, NrControls};
 use crate::print::{MAX_PRINT_DB, PRINT_OFF_DB, PrintThrough};
-use crate::record::{ECCENTRIC_REACH_S, TABLE_REACH_S, WARP_REACH_S};
 use crate::saturate::{Character, Saturator};
 use crate::spacing::Spacing;
 use crate::tape::{Grade, Tape, TapeResponse};
-use crate::transport::{
-    FOLLOW_FLOOR, FOLLOW_HZ, READ_AHEAD, Rng, Shape, Sinc, Transport, Wobble, hermite,
-};
+use crate::transport::{FOLLOW_HZ, Rng, Shape, Transport, Wobble};
 
-/// Wow's and Flutter's most: twice the measured reference's full travel, for effect.
-pub const MOTION_MAX: f32 = 2.0;
+/// Wow's and Flutter's most: the measured reference's full travel, already past a real deck's
+/// (the owner, 2026-10-11: "Do the shared room, the 100 % cap").
+pub const MOTION_MAX: f32 = 1.0;
 /// The reference's wobble at full travel moves the read `FULL_REACH_S · e^(−FULL_FALL·f +
 /// FULL_BEND·f²)` either way at `f` hertz: fitted to it within 0.5 % from 0.1 to 12 Hz.
 const FULL_REACH_S: f64 = 3.513e-3;
@@ -78,11 +79,11 @@ const FULL_TOP_HZ: f64 = FULL_FALL / (2.0 * FULL_BEND);
 pub const WOW_HZ: (f32, f32) = (0.1, 5.0);
 /// Flutter's rate range, in hertz: a capstan line sits near 7.6 Hz.
 pub const FLUTTER_HZ: (f32, f32) = (4.0, 30.0);
-/// How far wow may move the read, in seconds either way: [`MOTION_MAX`] of the reference's full
-/// reach and three copies' worth.
-pub const WOW_REACH_S: f64 = 0.013;
-/// How far flutter may: the same at the slowest flutter.
-pub const FLUTTER_REACH_S: f64 = 0.006;
+/// How far every wobble together may move the read, seconds either way: the latency is twice it.
+/// Chosen so the largest one at its reference's full travel, eccentricity on an LP's inner groove
+/// (12 ms), and the tape's full wow with copies under it (7 ms) both fit; only stacks past that
+/// give way.
+pub const WOBBLE_ROOM_S: f64 = 0.020;
 /// Hiss at or below this is off.
 pub const HISS_OFF_DB: f32 = -96.0;
 /// The loudest hiss, RMS re full scale.
@@ -333,24 +334,15 @@ pub fn full_depth(hz: f64) -> f64 {
     std::f64::consts::TAU * hz * FULL_REACH_S * (-FULL_FALL * hz + FULL_BEND * hz * hz).exp()
 }
 
-/// A wobble from its control values, its depth lowered if its read would go past `reach_s` at
-/// `slowest` of its rate (a following flutter's floor).
-fn wobble(depth: f32, hz: f32, shape: Shape, scale: f64, reach_s: f64, slowest: f64) -> Wobble {
+/// A wobble from its control values, `scale` times the reference's travel at its rate; the
+/// transport fits it into the room it shares.
+fn wobble(depth: f32, hz: f32, shape: Shape, scale: f64) -> Wobble {
     let hz = f64::from(hz);
-    let mut wobble = Wobble {
+    Wobble {
         depth: full_depth(hz) * f64::from(depth) * scale,
         hz,
         shape,
-    };
-    let reach = Wobble {
-        hz: hz * slowest,
-        ..wobble
     }
-    .reach_seconds();
-    if reach > reach_s {
-        wobble.depth *= reach_s / reach;
-    }
-    wobble
 }
 
 /// One channel's tape noise: Gaussian-like white noise under a gentle top.
@@ -396,67 +388,6 @@ impl Hiss {
         let white = sum * (3.0f64 / 4.0).sqrt();
         self.state = self.pole * self.state + (1.0 - self.pole) * white;
         self.state * self.norm
-    }
-}
-
-/// The delay between the two tracks: each channel read half a span either side of a fixed centre,
-/// so the latency stays the same whatever the azimuth.
-#[derive(Clone, Debug)]
-struct Skew {
-    lines: [Vec<f32>; 2],
-    write: usize,
-    /// The centre, in samples: half the largest delay, and room for the windowed sinc ahead.
-    centre: f64,
-    /// High quality's read, and whether it is on.
-    sinc: Sinc,
-    high: bool,
-}
-
-impl Skew {
-    fn new(rate: f64) -> Self {
-        let most = azimuth_delay_s(f64::from(MAX_AZIMUTH_ARCMIN)) * rate;
-        let centre = (most / 2.0).ceil() + READ_AHEAD;
-        let length = (2.0 * centre) as usize + 4;
-        Self {
-            lines: [vec![0.0; length], vec![0.0; length]],
-            write: 0,
-            centre,
-            sinc: Sinc::new(),
-            high: false,
-        }
-    }
-
-    fn clear(&mut self) {
-        self.lines.iter_mut().for_each(|l| l.fill(0.0));
-        self.write = 0;
-    }
-
-    /// Writes this frame; reads the left `delay / 2` sooner and the right as much later than the
-    /// centre. A delay of zero reads both at the centre, an exact whole-sample delay.
-    #[inline]
-    fn process(&mut self, input: [f32; 2], delay: f64) -> [f32; 2] {
-        let length = self.lines[0].len();
-        for (line, &x) in self.lines.iter_mut().zip(&input) {
-            line[self.write] = x;
-        }
-        let mut out = [0.0f32; 2];
-        for (ch, (y, line)) in out.iter_mut().zip(&self.lines).enumerate() {
-            let side = if ch == 0 { -0.5 } else { 0.5 };
-            let position = self.write as f64 - (self.centre + side * delay) + length as f64;
-            let whole = position.floor();
-            let fraction = position - whole;
-            let index = whole as usize;
-            let at = |k: usize| f64::from(line[(index + k + length - 1) % length]);
-            *y = if fraction == 0.0 {
-                line[index % length]
-            } else if self.high {
-                self.sinc.read(line, index % length, fraction) as f32
-            } else {
-                hermite(at(0), at(1), at(2), at(3), fraction) as f32
-            };
-        }
-        self.write = (self.write + 1) % length;
-        out
     }
 }
 
@@ -530,7 +461,6 @@ pub struct Cassette {
     transport: Transport,
     dropouts: Dropouts,
     print: PrintThrough,
-    skew: Skew,
     nr: Nr,
     tape: Option<(Tape, Grade)>,
     targets: CassetteControls,
@@ -571,13 +501,12 @@ impl Cassette {
             channels: [channel(1), channel(2)],
             transport: Transport::with_stop(
                 sample_rate,
-                WOW_REACH_S + FLUTTER_REACH_S + ECCENTRIC_REACH_S + TABLE_REACH_S + WARP_REACH_S,
+                WOBBLE_ROOM_S,
                 seed,
                 f64::from(MAX_STOP_S),
             ),
             dropouts: Dropouts::new(sample_rate, seed),
             print: PrintThrough::new(sample_rate),
-            skew: Skew::new(sample_rate),
             nr: Nr::new(sample_rate),
             tape: None,
             targets: init,
@@ -600,10 +529,10 @@ impl Cassette {
         }
     }
 
-    /// The delay the engine adds, in samples, whatever its controls: the saturator's oversampler,
-    /// the transport's base delay and the centre of the delay between the tracks.
+    /// The delay the engine adds, in samples, whatever its controls: the saturator's oversampler
+    /// and the transport's base delay.
     pub fn latency(&self) -> usize {
-        Saturator::LATENCY + self.transport.latency() as usize + self.skew.centre as usize
+        Saturator::LATENCY + self.transport.latency() as usize
     }
 
     /// A record's wobbles, which the tape's read follows too: one moving read for both media.
@@ -629,7 +558,6 @@ impl Cassette {
             channel.saturator.set_high(high);
         }
         self.transport.set_high(high);
-        self.skew.high = high;
     }
 
     /// The tape's speed this sample, as a share of its own: 1 running, 0 stopped.
@@ -756,7 +684,6 @@ impl Cassette {
         self.transport.reset();
         self.dropouts.clear(self.seed);
         self.print.clear();
-        self.skew.clear();
         self.nr.reset();
     }
 
@@ -774,8 +701,6 @@ impl Cassette {
             self.wow_hz.next(),
             c.wow.shape,
             generations.sqrt(),
-            WOW_REACH_S,
-            1.0,
         );
         // Following, the wow's control swings the flutter's rate, down to its floor.
         let follow = c.follow.then(|| FOLLOW_HZ * f64::from(wow_depth));
@@ -784,8 +709,6 @@ impl Cassette {
             self.flutter_hz.next(),
             c.flutter.shape,
             generations.sqrt(),
-            FLUTTER_REACH_S,
-            if c.follow { FOLLOW_FLOOR } else { 1.0 },
         );
         let flange = self.flange.next();
         let hiss = f64::from(self.hiss.next() * noise)
@@ -826,6 +749,11 @@ impl Cassette {
             *y = saturated + tone * (shaped - saturated);
         }
         let recorded = self.print.process(recorded, printed);
+        self.transport.set_tracks(if azimuth > 0.0 {
+            azimuth_delay_s(azimuth) * self.rate
+        } else {
+            0.0
+        });
         let (moving, still) = self
             .transport
             .process_full(recorded, &wow, &flutter, follow);
@@ -870,13 +798,7 @@ impl Cassette {
             }
             *y = z as f32;
         }
-        let delay = if azimuth > 0.0 {
-            azimuth_delay_s(azimuth) * self.rate
-        } else {
-            0.0
-        };
-        let played = self.skew.process(out, delay);
-        self.nr.decode(played, &nr)
+        self.nr.decode(out, &nr)
     }
 }
 
@@ -893,29 +815,6 @@ mod tests {
         // the shapes' difference.
         let loss_10k = 54.6 * azimuth_spacing_um(15.0) * 1e-6 * 10_000.0 / SPEED_M_S;
         assert!((loss_10k - 4.9).abs() < 2.0, "{loss_10k} dB at 10 kHz");
-    }
-
-    #[test]
-    fn the_skew_is_an_exact_delay_at_zero_and_splits_a_delay_either_side() {
-        let mut skew = Skew::new(48_000.0);
-        let centre = skew.centre as usize;
-        let out: Vec<[f32; 2]> = (0..64)
-            .map(|n| skew.process(if n == 3 { [1.0, 1.0] } else { [0.0, 0.0] }, 0.0))
-            .collect();
-        assert_eq!(out.iter().position(|f| f[0] == 1.0), Some(3 + centre));
-        assert_eq!(out.iter().position(|f| f[1] == 1.0), Some(3 + centre));
-
-        let mut skew = Skew::new(48_000.0);
-        let out: Vec<[f32; 2]> = (0..64)
-            .map(|n| skew.process(if n == 3 { [1.0, 1.0] } else { [0.0, 0.0] }, 4.0))
-            .collect();
-        let peak = |ch: usize| {
-            (0..64)
-                .max_by(|&a, &b| out[a][ch].abs().total_cmp(&out[b][ch].abs()))
-                .unwrap()
-        };
-        assert_eq!(peak(0), 3 + centre - 2);
-        assert_eq!(peak(1), 3 + centre + 2);
     }
 
     #[test]
