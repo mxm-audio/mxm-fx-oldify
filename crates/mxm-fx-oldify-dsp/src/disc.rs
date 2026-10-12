@@ -44,6 +44,7 @@
 //! defect switched on or off never reshuffles the noise under it. The event tables are allocated
 //! in [`Disc::new`] and never grow.
 
+use crate::Ramp;
 use crate::transport::Rng;
 use std::f64::consts::{PI, TAU};
 
@@ -68,6 +69,9 @@ pub const MAX_RUMBLE_DB: f32 = -35.0;
 /// up to this share, so the swing never passes 5.4 dB peak to peak, under the 6 dB estimated at
 /// most. Chosen.
 pub const SWISH: f64 = 0.1;
+/// The surface noise's lift, a first-order difference from its average above this corner: 0.06 of
+/// the gap a sample at 48 kHz, the same colour at every rate. Chosen.
+const TILT_HZ: f64 = 472.69;
 /// The longest revolution, at 33⅓ rpm, in seconds: what the event tables are sized for.
 const LONGEST_TURN_S: f64 = 1.8;
 /// Crackle's size: the smallest impulse, and the tail's shape (Pareto α).
@@ -403,8 +407,14 @@ pub struct Disc {
     swish: [(f64, f64); 3],
     /// Surface noise's tilt and rumble's two poles.
     tilt: f64,
+    tilt_step: f64,
     rumble: [f64; 2],
     rumble_pole: f64,
+    /// The surface noise's, the rumble's and the crackle's gains, ramped: each scales what is
+    /// heard.
+    surface: Ramp,
+    rumble_gain: Ramp,
+    crackle_gain: Ramp,
     targets: DiscControls,
 }
 
@@ -414,6 +424,7 @@ impl Disc {
     pub fn new(sample_rate: f64, seed: u32) -> Self {
         let most_crackle = (f64::from(MAX_CRACKLE_HZ) * LONGEST_TURN_S).ceil() as usize + 1;
         let most_clicks = (f64::from(MAX_CLICKS_HZ) * LONGEST_TURN_S).ceil() as usize + 1;
+        let steps = ((sample_rate * f64::from(crate::SMOOTHING_S)).round() as u32).max(1);
         let mut disc = Self {
             rate: sample_rate,
             rng: Rng::new(seed),
@@ -432,18 +443,44 @@ impl Disc {
             tilt: 0.0,
             rumble: [0.0; 2],
             rumble_pole: (-TAU * 20.0 / sample_rate).exp(),
+            tilt_step: 1.0 - (-TAU * TILT_HZ / sample_rate).exp(),
+            surface: Ramp::settled_at(0.0, steps),
+            rumble_gain: Ramp::settled_at(0.0, steps),
+            crackle_gain: Ramp::settled_at(DiscControls::SILENT.crackle_gain, steps),
             targets: DiscControls::SILENT,
         };
         disc.clear();
         disc
     }
 
-    /// A new seed: a different disc, from the next revolution on.
+    /// A new seed: a different disc from the next revolution on, its generators replaced and
+    /// nothing else; a clear starts it from the top.
     pub fn reseed(&mut self, seed: u32) {
         if seed != self.seed {
             self.seed = seed;
-            self.clear();
+            self.rng = Rng::new(seed ^ 0xD15C_0001);
+            self.surface_rng = Rng::new(seed ^ 0xD15C_0002);
+            self.rumble_rng = Rng::new(seed ^ 0xD15C_0003);
         }
+    }
+
+    /// Moves the level ramps on by `samples`, playing nothing.
+    pub fn advance(&mut self, samples: u32) {
+        self.surface.advance(samples);
+        self.rumble_gain.advance(samples);
+        self.crackle_gain.advance(samples);
+    }
+
+    /// Ends the level ramps at their targets.
+    pub fn snap(&mut self) {
+        self.surface.snap();
+        self.rumble_gain.snap();
+        self.crackle_gain.snap();
+    }
+
+    /// True when no level is ramping.
+    pub fn is_settled(&self) -> bool {
+        self.surface.is_settled() && self.rumble_gain.is_settled() && self.crackle_gain.is_settled()
     }
 
     /// Back to the seed's own disc at angle zero, nothing sounding.
@@ -473,7 +510,22 @@ impl Disc {
     }
 
     pub fn set_controls(&mut self, c: DiscControls) {
+        let before = self.targets;
         self.targets = c.bounded();
+        let c = self.targets;
+        if (c.crackle, c.clicks, c.speed) != (before.crackle, before.clicks, before.speed) {
+            // A rate acts from here on, not from the next turn: the tables take their new sizes
+            // now, and the turn goes on from where it is.
+            self.refill(&c, 0.0);
+            let angle = self.angle;
+            self.next_crackle = self.crackle.partition_point(|e| e.0 < angle);
+            self.next_click = self.clicks.partition_point(|e| e.0 < angle);
+        }
+        self.surface
+            .retarget(level(c.surface_db, NOISE_OFF_DB) as f32);
+        self.rumble_gain
+            .retarget(level(c.rumble_db, NOISE_OFF_DB) as f32);
+        self.crackle_gain.retarget(c.crackle_gain);
     }
 
     /// Whether the disc, as last set, makes any sound of its own.
@@ -501,19 +553,30 @@ impl Disc {
             let size = sign * CLICK_SIZE * (0.3 + 1.7 * unit(rng).powi(2));
             (angle, Burst::click(size, rng))
         };
-        self.crackle.truncate(want_crackle);
-        for event in &mut self.crackle {
-            if unit(rng) < share {
-                *event = crackle(rng);
+        // Fewer: drop events anywhere in the turn, not the turn's last ones.
+        while self.crackle.len() > want_crackle {
+            let at = ((unit(rng) * self.crackle.len() as f64) as usize).min(self.crackle.len() - 1);
+            self.crackle.swap_remove(at);
+        }
+        if share > 0.0 {
+            for event in &mut self.crackle {
+                if unit(rng) < share {
+                    *event = crackle(rng);
+                }
             }
         }
         while self.crackle.len() < want_crackle {
             self.crackle.push(crackle(rng));
         }
-        self.clicks.truncate(want_clicks);
-        for event in &mut self.clicks {
-            if unit(rng) < share {
-                *event = click(rng);
+        while self.clicks.len() > want_clicks {
+            let at = ((unit(rng) * self.clicks.len() as f64) as usize).min(self.clicks.len() - 1);
+            self.clicks.swap_remove(at);
+        }
+        if share > 0.0 {
+            for event in &mut self.clicks {
+                if unit(rng) < share {
+                    *event = click(rng);
+                }
             }
         }
         while self.clicks.len() < want_clicks {
@@ -576,6 +639,9 @@ impl Disc {
     #[inline]
     pub fn sample(&mut self) -> f64 {
         let c = self.targets;
+        let crackle_gain = f64::from(self.crackle_gain.next());
+        let surface = f64::from(self.surface.next());
+        let rumble = f64::from(self.rumble_gain.next());
         let step = c.speed.hz() / self.rate;
         let before = self.angle;
         self.angle += step;
@@ -585,7 +651,7 @@ impl Disc {
 
         // The events between the last angle and this one.
         while self.next_crackle < self.crackle.len() && self.crackle[self.next_crackle].0 < now {
-            out += self.crackle[self.next_crackle].1 * f64::from(c.crackle_gain);
+            out += self.crackle[self.next_crackle].1 * crackle_gain;
             self.next_crackle += 1;
         }
         while self.next_click < self.clicks.len() && self.clicks[self.next_click].0 < now {
@@ -594,16 +660,19 @@ impl Disc {
             self.start(voice);
             self.next_click += 1;
         }
+        // Wrapping, the turn's start up to where the angle overshot is crossed this sample too.
+        let overshoot = if wrapped { self.angle - 1.0 } else { 0.0 };
+        let crossed = |angle: f64| (angle >= before && angle < now) || angle < overshoot;
         for i in 0..usize::from(c.scratches) {
             let s = self.scratches[i];
-            if s.angle >= before && s.angle < now {
+            if crossed(s.angle) {
                 let vary = 0.85 + 0.3 * unit(&mut self.rng);
                 self.cross(s, vary);
             }
         }
         for i in 0..usize::from(c.cracks) {
             let k = self.cracks[i];
-            if k.angle >= before && k.angle < now {
+            if crossed(k.angle) {
                 let vary = 0.9 + 0.2 * unit(&mut self.rng);
                 self.cross(k, vary);
             }
@@ -621,11 +690,10 @@ impl Disc {
         }
 
         // Surface noise, swishing with the turn.
-        let surface = level(c.surface_db, NOISE_OFF_DB);
         if surface > 0.0 {
             let white = self.surface_rng.bipolar() * 3f64.sqrt();
             // A first-order lift: the difference from a slow average leans the noise upward.
-            self.tilt += 0.06 * (white - self.tilt);
+            self.tilt += self.tilt_step * (white - self.tilt);
             let tilted = white + 1.5 * (white - self.tilt);
             let swish: f64 = self
                 .swish
@@ -637,7 +705,6 @@ impl Disc {
         }
 
         // Rumble: low-passed noise.
-        let rumble = level(c.rumble_db, NOISE_OFF_DB);
         if rumble > 0.0 {
             let white = self.rumble_rng.bipolar() * 3f64.sqrt();
             self.rumble[0] = self.rumble_pole * self.rumble[0] + (1.0 - self.rumble_pole) * white;
@@ -669,9 +736,124 @@ mod tests {
 
     const RATE: f64 = 48_000.0;
 
+    /// **A scratch at the very start of a turn is crossed every turn**, at the slowest rate too,
+    /// where the angle overshoots the turn's end furthest.
+    #[test]
+    fn a_scratch_at_the_turns_start_is_crossed_every_turn() {
+        let rate = 1_000.0;
+        let mut disc = Disc::new(rate, 1);
+        disc.set_controls(DiscControls {
+            speed: Speed::Shellac78,
+            scratches: 1,
+            ..DiscControls::SILENT
+        });
+        disc.snap();
+        disc.clear();
+        let step = Speed::Shellac78.hz() / rate;
+        disc.scratches[0].angle = 0.25 * step;
+        disc.scratches[0].left_s = 1e9;
+        let turn = (rate / Speed::Shellac78.hz()).ceil() as usize;
+        let turns = 20;
+        let out: Vec<f64> = (0..turns * turn).map(|_| disc.sample()).collect();
+        // Bursts: runs of sound apart by more than a tenth of a turn.
+        let mut bursts = 0;
+        let mut quiet = turn;
+        for v in out {
+            if v != 0.0 {
+                if quiet > turn / 10 {
+                    bursts += 1;
+                }
+                quiet = 0;
+            } else {
+                quiet += 1;
+            }
+        }
+        assert!(bursts >= turns - 1, "{bursts} crossings in {turns} turns");
+    }
+
+    /// **Crackle moved within a turn acts at once**: turned up half a turn in, the crackle is
+    /// heard within a tenth of a second; turned off, it stops.
+    #[test]
+    fn crackle_moved_within_a_turn_acts_at_once() {
+        let mut disc = Disc::new(RATE, 1);
+        disc.set_controls(DiscControls::SILENT);
+        disc.clear();
+        for _ in 0..(0.9 * RATE) as usize {
+            assert_eq!(disc.sample(), 0.0);
+        }
+        disc.set_controls(DiscControls {
+            crackle: MAX_CRACKLE_HZ,
+            ..DiscControls::SILENT
+        });
+        disc.snap();
+        let heard = (0..(0.1 * RATE) as usize)
+            .filter(|_| disc.sample() != 0.0)
+            .count();
+        assert!(heard > 50, "{heard}");
+        disc.set_controls(DiscControls::SILENT);
+        for _ in 0..(0.01 * RATE) as usize {
+            disc.sample();
+        }
+        assert!((0..(0.5 * RATE) as usize).all(|_| disc.sample() == 0.0));
+    }
+
+    /// **Surface noise has the same colour at every rate**: its lift above about 500 Hz, the share
+    /// of its power above 2 kHz, alike at 48 and 96 kHz.
+    #[test]
+    fn surface_noise_has_one_colour_at_every_rate() {
+        let share = |rate: f64| {
+            let mut disc = Disc::new(rate, 3);
+            disc.set_controls(DiscControls {
+                surface_db: -20.0,
+                ..DiscControls::SILENT
+            });
+            disc.snap();
+            disc.clear();
+            let section = |kind, hz| {
+                let mut b = crate::biquad::Biquad::default();
+                b.set(crate::biquad::Section::new(kind, hz, 0.0, 0.7).coefficients(rate));
+                b
+            };
+            let (mut low, mut high) = (
+                section(crate::biquad::Kind::LowPass, 400.0),
+                section(crate::biquad::Kind::HighPass, 2_000.0),
+            );
+            let (mut low_power, mut high_power) = (0.0, 0.0);
+            for _ in 0..(4.0 * rate) as usize {
+                let x = disc.sample();
+                let (l, h) = (low.process(x), high.process(x));
+                low_power += l * l;
+                high_power += h * h;
+            }
+            10.0 * (high_power / low_power).log10()
+        };
+        let (at_48, at_96) = (share(48_000.0), share(96_000.0));
+        // Twice the rate doubles the bandwidth above 2 kHz for white noise (+3 dB); the lift
+        // itself must not move.
+        assert!((at_96 - at_48 - 3.0).abs() < 1.0, "{at_48} dB, {at_96} dB");
+    }
+
+    /// **A new seed changes the disc from its next turn and resets nothing**: where the disc is in
+    /// its turn stays.
+    #[test]
+    fn a_new_seed_resets_nothing() {
+        let mut disc = Disc::new(RATE, 1);
+        disc.set_controls(DiscControls {
+            crackle: 200.0,
+            ..DiscControls::SILENT
+        });
+        for _ in 0..12_345 {
+            disc.sample();
+        }
+        let angle = disc.angle();
+        disc.reseed(99);
+        assert_eq!(disc.angle(), angle);
+    }
+
     fn render(c: DiscControls, seconds: f64, seed: u32) -> Vec<f64> {
         let mut disc = Disc::new(RATE, seed);
         disc.set_controls(c);
+        disc.snap();
         disc.clear();
         (0..(RATE * seconds) as usize)
             .map(|_| disc.sample())

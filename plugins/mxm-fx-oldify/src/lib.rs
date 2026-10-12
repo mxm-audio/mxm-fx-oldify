@@ -1,8 +1,8 @@
 //! `mxm-fx-oldify` — the collection's effect that makes sound old: cassette tape and old records.
 //!
-//! The cassette engine is in; the record engine is to come (Record passes the sound, delayed by the
-//! latency). The DSP is `mxm-fx-oldify-dsp`; this shell converts host state and units, reports the
-//! chain's fixed latency and its tail, and publishes levels to the editor.
+//! Both engines are in, each on its own switch: Vinyl plays the record, Tape the cassette, both a
+//! record taped to cassette. The DSP is `mxm-fx-oldify-dsp`; this shell converts host state and
+//! units, reports the chain's fixed latency and its tail, and publishes levels to the editor.
 
 macro_rules! plugin_name {
     () => {
@@ -187,7 +187,7 @@ impl Plugin for MxmFxOldify {
     }
 
     /// Builds the engine for the host's sample rate and **reports the chain's fixed latency**: the
-    /// same for every control and every Medium, so it is reported here once and never changes
+    /// same for every control and either switch, so it is reported here once and never changes
     /// while processing.
     fn activate(
         &mut self,

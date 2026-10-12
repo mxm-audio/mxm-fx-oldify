@@ -322,8 +322,19 @@ pub struct Oldify {
     level: f32,
     attack: f32,
     release: f32,
-    /// After this much silence every memory is cleared: [`Oldify::tail`].
+    /// After this much silence every memory is cleared: [`Oldify::tail`], from the controls.
     quiet_after: u64,
+    /// What it is made of, in samples: the noise's hold and fade, the groove echo's turn on the
+    /// slowest disc, the print-through's wrap, and the chain's own settling (twice the latency and
+    /// the filters' tail).
+    hold: u64,
+    turn: u64,
+    wrap: u64,
+    settle: u64,
+    /// The silence after which a skip's last sound, and its print, have played out: the latest any
+    /// skip has asked for since the input was last heard. Kept, so a skip that ends in the silence
+    /// does not take its tail with it.
+    skip_deadline: u64,
     /// True from a clear until the input returns: the output is exact zero.
     quiet: bool,
 }
@@ -362,13 +373,15 @@ impl Oldify {
             level: 0.0,
             attack: 1.0 - (-1.0 / (sample_rate * FOLLOW_ATTACK_S)).exp(),
             release: 1.0 - (-1.0 / (sample_rate * FOLLOW_RELEASE_S)).exp(),
-            // The noise's hold, or the longest echo if that is longer: the groove's turn on the
-            // slowest disc, or the print-through's wrap.
+            // Set from the controls ([`Oldify::tail_for`]); the identity's is the noise's hold.
             quiet_after: 2 * latency as u64
                 + seconds(NOISE_HOLD_S + NOISE_FADE_S)
-                    .max(echo::turn_samples(disc::Speed::Lp33, f64::from(sample_rate)) as u64)
-                    .max(print::wrap_samples(f64::from(sample_rate)) as u64)
                 + seconds(FILTER_TAIL_S),
+            hold: seconds(NOISE_HOLD_S + NOISE_FADE_S),
+            turn: echo::turn_samples(disc::Speed::Lp33, f64::from(sample_rate)) as u64,
+            wrap: print::wrap_samples(f64::from(sample_rate)) as u64,
+            settle: 2 * latency as u64 + seconds(FILTER_TAIL_S),
+            skip_deadline: 0,
             quiet: true,
         })
     }
@@ -389,20 +402,56 @@ impl Oldify {
         }
     }
 
-    /// The silence after which every memory is cleared: the fixed tail and a stop's lag to come,
-    /// or, while a skip goes round, its turns to go and the chain's own tail after them.
+    /// The silence after which every memory is cleared: the tail for the controls or a skip's
+    /// deadline, whichever is later, and then a stop's lag to come, which delays everything the
+    /// tape holds, the skip's last turn and its print included: the stages are in series.
     fn quiet_after(&self) -> u64 {
-        let tail = self.quiet_after + self.cassette.stop_lag_to_come();
+        self.quiet_after
+            .max(self.skip_deadline)
+            .saturating_add(self.cassette.stop_lag_to_come())
+    }
+
+    /// Moves the skip's deadline on to cover a skip going round now: its turns to go, then a wrap
+    /// if print-through is on, then the chain's settling. Never brought back while silent.
+    fn note_skip(&mut self) {
         let skipping = if self.record_on {
             self.record.skip_left()
         } else {
             0
         };
-        if skipping == 0 {
-            return tail;
+        if skipping > 0 {
+            let printed = if self.tape_on && self.cassette.prints() {
+                self.wrap
+            } else {
+                0
+            };
+            let deadline = self
+                .silent_for
+                .saturating_add(skipping + printed + self.settle);
+            self.skip_deadline = self.skip_deadline.max(deadline);
         }
-        let after = 2 * self.latency as u64 + (f64::from(FILTER_TAIL_S) * self.rate).ceil() as u64;
-        tail.max(self.silent_for.saturating_add(skipping + after))
+    }
+
+    /// **The tail for `c`, the stages in series**: the noise holds and fades; a record's own sound
+    /// and its groove echo reach the tape, which prints them a wrap later, after the record's
+    /// last; the chain then settles. Only what is switched on counts.
+    fn tail_for(&self, c: &Controls) -> u64 {
+        let record = if c.record_on {
+            let echo = if c.record.echo_db > disc::NOISE_OFF_DB {
+                self.turn
+            } else {
+                0
+            };
+            self.hold.max(echo)
+        } else {
+            0
+        };
+        let printed = if c.tape_on && c.cassette.print_db > print::PRINT_OFF_DB {
+            record + self.wrap
+        } else {
+            0
+        };
+        self.settle + self.hold.max(record).max(printed)
     }
 
     /// True while the output never falls silent: noise that plays on in silence, or a locked
@@ -421,11 +470,6 @@ impl Oldify {
         self.record_on = controls.record_on;
         self.tape_on = controls.tape_on;
         let record_on = self.record_on;
-        if record_on && !record_was_on {
-            // Back onto the record: it starts from silence, not from where it was left.
-            self.record.clear();
-            self.hum.reset();
-        }
         self.drive.retarget(controls.drive);
         self.width.retarget(controls.width);
         self.mix.retarget(controls.mix);
@@ -444,6 +488,13 @@ impl Oldify {
         self.cassette.set_high(controls.quality == Quality::High);
         self.record.reseed(seed_for(controls.cassette.variation));
         self.record.set_controls(controls.record);
+        if record_on && !record_was_on {
+            // Back onto the record: it starts from silence, not from where it was left, and its
+            // first turn is the new controls' own.
+            self.record.clear();
+            self.hum.reset();
+        }
+        self.quiet_after = self.tail_for(&controls);
         self.cassette.set_record_wobbles(if record_on {
             self.record.wobbles()
         } else {
@@ -470,6 +521,7 @@ impl Oldify {
         self.hum.reset();
         self.dry.clear();
         self.level = 0.0;
+        self.skip_deadline = 0;
         self.quiet = true;
     }
 
@@ -484,6 +536,7 @@ impl Oldify {
         self.drive.is_settled()
             && self.width.is_settled()
             && self.mix.is_settled()
+            && self.noise_follows.is_settled()
             && self.cassette.is_settled()
             && self.record.is_settled()
     }
@@ -535,6 +588,8 @@ impl Oldify {
     fn frame(&mut self, input: [f32; 2]) -> [f32; 2] {
         let active = input[0].abs() > SILENCE || input[1].abs() > SILENCE;
         self.silent_for = if active {
+            // Heard again: a deadline counted from the last silence means nothing now.
+            self.skip_deadline = 0;
             0
         } else {
             self.silent_for.saturating_add(1)
@@ -596,14 +651,14 @@ impl Oldify {
         if record_on {
             // Hum comes after the read: it does not wobble. Taped with the record, it stops with
             // the tape.
-            let (mains, hum_db) = self.record.mains();
+            let (mains, hum_gain) = self.record.mains();
             let stopping = if self.tape_on {
                 self.cassette.speed()
             } else {
                 1.0
             };
             let hum =
-                (self.hum.next(mains, hum_db, self.rate) * f64::from(noise) * stopping) as f32;
+                (self.hum.next(mains, hum_gain, self.rate) * f64::from(noise) * stopping) as f32;
             wet = [wet[0] + hum, wet[1] + hum];
         }
 
@@ -624,6 +679,7 @@ impl Oldify {
                 dry[1] * (1.0 - mix) + wet[1] * mix,
             ]
         };
+        self.note_skip();
         if self.silent_for >= self.quiet_after() && !endless {
             self.clear();
         }
@@ -834,6 +890,257 @@ mod tests {
         assert!(left[tail..].iter().chain(&right[tail..]).all(|s| *s == 0.0));
     }
 
+    /// **The tail follows the stages in series**: a record taped to cassette with both echoes on
+    /// is heard again a turn and a wrap later, the print of the groove's echo, inside the tail and
+    /// nothing after it; with neither echo the tail is the noise's hold alone.
+    #[test]
+    fn the_tail_follows_the_stages_in_series() {
+        let both = Controls {
+            record_on: true,
+            tape_on: true,
+            record: RecordControls {
+                echo_db: crate::echo::MAX_ECHO_DB,
+                ..RecordControls::CLEAN
+            },
+            cassette: CassetteControls {
+                print_db: crate::print::MAX_PRINT_DB,
+                ..CassetteControls::NEUTRAL
+            },
+            ..Controls::IDENTITY
+        };
+        let mut oldify = settled_at(both);
+        let source = noise(9_600, 1);
+        render(&mut oldify, &source, &source, both);
+        let tail = oldify.tail() as usize;
+        let silence = vec![0.0; tail + 512];
+        let [left, right] = render(&mut oldify, &silence, &silence, both);
+        let rate = f64::from(RATE);
+        let late = crate::echo::turn_samples(crate::disc::Speed::Lp33, rate)
+            + crate::print::wrap_samples(rate);
+        let latency = oldify.latency() as usize;
+        let twice = &left[late - 9_600 + latency..late + latency];
+        assert!(twice.iter().any(|s| s.abs() > 1e-4), "no echo of the echo");
+        assert!(late + latency < tail);
+        assert!(left[tail..].iter().chain(&right[tail..]).all(|s| *s == 0.0));
+        let plain = settled_at(Controls::IDENTITY).tail() as usize;
+        assert!(plain < tail && (plain as f64) < 2.5 * rate, "{plain}");
+    }
+
+    /// **A skip that ends in the silence plays out, its print with it**: the chain does not clear
+    /// when the skip's own extension ends, so its last turn and the print of it are heard as a chain
+    /// that never went quiet hears them.
+    #[test]
+    fn a_skip_in_the_silence_plays_out_with_its_print() {
+        let skipping = Controls {
+            record_on: true,
+            tape_on: true,
+            record: RecordControls {
+                disc: crate::disc::DiscControls {
+                    speed: crate::disc::Speed::Lp33,
+                    ..crate::disc::DiscControls::SILENT
+                },
+                skips: crate::skip::MAX_SKIPS,
+                ..RecordControls::CLEAN
+            },
+            cassette: CassetteControls {
+                print_db: crate::print::MAX_PRINT_DB,
+                ..CassetteControls::NEUTRAL
+            },
+            // The deck's own rumble follows the input, so the reference's inaudible input below
+            // does not hold it open.
+            noise_follows: 1.0,
+            ..Controls::IDENTITY
+        };
+        let still = Controls {
+            record: RecordControls {
+                skips: 0.0,
+                ..skipping.record
+            },
+            ..skipping
+        };
+        let turn = crate::echo::turn_samples(crate::disc::Speed::Lp33, f64::from(RATE));
+        let source = noise(3 * turn, 2);
+        // A Variation whose skip still has two turns to go when the music stops: past the noise's
+        // hold, which a skip's own extension ending would otherwise fall back to. Found by search;
+        // if the disc or the skips change, find another.
+        let variation = 45;
+        let with = |c: Controls| Controls {
+            cassette: CassetteControls {
+                variation,
+                ..c.cassette
+            },
+            ..c
+        };
+        let after = 24 * RATE as usize;
+        for stop_s in [None, Some(crate::cassette::MAX_STOP_S)] {
+            let mut oldify = settled_at(with(skipping));
+            render(&mut oldify, &source, &source, with(skipping));
+            let left = oldify.record.skip_left() as usize;
+            assert!(left > 2 * turn, "pick another Variation: {left}");
+            // The same chain, never let go quiet: what the real one would still have played.
+            let mut shadow = oldify.clone();
+            shadow.skip_deadline = u64::MAX;
+            let rest = vec![0.0; after];
+            // With the tape stopping from the music's end too: the stop delays the skip's last
+            // turn and its print, and the tail must wait for both.
+            let silence = Controls {
+                cassette: CassetteControls {
+                    stop: stop_s.is_some(),
+                    stop_s: stop_s.unwrap_or(crate::cassette::STOP_S),
+                    ..still.cassette
+                },
+                ..with(still)
+            };
+            let [real, _] = render(&mut oldify, &rest, &rest, silence);
+            let [kept, _] = render(&mut shadow, &rest, &rest, silence);
+            let heard = kept.iter().filter(|s| s.abs() > 1e-3).count();
+            assert!(
+                heard > turn,
+                "{stop_s:?}: the skip went round no further: {heard}"
+            );
+            let cut = (0..after)
+                .map(|n| (real[n] - kept[n]).abs())
+                .fold(0.0f32, f32::max);
+            assert!(cut < 1e-5, "{stop_s:?}: cut short by {cut}");
+            assert!(real[after - 512..].iter().all(|s| *s == 0.0));
+        }
+    }
+
+    /// **A record switched on starts from its own first turn**: its crackle is there at once, not a
+    /// turn later from the controls it had before.
+    #[test]
+    fn a_record_switched_on_starts_from_its_own_first_turn() {
+        let off = Controls::IDENTITY;
+        let on = Controls {
+            record_on: true,
+            tape_on: false,
+            record: RecordControls {
+                disc: crate::disc::DiscControls {
+                    crackle: 2_000.0,
+                    ..crate::disc::DiscControls::SILENT
+                },
+                ..RecordControls::CLEAN
+            },
+            ..off
+        };
+        let bare = Controls {
+            record: RecordControls::CLEAN,
+            ..on
+        };
+        let tone: Vec<f32> = (0..9_600)
+            .map(|i| 0.1 * (std::f32::consts::TAU * 440.0 * i as f32 / RATE).sin())
+            .collect();
+        let after_switch = |controls: Controls| {
+            let mut oldify = settled_at(off);
+            render(&mut oldify, &tone, &tone, off);
+            render(&mut oldify, &tone, &tone, controls)[0].clone()
+        };
+        let (crackled, plain) = (after_switch(on), after_switch(bare));
+        let apart = crackled
+            .iter()
+            .zip(&plain)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(apart > 1e-4, "no crackle in the first turn: {apart}");
+    }
+
+    /// **A moved Noise follows is a ramp**: until it lands the chain is not settled.
+    #[test]
+    fn a_moved_noise_follows_is_not_settled_until_it_lands() {
+        let mut oldify = settled_at(Controls::INIT);
+        let moved = Controls {
+            noise_follows: 1.0,
+            ..Controls::INIT
+        };
+        oldify.set_controls(moved);
+        assert!(!oldify.is_settled());
+        oldify.advance(RATE as usize);
+        assert!(oldify.is_settled());
+    }
+
+    /// **A tape stop moves on while the chain is quiet**: stopped in the silence, the next sound
+    /// finds the tape stopped; let go in the silence, the next sound finds it running, and plays as
+    /// an unstopped tape does.
+    #[test]
+    fn a_tape_stop_moves_on_in_the_silence() {
+        let running = Controls::IDENTITY;
+        let stopping = Controls {
+            cassette: CassetteControls {
+                stop: true,
+                stop_s: 0.2,
+                ..CassetteControls::NEUTRAL
+            },
+            ..running
+        };
+        let tone: Vec<f32> = (0..4_800)
+            .map(|i| 0.5 * (std::f32::consts::TAU * 440.0 * i as f32 / RATE).sin())
+            .collect();
+        let half_second = vec![0.0; RATE as usize / 2];
+        let mut oldify = settled_at(running);
+        render(&mut oldify, &half_second, &half_second, stopping);
+        let [stopped, _] = render(&mut oldify, &tone, &tone, stopping);
+        assert!(stopped.iter().all(|s| *s == 0.0), "the tape still ran");
+        let quiet = vec![0.0; oldify.tail() as usize + 512];
+        render(&mut oldify, &quiet, &quiet, stopping);
+        render(&mut oldify, &half_second, &half_second, running);
+        let [started, _] = render(&mut oldify, &tone, &tone, running);
+        let mut fresh = settled_at(running);
+        let [unstopped, _] = render(&mut fresh, &tone, &tone, running);
+        assert_eq!(started, unstopped);
+    }
+
+    /// **Dropout width moves smoothly mid-dropout**: swung from shared to independent and back
+    /// every ten milliseconds while the tape is dipping, a steady level moves no further a sample
+    /// than the dips themselves move it, where a jump of width would step it by the dip's depth.
+    #[test]
+    fn dropout_width_moves_without_a_step() {
+        let dropping = |width: f32| Controls {
+            cassette: CassetteControls {
+                dropouts: crate::dropouts::DropoutControls {
+                    amount: 1.0,
+                    intensity: 1.0,
+                    width,
+                },
+                ..CassetteControls::NEUTRAL
+            },
+            ..Controls::IDENTITY
+        };
+        let level = vec![0.2f32; 2 * RATE as usize];
+        let mut oldify = settled_at(dropping(0.0));
+        let mut out = Vec::new();
+        for (k, block) in level.chunks(480).enumerate() {
+            let width = if k % 2 == 0 { 0.0 } else { 1.0 };
+            out.extend(render(&mut oldify, block, block, dropping(width))[0].clone());
+        }
+        // The deepest dips take 0.2 down by about 0.17; their own fastest slope moves it under
+        // 0.01 a sample.
+        let settled = oldify.latency() as usize + 4_800;
+        let largest = out[settled..]
+            .windows(2)
+            .map(|w| (w[1] - w[0]).abs())
+            .fold(0.0f32, f32::max);
+        assert!(largest < 0.03, "a step of {largest}");
+    }
+
+    /// **Every engine stays finite at the ends of the accepted rates**, the record's curves
+    /// included where 1 kHz is past Nyquist.
+    #[test]
+    fn every_engine_stays_finite_at_the_ends_of_the_rates() {
+        for rate in [MIN_SAMPLE_RATE, 1_500.0, 4_000.0, MAX_SAMPLE_RATE] {
+            for controls in extremes().into_iter().step_by(23) {
+                let mut oldify = Oldify::new(rate).unwrap();
+                let source = noise(2_048, 3);
+                let [left, right] = render(&mut oldify, &source, &source, controls);
+                assert!(
+                    left.iter()
+                        .chain(&right)
+                        .all(|s| s.is_finite() && s.abs() < 64.0),
+                    "{rate} Hz"
+                );
+            }
+        }
+    }
+
     /// **The tail outlasts both echoes**: the groove's on the slowest disc and the print-through's,
     /// each at its loudest, are heard a turn or a wrap after the last sound, inside the tail, and
     /// nothing after it.
@@ -1025,15 +1332,7 @@ mod tests {
     /// on a sample every block size here starts a block on.
     #[test]
     fn blocks_of_one_thirty_seven_and_five_hundred_twelve_are_identical() {
-        let quiet = Oldify::new(RATE).unwrap().tail() as usize + 4_000;
-        let length = 30_000 + quiet;
         let retarget = 37 * 512;
-        let mut source_l = noise(length, 5);
-        let mut source_r = noise(length, 6);
-        source_l[200..900].fill(0.0);
-        source_r[200..900].fill(0.0);
-        source_l[25_000..25_000 + quiet].fill(0.0);
-        source_r[25_000..25_000 + quiet].fill(0.0);
         let first = Controls {
             drive: db_to_gain(9.0),
             width: 1.6,
@@ -1067,6 +1366,19 @@ mod tests {
             },
             ..first
         };
+        // Silent long enough for the second controls' tail to run out.
+        let quiet = {
+            let mut probe = Oldify::new(RATE).unwrap();
+            probe.set_controls(second);
+            probe.tail() as usize + 4_000
+        };
+        let length = 30_000 + quiet;
+        let mut source_l = noise(length, 5);
+        let mut source_r = noise(length, 6);
+        source_l[200..900].fill(0.0);
+        source_r[200..900].fill(0.0);
+        source_l[25_000..25_000 + quiet].fill(0.0);
+        source_r[25_000..25_000 + quiet].fill(0.0);
         let run = |block: usize| {
             let mut oldify = Oldify::new(RATE).unwrap();
             let (mut left, mut right) = (source_l.clone(), source_r.clone());

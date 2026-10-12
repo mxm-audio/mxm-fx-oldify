@@ -211,9 +211,13 @@ impl Groove {
         }
     }
 
-    /// A new seed for the worn walls' roughness, from the next reset.
+    /// A new seed for the worn walls' roughness, from the next draw on; a reset starts it from the
+    /// top.
     pub fn reseed(&mut self, seed: u32) {
-        self.seed = seed;
+        if seed != self.seed {
+            self.seed = seed;
+            self.rng = Rng::new(seed ^ 0x6400_0E0F);
+        }
     }
 
     pub fn reset(&mut self) {
@@ -281,36 +285,49 @@ impl Groove {
                 *v = self.wear(i, *v, limit);
             }
         } else {
-            // Followed while off, so switching it on starts from where the groove is.
+            // Followed while off, so switching it on starts from where the groove is, with nothing
+            // worn from before.
             for (wall, v) in self.walls.iter_mut().zip(walls) {
                 wall.travel = self.leak * wall.travel + v / self.rate;
                 wall.last = v;
                 wall.dull = self.dull_pole * wall.dull + (1.0 - self.dull_pole) * v;
+                wall.level = 0.0;
+                if wall.taken != 0.0 || wall.rough != 0.0 {
+                    wall.give.reset();
+                    wall.taken = 0.0;
+                    wall.rough = 0.0;
+                }
             }
         }
         let mut mid = 0.5 * (walls[0] + walls[1]);
         let mut side = 0.5 * (walls[0] - walls[1]);
         let strength = c.strength();
+        let square = mid * mid;
+        // The pinch's DC follows always, so distortion switched on starts from the sound's own.
+        self.pinch_mean += 0.001 * (square - self.pinch_mean);
         if strength > 0.0 {
-            let square = mid * mid;
             mid /= (1.0 + strength * square).sqrt();
             // The second harmonic of the lateral motion, in the vertical, without its DC.
-            self.pinch_mean += 0.001 * (square - self.pinch_mean);
             side += PINCH * strength * 0.25 * (square - self.pinch_mean);
         }
         let mut out = [(mid + side) as f32, (mid - side) as f32];
 
+        // Above `0.4` of the rate the limit passes everything and the groove is left as it is,
+        // exactly; the filter still follows, at that corner, so a limit coming down starts from
+        // where the sound is.
+        let open = 0.4 * self.rate;
         let top = c.top_hz();
-        if top < 0.4 * self.rate {
-            if self.top_hz != Some(top) {
-                self.top_hz = Some(top);
-                let section =
-                    Section::new(Kind::LowPass, top, 0.0, std::f64::consts::FRAC_1_SQRT_2);
-                let coefficients = section.coefficients(self.rate);
-                self.tops.iter_mut().for_each(|b| b.set(coefficients));
-            }
-            for (y, top) in out.iter_mut().zip(&mut self.tops) {
-                *y = top.process(f64::from(*y)) as f32;
+        let corner = top.min(open);
+        if self.top_hz != Some(corner) {
+            self.top_hz = Some(corner);
+            let section = Section::new(Kind::LowPass, corner, 0.0, std::f64::consts::FRAC_1_SQRT_2);
+            let coefficients = section.coefficients(self.rate);
+            self.tops.iter_mut().for_each(|b| b.set(coefficients));
+        }
+        for (y, top) in out.iter_mut().zip(&mut self.tops) {
+            let filtered = top.process(f64::from(*y)) as f32;
+            if corner < open {
+                *y = filtered;
             }
         }
         out
@@ -485,5 +502,78 @@ mod tests {
             apart = apart.max((y[0] - y[1]).abs().into());
         }
         assert!(apart > 0.01, "{apart}");
+    }
+
+    /// **Distortion switched on in the silence is silent**: the pinch's average, taken while it was
+    /// off, is of the silence, not of the loud groove before it.
+    #[test]
+    fn distortion_switched_on_in_the_silence_is_silent() {
+        let distorted = GrooveControls {
+            distortion: 1.0,
+            ..GrooveControls::CLEAN
+        };
+        let mut groove = Groove::new(RATE, 1);
+        for i in 0..24_000 {
+            let x = (0.5 * (TAU * 200.0 * i as f64 / RATE).sin()) as f32;
+            groove.process([x, x], &distorted);
+        }
+        for _ in 0..48_000 {
+            groove.process([0.0, 0.0], &GrooveControls::CLEAN);
+        }
+        let largest = (0..4_800)
+            .map(|_| groove.process([0.0, 0.0], &distorted)[0].abs())
+            .fold(0.0f32, f32::max);
+        assert!(largest < 1e-9, "{largest}");
+    }
+
+    /// **Dynamic wear switched back on starts clean**: a groove it followed under its limit, then
+    /// switched off through a silence, wears the next loud stretch as a fresh one does.
+    #[test]
+    fn dynamic_wear_switched_back_on_starts_clean() {
+        let worn = GrooveControls {
+            dynamic: 1.0,
+            ..GrooveControls::CLEAN
+        };
+        let limit = worn.limit().unwrap();
+        // At the stylus's resonance its force is the velocity, up to twice it as the tone starts:
+        // this stays under the softer wall's knee, and is louder than the burst after it.
+        let under: Vec<f32> = (0..24_000)
+            .map(|i| (0.15 * limit * (TAU * STYLUS_HZ * i as f64 / RATE).sin()) as f32)
+            .collect();
+        // Low, where the force is many times the velocity: over the limit.
+        let burst: Vec<f32> = (0..9_600)
+            .map(|i| (0.05 * limit * (TAU * 60.0 * i as f64 / RATE).sin()) as f32)
+            .collect();
+        let play = |history: bool| {
+            let mut groove = Groove::new(RATE, 1);
+            if history {
+                for x in &under {
+                    groove.process([*x, *x], &worn);
+                }
+                // Nothing worn, nothing drawn: only the level it followed is left.
+                assert!(
+                    groove
+                        .walls
+                        .iter()
+                        .all(|w| w.taken == 0.0 && w.rough == 0.0 && w.level > 0.0)
+                );
+            }
+            for _ in 0..96_000 {
+                groove.process([0.0, 0.0], &GrooveControls::CLEAN);
+            }
+            let out: Vec<f32> = burst
+                .iter()
+                .map(|x| groove.process([*x, *x], &worn)[0])
+                .collect();
+            assert!(groove.walls[0].taken > 0.0);
+            out
+        };
+        let (after, fresh) = (play(true), play(false));
+        let apart = after
+            .iter()
+            .zip(&fresh)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(apart < 1e-6, "{apart}");
     }
 }

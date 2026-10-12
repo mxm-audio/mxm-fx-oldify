@@ -493,11 +493,12 @@ fn string_to_percent() -> StringToValue {
     })
 }
 
-/// A rate in hertz. The unit's precision is chosen from the rounded reading, so the host's text
-/// round trip is idempotent at the switch.
+/// A rate in hertz: to a thousandth under 1 Hz, a hundredth from it. The precision is chosen from
+/// the reading rounded to the finer of the two, so the host's text round trip is idempotent at the
+/// switch: 0.9946 reads 0.995 Hz and reads back the same.
 fn rate_to_string() -> ValueToString {
     Arc::new(|value| {
-        if (value * 100.0).round() >= 100.0 {
+        if (value * 1_000.0).round() >= 1_000.0 {
             format!("{value:.2} Hz")
         } else {
             format!("{value:.3} Hz")
@@ -1592,5 +1593,36 @@ mod tests {
             params.azimuth.string_to_normalized_value("15'"),
             params.azimuth.string_to_normalized_value("15 arcmin")
         );
+    }
+
+    /// **A rate reads the same through the host's text round trip either side of 1 Hz**, where its
+    /// precision changes: the grid above can step over the sliver where it went wrong.
+    #[test]
+    fn a_rate_reads_the_same_either_side_of_one_hertz() {
+        let params = MxmFxOldifyParams::default();
+        for text in [
+            "0.9944 Hz",
+            "0.9945 Hz",
+            "0.9946 Hz",
+            "0.9949 Hz",
+            "0.9994 Hz",
+            "0.9995 Hz",
+            "0.9996 Hz",
+            "1 Hz",
+            "1.004 Hz",
+            "1.006 Hz",
+        ] {
+            let normalized = params
+                .wow_rate
+                .string_to_normalized_value(text)
+                .unwrap_or_else(|| panic!("{text} rejected"));
+            let first = params.wow_rate.normalized_value_to_string(normalized, true);
+            let again = params
+                .wow_rate
+                .string_to_normalized_value(&first)
+                .unwrap_or_else(|| panic!("{first} rejected"));
+            let second = params.wow_rate.normalized_value_to_string(again, true);
+            assert_eq!(first, second, "{text}");
+        }
     }
 }

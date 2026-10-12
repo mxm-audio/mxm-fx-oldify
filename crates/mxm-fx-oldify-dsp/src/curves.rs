@@ -99,7 +99,8 @@ impl Curve {
 }
 
 /// A first-order section `(1 + s·zero) / (1 + s·pole)` by the bilinear transform, prewarped at
-/// 1 kHz, where every curve is normalised. Either constant may be absent (`None` is 1).
+/// 1 kHz, where every curve is normalised, or at a quarter of the rate where that is lower. Either
+/// constant may be absent (`None` is 1).
 #[derive(Clone, Copy, Debug, Default)]
 struct FirstOrder {
     b0: f64,
@@ -116,8 +117,9 @@ impl FirstOrder {
                 ..Self::default()
             };
         }
-        // s → k (1 − z⁻¹)/(1 + z⁻¹), k chosen so 1 kHz maps exactly.
-        let w = TAU * 1_000.0;
+        // s → k (1 − z⁻¹)/(1 + z⁻¹), k chosen so 1 kHz maps exactly, or a quarter of the rate
+        // where that is lower: at the slowest rates 1 kHz is at or past Nyquist.
+        let w = TAU * 1_000.0f64.min(0.25 * rate);
         let k = w / (w / (2.0 * rate)).tan();
         let (z, p) = (zero.unwrap_or(0.0), pole.unwrap_or(0.0));
         let (n0, n1) = (1.0 + k * z, 1.0 - k * z);

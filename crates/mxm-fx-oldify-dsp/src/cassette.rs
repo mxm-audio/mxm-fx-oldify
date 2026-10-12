@@ -480,6 +480,8 @@ pub struct Cassette {
     nr_amount: Ramp,
     nr_brightness: Ramp,
     nr_error: Ramp,
+    /// Dropout width blends the shared dip with each channel's own: a jump would step the level.
+    dropout_width: Ramp,
 }
 
 impl Cassette {
@@ -526,6 +528,7 @@ impl Cassette {
             nr_amount: ramp(init.nr.amount),
             nr_brightness: ramp(init.nr.brightness),
             nr_error: ramp(init.nr.level_error_db),
+            dropout_width: ramp(init.dropouts.width),
         }
     }
 
@@ -549,6 +552,11 @@ impl Cassette {
     /// Whether any hiss is asked for.
     pub fn hisses(&self) -> bool {
         self.targets.hiss_db > HISS_OFF_DB
+    }
+
+    /// Whether print-through is on: what reaches the tape comes back a wrap later.
+    pub fn prints(&self) -> bool {
+        self.targets.print_db > PRINT_OFF_DB
     }
 
     /// High quality: the saturation at four times the rate, and the moving read and the tracks'
@@ -617,9 +625,10 @@ impl Cassette {
         self.nr_amount.retarget(c.nr.amount);
         self.nr_brightness.retarget(c.nr.brightness);
         self.nr_error.retarget(c.nr.level_error_db);
+        self.dropout_width.retarget(c.dropouts.width);
     }
 
-    fn ramps(&mut self) -> [&mut Ramp; 15] {
+    fn ramps(&mut self) -> [&mut Ramp; 16] {
         [
             &mut self.tone,
             &mut self.saturation,
@@ -636,6 +645,7 @@ impl Cassette {
             &mut self.nr_amount,
             &mut self.nr_brightness,
             &mut self.nr_error,
+            &mut self.dropout_width,
         ]
     }
 
@@ -644,9 +654,11 @@ impl Cassette {
         self.ramps().into_iter().for_each(Ramp::snap);
     }
 
-    /// Moves every ramp `samples` on, processing nothing.
+    /// Moves every ramp `samples` on, processing nothing, and a tape stop with them: the chain is
+    /// quiet, so the tape stops or starts in the silence, ready for what comes next.
     pub fn advance(&mut self, samples: u32) {
         self.ramps().into_iter().for_each(|r| r.advance(samples));
+        self.transport.idle_stop(samples);
     }
 
     pub fn is_settled(&self) -> bool {
@@ -666,6 +678,7 @@ impl Cassette {
             &self.nr_amount,
             &self.nr_brightness,
             &self.nr_error,
+            &self.dropout_width,
         ]
         .iter()
         .all(|r| r.is_settled())
@@ -728,7 +741,10 @@ impl Cassette {
             } else {
                 0.0
             };
-        let dips = self.dropouts.next(&c.dropouts);
+        let dips = self.dropouts.next(&DropoutControls {
+            width: self.dropout_width.next(),
+            ..c.dropouts
+        });
         let nr = NrControls {
             amount: self.nr_amount.next(),
             brightness: self.nr_brightness.next(),

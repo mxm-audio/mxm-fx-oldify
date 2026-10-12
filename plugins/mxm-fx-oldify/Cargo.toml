@@ -1,6 +1,6 @@
 [package]
 name = "mxm-fx-oldify"
-description = "Makes sound old: cassette tape and old records (the engines are not built yet)"
+description = "Makes sound old: cassette tape and old records, vinyl and shellac"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

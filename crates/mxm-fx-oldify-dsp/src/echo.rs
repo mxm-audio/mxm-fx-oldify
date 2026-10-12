@@ -40,6 +40,8 @@ pub struct GrooveEcho {
     filled: usize,
     low: [Biquad; 2],
     top_hz: f64,
+    /// Whether the echo sounded last sample: one coming back starts from an empty low-pass.
+    on: bool,
 }
 
 impl GrooveEcho {
@@ -53,6 +55,7 @@ impl GrooveEcho {
             filled: 0,
             low: Default::default(),
             top_hz: 0.0,
+            on: false,
         }
     }
 
@@ -79,6 +82,10 @@ impl GrooveEcho {
         let length = self.line[0].len();
         let turn = turn_samples(speed, self.rate).min(length);
         let mut out = x;
+        if gain > 0.0 && !self.on {
+            self.low.iter_mut().for_each(Biquad::reset);
+        }
+        self.on = gain > 0.0;
         if gain > 0.0 {
             // Read before writing, so a turn of the whole line reads the slot about to be written.
             let at = (self.head + length - turn) % length;

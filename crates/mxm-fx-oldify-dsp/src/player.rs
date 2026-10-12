@@ -256,6 +256,8 @@ impl PlayerChain {
         }
         self.player = Some(player);
         self.model = player.model();
+        // A new player starts its stages clean: one it did not use holds nothing from before.
+        self.reset();
         let m = self.model;
         let rate = self.rate;
         let at = |kind, hz: f64, db: f64, q: f64| Section::new(kind, hz, db, q).coefficients(rate);

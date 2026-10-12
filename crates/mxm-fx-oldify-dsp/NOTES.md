@@ -317,9 +317,12 @@ the echo taken as the render less the same render with it off): below 500 Hz the
 −50 to −12 dB, and in all 2–8 dB under it, its treble cut. The cited −60 to −35 dB is a real
 disc's; the rest of the travel, to `MAX_ECHO_DB`, is for effect.
 
-**Why the tail covers it.** The tail covers the noise's hold or the longest echo, whichever is
-longer, then the filters'. The slowest disc's turn is shorter than the hold (`NOISE_HOLD_S`); the
-print-through's wrap is the longer (`the_tail_outlasts_both_echoes`).
+**Why the tail is in series.** The record comes before the tape: its own sound plays to the end of
+the noise's hold and its echo a turn after the last sound, and whatever reaches the tape the
+print-through repeats a wrap later still. So the tail is the hold, or the record's end, or that end
+plus a wrap when print-through is on, whichever is last, then the chain's settling; only what is
+switched on counts, so the tail of a plain tape is the hold's (`the_tail_follows_the_stages_in_series`,
+`the_tail_outlasts_both_echoes`).
 
 **Why a clear only forgets.** The line holds 1.8 s, 11 MB at the top rate; a clear on the audio
 thread, as the chain going quiet makes, sets the count of samples written to zero, and anything
@@ -368,6 +371,12 @@ gives the same sound, a little worn; here exactly the same, as a locked groove i
 burst, colour and DC block), not a new sound, written into the turn so a locked groove ticks once
 round. The crossover keeps the jump itself from clicking twice.
 
+**Why only after a whole turn.** Going back needs a turn to go back to: held from the start, or
+drawn in the first turn after a clear, the stylus would go round a turn of silence for as long as it
+is held. It plays the first turn as it comes, then goes back
+(`nothing_is_gone_back_to_before_a_whole_turn`); the turn it goes round keeps its length if the
+disc's speed is changed under it.
+
 **Why only while the music plays.** A skip repeats what is in the line; after the music stops it
 would repeat it into the silence. No skip starts in silence, a skip under way extends the tail by
 its turns to go, and the tail ends where the last one does
@@ -409,6 +418,11 @@ the speed, gone at full speed and nothing at a halt (`Slowed`). The hiss passes 
 **Why the tail grows while it slows.** The sound in the line plays out up to what the read will
 have fallen behind when it comes to rest; the tail adds that while a stop is under way
 (`Transport::lag_to_come`, `a_stop_under_way_keeps_the_tail_until_its_read_has_played_out`).
+
+**Why it moves on in silence.** A quiet chain reads and writes nothing, but a stop held or let go
+in the silence should find the next sound where the tape would be: stopped, or back at speed. So
+the quiet path steps the stop's speed and phase, and builds no lag, since no tape went by the head
+either (`a_tape_stop_moves_on_in_the_silence`).
 
 **Why a reset empties only the near line.** The line holds the longest stop's lag, 5 s at the top
 rate's 768 kHz, 30 MB; a stop's read falls behind no faster than the line is written, so from a

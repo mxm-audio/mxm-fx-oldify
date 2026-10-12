@@ -15,8 +15,9 @@
 //!
 //! **Skips** is the chance a turn that the stylus jumps back: it repeats the turn once, and again
 //! with [`RELOCK`] each time, up to [`MAX_REPEATS`]. It jumps only while the music plays, so the
-//! silence after it never starts one. **Stuck groove**, held, locks the groove: the last turn goes
-//! round for as long as it is held.
+//! silence after it never starts one, and only once a whole turn has played, so there is a turn to
+//! go back to. **Stuck groove**, held, locks the groove: the last turn goes round for as long as it
+//! is held. A turn going round keeps its length if the disc's speed changes under it.
 
 use crate::disc::{Burst, Speed, Voice};
 use crate::echo::turn_samples;
@@ -68,6 +69,9 @@ pub struct Skips {
     /// The loop's share of what is heard, 0 in the music, 1 going round, and its step a sample.
     share: f64,
     step: f64,
+    /// The turn the stylus goes back by, in samples: the disc's, held while a turn goes round and
+    /// until its jump on is done.
+    reading: usize,
     /// The landing's tick.
     tick: Voice,
 }
@@ -86,17 +90,18 @@ impl Skips {
             state: State::Playing,
             share: 0.0,
             step: 1.0 / (JUMP_S * sample_rate).max(1.0),
+            reading: 1,
             tick: Voice::default(),
         };
         skips.clear();
         skips
     }
 
-    /// A new seed, from the next clear on.
+    /// A new seed, from the next draw on; whatever is going round goes on.
     pub fn reseed(&mut self, seed: u32) {
         if seed != self.seed {
             self.seed = seed;
-            self.clear();
+            self.rng = Rng::new(seed ^ 0x5C1F_0001);
         }
     }
 
@@ -150,8 +155,14 @@ impl Skips {
     ) -> [f64; 2] {
         let length = self.line[0].len();
         let turn = turn_samples(speed, self.rate).min(length);
+        if self.state == State::Playing && self.share == 0.0 {
+            self.reading = turn;
+        }
+        let turn = self.reading;
         match self.state {
-            State::Playing => {
+            // Only a whole turn played can be gone back to.
+            // Only a whole turn played can be gone back to, and only once the last jump on is done.
+            State::Playing if self.filled >= turn && self.share == 0.0 => {
                 let until = if held {
                     Some(None)
                 } else if chance > 0.0
@@ -171,6 +182,7 @@ impl Skips {
                     self.land();
                 }
             }
+            State::Playing => {}
             State::Looping { since, until } => {
                 let done = match until {
                     Some(until) => since >= until && !held,
@@ -313,6 +325,73 @@ mod tests {
         assert_eq!(count(false).0, 0);
     }
 
+    /// **No skip before a whole turn has played**: held from the start, or as likely as can be,
+    /// the stylus plays the first turn as it comes, then goes back.
+    #[test]
+    fn nothing_is_gone_back_to_before_a_whole_turn() {
+        let speed = Speed::Shellac78;
+        let turn = turn_samples(speed, RATE);
+        let x = programme(2 * turn);
+        for (chance, held) in [(0.0, true), (MAX_SKIPS, false)] {
+            let mut skips = Skips::new(RATE, 1);
+            let out: Vec<[f64; 2]> = (0..turn)
+                .map(|n| skips.process(x[n], chance, held, speed, true))
+                .collect();
+            assert!((0..turn).all(|n| out[n] == x[n]), "{chance} {held}");
+        }
+        let mut skips = Skips::new(RATE, 1);
+        for frame in x.iter().take(turn + 1) {
+            skips.process(*frame, 0.0, true, speed, true);
+        }
+        assert!(skips.locked());
+    }
+
+    /// **A new skip waits for the last one's jump on**: held again while the stylus is still
+    /// crossing back into the music, it goes round only once that crossing is done.
+    #[test]
+    fn a_new_skip_waits_for_the_last_jump_on() {
+        let speed = Speed::Shellac78;
+        let turn = turn_samples(speed, RATE);
+        let x = programme(4 * turn);
+        let mut skips = Skips::new(RATE, 1);
+        let let_go = 2 * turn;
+        for (n, frame) in x.iter().enumerate().take(let_go + 1) {
+            skips.process(*frame, 0.0, (turn + 1..let_go).contains(&n), speed, true);
+        }
+        assert_eq!(skips.state, State::Playing);
+        assert!(skips.share > 0.0 && skips.share < 1.0);
+        let mut n = let_go + 1;
+        while skips.share > 0.0 {
+            skips.process(x[n], 0.0, true, speed, true);
+            n += 1;
+            assert!(
+                skips.share == 0.0 || skips.state == State::Playing,
+                "turned back mid-way"
+            );
+        }
+        skips.process(x[n], 0.0, true, speed, true);
+        assert!(skips.locked());
+    }
+
+    /// **A turn going round keeps its length** when the disc's speed changes under it.
+    #[test]
+    fn a_turn_going_round_keeps_its_length_when_the_speed_changes() {
+        let turn = turn_samples(Speed::Shellac78, RATE);
+        let x = programme(6 * turn);
+        let mut skips = Skips::new(RATE, 1);
+        let out: Vec<[f64; 2]> = (0..x.len())
+            .map(|n| {
+                let speed = if n < 3 * turn {
+                    Speed::Shellac78
+                } else {
+                    Speed::Lp33
+                };
+                skips.process(x[n], 0.0, n >= turn + 10, speed, true)
+            })
+            .collect();
+        assert!((4 * turn..6 * turn).all(|n| out[n] == held_in_line(out[n - turn])));
+    }
+
     /// **Off, the groove passes untouched, to the bit; a clear forgets the turn**.
     #[test]
     fn off_is_exact_and_a_clear_forgets() {
@@ -325,13 +404,22 @@ mod tests {
                 .all(|x| skips.process(*x, 0.0, false, speed, true) == *x)
         );
         skips.clear();
-        // Locked after a clear, the turn gone round is silence: only the landing's tick sounds.
+        // Held after a clear, the stylus plays the next turn as it comes, here silence; what then
+        // goes round is that silence, not the turn before the clear: only the landing's tick.
         let settle = ((JUMP_S + TICK_S) * RATE) as usize;
-        let out: Vec<[f64; 2]> = (0..turn)
+        let out: Vec<[f64; 2]> = (0..2 * turn + 1)
             .map(|_| skips.process([0.0, 0.0], 0.0, true, speed, false))
             .collect();
         assert!(skips.locked());
-        assert!(out[..settle].iter().any(|v| v[0] != 0.0), "no tick");
-        assert!(out[settle..].iter().all(|v| *v == [0.0, 0.0]));
+        assert!(out[..turn].iter().all(|v| *v == [0.0, 0.0]));
+        assert!(
+            out[turn..turn + settle].iter().any(|v| v[0] != 0.0),
+            "no tick"
+        );
+        assert!(
+            out[turn + settle..2 * turn]
+                .iter()
+                .all(|v| *v == [0.0, 0.0])
+        );
     }
 }

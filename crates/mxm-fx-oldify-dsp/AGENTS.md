@@ -170,7 +170,8 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
 - **`skip`**: the stylus jumping back a groove: the last turn as heard, from a line one turn of
   the slowest disc long written with what was played, goes round again, then the stylus jumps on to
   where the record has got to, so **nothing falls behind**. Skips is a chance a turn, drawn only
-  while the music plays; each repeats one turn, more with `RELOCK`, up to `MAX_REPEATS`. Stuck
+  while the music plays and only once a whole turn has played; a turn going round keeps its length
+  if the disc's speed changes; each repeats one turn, more with `RELOCK`, up to `MAX_REPEATS`. Stuck
   groove, held, locks it. Each jump crosses over in `JUMP_S` and lands with one of the disc's
   clicks (`disc::Voice`); a clear forgets the line at no cost ([NOTES.md § Skips](NOTES.md#skips)).
 - **`groove`**: tracing distortion `x / √(1 + c·x²)` on the lateral motion, `c` from the cited
@@ -201,25 +202,43 @@ the recording horn → era (mono, the acoustic band, the cutting limiter, the cu
 
 ## Smoothing
 
-Every continuous control ramps linearly over `SMOOTHING_S`, as an **integer step count**, its value
-computed, never accumulated; the same target again does not restart a ramp. Tape, Grade, Character
-and the shapes switch at once. `reset` ends every ramp and clears every memory.
+Every continuous control that scales or bends what is heard ramps linearly over `SMOOTHING_S`, as
+an **integer step count**, its value computed, never accumulated; the same target again does not
+restart a ramp. That includes the record's levels (surface noise, rumble, crackle, hum), the horn's
+amount, the groove's side, wear, dynamic wear and distortion, and Dropout width. **Rates, times
+and chances take effect at once** (the collection's rule: smooth signals, not coefficients):
+Crackle, Clicks, Skips, a dropout's amount and intensity (they shape only the next event), Stop
+time; so do the record's wobble depths (eccentricity, warp), whose change the transport's drift
+term carries without a jump. The tape's wow and flutter, depth and rate, ramp.
+Tape, Grade, Character and the shapes switch at once. A level switched off fades at what it was
+playing (Hum at its mains). **A stage switched off holds nothing for later**: back on, it starts
+clean (an era, a player, the horn, Dynamic wear) or from the sound now (the pinch's average, the
+dulling and top filters, which follow while off). `reset` ends every ramp and clears every memory.
 
 ## Silence, seeds and exact paths
 
 - **Silence in is exact zero out once the tails have run out**: the noise holds `NOISE_HOLD_S`
-  after the input falls under `SILENCE`, fades over `NOISE_FADE_S`, and after `Oldify::tail` (the
-  hold, or the longest echo if longer: the groove's turn on the slowest disc, the print-through's
-  wrap; while a tape stop is under way, what its read will have fallen behind; while a skip goes
-  round, its turns to go) every memory is cleared and the chain is **quiet**. A quiet chain fed silence costs the input scan only
-  and gives exact zero; the input returning wakes it, with every seed back at its start.
+  after the input falls under `SILENCE`, fades over `NOISE_FADE_S`, and after `Oldify::tail` every
+  memory is cleared and the chain is **quiet**. The tail follows the stages switched on, **in
+  series** (`Oldify::tail_for`): the hold; a record's own sound and its groove echo's turn; what
+  reaches the tape printed a wrap after the record's last; or a skip's deadline if later, its turns
+  to go then its print, kept until the input is heard again, so a skip ending in the silence keeps
+  its tail; then, while a tape stop is under way, what its read will have fallen behind, after
+  either, since the stop delays everything the tape holds. A quiet chain still moves a tape stop
+  on, so the next sound finds the tape where it would be. A quiet chain fed silence costs the
+  input scan only and gives exact zero; the input returning wakes it, with every seed back at its
+  start.
 - **Mix zero is the dry input delayed by the latency, to the bit.** A clean modern record on a
   modern deck is the input delayed, at its level.
 - **A neutral cassette** (`Controls::IDENTITY`) is the input delayed, within the oversampler's
   passband; an impulse peaks at exactly the reported latency.
-- **Seeded**: the transport's, the hiss generators', the dropout streams', the disc's and the
-  worn walls' draws, at most one each per sample; how a host cuts its blocks never changes a
-  sample, quiet stretches included.
+- **Seeded**: the transport's, the hiss generators', the dropout streams', the disc's, the skips'
+  and the worn walls' draws, a bounded number each per sample set by the state alone (a skip's
+  start draws its repeats and its click; each worn wall draws its own; the disc renews a share of
+  its tables at each turn, 68 µs at the most crackle and clicks, measured, and resizes them when
+  Crackle or Clicks moves), so how a host cuts its blocks never changes a sample, quiet stretches
+  included. **Variation** gives each a new
+  generator from its next draw and resets nothing; a clear starts each from its seed.
 
 ## Realtime and numeric rules
 

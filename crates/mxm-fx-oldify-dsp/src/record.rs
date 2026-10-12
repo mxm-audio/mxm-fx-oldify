@@ -284,21 +284,22 @@ impl Hum {
         self.phase = 0.0;
     }
 
+    /// The hum's next sample at `gain`, its RMS.
     #[inline]
-    pub fn next(&mut self, mains: Mains, hum_db: f32, rate: f64) -> f64 {
+    pub fn next(&mut self, mains: Mains, gain: f64, rate: f64) -> f64 {
         let hz = match mains {
             Mains::Off => return 0.0,
             Mains::Fifty => 50.0,
             Mains::Sixty => 60.0,
         };
-        if hum_db <= NOISE_OFF_DB {
+        if gain <= 0.0 {
             return 0.0;
         }
         self.phase = (self.phase + hz / rate).fract();
         let p = TAU * self.phase;
         // The fundamental, a strong second, a weaker third; RMS of the sum about the level.
         let shape = p.sin() + 0.6 * (2.0 * p).sin() + 0.3 * (3.0 * p).sin();
-        f64::from(crate::db_to_gain(hum_db)) * shape * SQRT_2 / (1.0f64 + 0.36 + 0.09).sqrt()
+        gain * shape * SQRT_2 / (1.0f64 + 0.36 + 0.09).sqrt()
     }
 }
 
@@ -333,6 +334,19 @@ pub struct Record {
     skips: Skips,
     /// The warp, ramped: the level's dip follows it.
     warp: Ramp,
+    /// The groove's side, wear, dynamic wear and distortion, the horn's amount and the hum's gain,
+    /// ramped: each moves what is heard.
+    side: Ramp,
+    wear: Ramp,
+    dynamic: Ramp,
+    distortion: Ramp,
+    horn_amount: Ramp,
+    horn_length: Ramp,
+    hum_gain: Ramp,
+    /// Whether the horn sounded last sample: one coming in starts from an empty horn.
+    horned: bool,
+    /// The mains the hum last played at: switched off, the hum fades out at it.
+    hum_mains: Mains,
     targets: RecordControls,
 }
 
@@ -365,8 +379,31 @@ impl Record {
             echo_gain: Ramp::settled_at(0.0, steps),
             skips: Skips::new(sample_rate, seed),
             warp: Ramp::settled_at(0.0, steps),
+            side: Ramp::settled_at(RecordControls::CLEAN.groove.side, steps),
+            wear: Ramp::settled_at(RecordControls::CLEAN.groove.wear, steps),
+            dynamic: Ramp::settled_at(RecordControls::CLEAN.groove.dynamic, steps),
+            distortion: Ramp::settled_at(RecordControls::CLEAN.groove.distortion, steps),
+            horn_amount: Ramp::settled_at(RecordControls::CLEAN.horn.amount, steps),
+            horn_length: Ramp::settled_at(RecordControls::CLEAN.horn.length_m, steps),
+            hum_gain: Ramp::settled_at(0.0, steps),
+            horned: false,
+            hum_mains: Mains::Off,
             targets: RecordControls::CLEAN,
         }
+    }
+
+    fn ramps(&mut self) -> [&mut Ramp; 9] {
+        [
+            &mut self.warp,
+            &mut self.echo_gain,
+            &mut self.side,
+            &mut self.wear,
+            &mut self.dynamic,
+            &mut self.distortion,
+            &mut self.horn_amount,
+            &mut self.horn_length,
+            &mut self.hum_gain,
+        ]
     }
 
     pub fn reseed(&mut self, seed: u32) {
@@ -392,24 +429,37 @@ impl Record {
     }
 
     /// The hum's mains and level, as set.
-    pub fn mains(&self) -> (Mains, f32) {
-        (self.targets.mains, self.targets.hum_db)
+    pub fn mains(&self) -> (Mains, f64) {
+        (self.hum_mains, f64::from(self.hum_gain.value()))
     }
 
-    /// Moves the warp's and the echo's ramps on by `samples`, playing nothing.
+    /// Moves every ramp on by `samples`, the disc's too, playing nothing.
     pub fn advance(&mut self, samples: u32) {
-        self.warp.advance(samples);
-        self.echo_gain.advance(samples);
+        self.ramps().into_iter().for_each(|r| r.advance(samples));
+        self.disc.advance(samples);
     }
 
-    /// Ends the warp's and the echo's ramps at their targets.
+    /// Ends every ramp at its target, the disc's too.
     pub fn snap(&mut self) {
-        self.warp.snap();
-        self.echo_gain.snap();
+        self.ramps().into_iter().for_each(Ramp::snap);
+        self.disc.snap();
     }
 
     pub fn is_settled(&self) -> bool {
-        self.warp.is_settled() && self.echo_gain.is_settled()
+        [
+            &self.warp,
+            &self.echo_gain,
+            &self.side,
+            &self.wear,
+            &self.dynamic,
+            &self.distortion,
+            &self.horn_amount,
+            &self.horn_length,
+            &self.hum_gain,
+        ]
+        .iter()
+        .all(|r| r.is_settled())
+            && self.disc.is_settled()
     }
 
     /// Clears every memory; the disc goes back to its seed's first turn.
@@ -436,6 +486,15 @@ impl Record {
         self.targets = c;
         let rate = self.rate;
         if self.era != Some(c.era) {
+            // A new era starts its stages clean: a band or a wall it did not use holds nothing
+            // from the last time it was used.
+            for side in &mut self.sides {
+                for b in side.band.iter_mut().chain(side.brick.iter_mut()) {
+                    b.reset();
+                }
+                side.cutter.reset();
+            }
+            self.limiter = 0.0;
             self.era = Some(c.era);
             let m = c.era.model();
             let at = |kind, hz: f64, q: f64| Section::new(kind, hz, 0.0, q).coefficients(rate);
@@ -454,9 +513,22 @@ impl Record {
             }
         }
         self.player.set_player(c.player);
-        self.horn.set(c.horn);
+        self.horn_amount.retarget(c.horn.amount);
+        self.horn_length.retarget(c.horn.length_m);
+        self.side.retarget(c.groove.side);
+        self.wear.retarget(c.groove.wear);
+        self.dynamic.retarget(c.groove.dynamic);
+        self.distortion.retarget(c.groove.distortion);
+        if c.mains != Mains::Off {
+            self.hum_mains = c.mains;
+        }
+        self.hum_gain
+            .retarget(if c.mains != Mains::Off && c.hum_db > NOISE_OFF_DB {
+                crate::db_to_gain(c.hum_db)
+            } else {
+                0.0
+            });
         self.warp.retarget(c.warp);
-        self.echo.set_groove_speed(c.groove.speed());
         self.echo_gain.retarget(if c.echo_db > NOISE_OFF_DB {
             crate::db_to_gain(c.echo_db)
         } else {
@@ -529,8 +601,26 @@ impl Record {
         let c = self.targets;
         let warped = f64::from(self.warp.next());
         let echo = f64::from(self.echo_gain.next());
+        let groove = GrooveControls {
+            side: self.side.next(),
+            wear: self.wear.next(),
+            dynamic: self.dynamic.next(),
+            distortion: self.distortion.next(),
+            tip_um: c.player.model().tip_um,
+        };
+        self.hum_gain.next();
+        self.echo.set_groove_speed(groove.speed());
+        self.horn.set(HornControls {
+            amount: self.horn_amount.next(),
+            length_m: self.horn_length.next(),
+        });
         let era = c.era.model();
         let horned = self.horn.sounds();
+        if horned && !self.horned {
+            // A horn coming in starts empty, not with whatever it held when it went out.
+            self.horn.clear();
+        }
+        self.horned = horned;
         let mut x = [f64::from(frame[0]), f64::from(frame[1])];
         if horned {
             x = self.horn.record(x);
@@ -568,16 +658,10 @@ impl Record {
             *v = cut.process(*v);
         }
         x = self.echo.process(x, echo, c.disc.speed);
-        let groove = GrooveControls {
-            tip_um: c.player.model().tip_um,
-            ..c.groove
-        };
         let grooved = self.groove.process([x[0] as f32, x[1] as f32], &groove);
-        let own = if noise > 0.0 && self.disc.sounds() {
-            self.disc.sample() * f64::from(noise)
-        } else {
-            0.0
-        };
+        // The disc turns while the record plays, gated or silent, so its defects stay where the
+        // turn is and a sound in progress plays out.
+        let own = self.disc.sample() * f64::from(noise);
         // The warp's dip, at the stylus: the music and the disc's own sound alike.
         let lift = if warped > 0.0 {
             10f64.powf(-warp::DIP_DB * warped * warp::dip(turn) / 20.0)
@@ -632,6 +716,156 @@ mod tests {
             }
         }
         10.0 * (output / input).log10()
+    }
+
+    /// **The disc turns while its sound is gated**: a record whose noise was gated off for a while
+    /// plays on exactly as one that was never gated, its defects where the turn is.
+    #[test]
+    fn the_disc_turns_while_gated() {
+        let c = RecordControls {
+            disc: DiscControls {
+                scratches: 3,
+                crackle: 300.0,
+                clicks: 5.0,
+                ..RecordControls::INIT.disc
+            },
+            ..RecordControls::INIT
+        };
+        let run = |gated: bool| {
+            let mut record = Record::new(RATE, 1);
+            record.set_controls(c);
+            record.snap();
+            let out: Vec<f32> = (0..3 * RATE as usize)
+                .map(|n| {
+                    let noise = if gated && (RATE as usize..2 * RATE as usize).contains(&n) {
+                        0.0
+                    } else {
+                        1.0
+                    };
+                    record.process([0.0, 0.0], noise, 0.0)[0]
+                })
+                .collect();
+            (record.disc.angle(), out)
+        };
+        let ((angle, always), (gated_angle, gated)) = (run(false), run(true));
+        assert_eq!(angle, gated_angle);
+        // The filters after the disc remember the gated stretch for a moment; past it the two are
+        // the same sound.
+        let apart = (5 * RATE as usize / 2..3 * RATE as usize)
+            .map(|n| (always[n] - gated[n]).abs())
+            .fold(0.0f32, f32::max);
+        assert!(apart < 1e-6, "{apart}");
+    }
+
+    /// **Hum switched off fades out**: its level ramps to nothing at the mains it played, not cut
+    /// at once. Switched a sixth of a cycle in, where the hum is near its peak.
+    #[test]
+    fn hum_switched_off_fades_out() {
+        let on = RecordControls {
+            mains: Mains::Fifty,
+            hum_db: MAX_HUM_DB,
+            ..RecordControls::CLEAN
+        };
+        let mut record = Record::new(RATE, 1);
+        record.set_controls(on);
+        record.snap();
+        let mut hum = Hum::default();
+        let mut previous = 0.0f64;
+        let mut largest = 0.0f64;
+        let switch = 4_800 + 160;
+        let mut at_switch = 0.0f64;
+        for n in 0..9_600 {
+            if n == switch {
+                at_switch = previous;
+                record.set_controls(RecordControls {
+                    mains: Mains::Off,
+                    ..on
+                });
+            }
+            record.process([0.0, 0.0], 1.0, 0.0);
+            let (mains, gain) = record.mains();
+            if n == switch {
+                assert_eq!(mains, Mains::Fifty, "the hum went off before its level");
+            }
+            let y = hum.next(mains, gain, RATE);
+            if n > 0 {
+                largest = largest.max((y - previous).abs());
+            }
+            previous = y;
+        }
+        // The hum moves at most about 0.003 a sample at 50 Hz and its loudest; a cut would jump by
+        // all of it.
+        assert!(at_switch > 0.1, "{at_switch}");
+        assert!(largest < 0.02 && previous == 0.0, "{largest} {previous}");
+    }
+
+    /// **A stage switched out and back starts clean**: an era's wall and limiter and a player's
+    /// stages, left holding a loud tone when the record moved to another era and player, give
+    /// nothing back when it returns in silence; nor does Dynamic wear switched off and on.
+    #[test]
+    fn a_stage_switched_out_and_back_starts_clean() {
+        let loud = RecordControls {
+            era: Era::Us78,
+            player: Player::Radiogram,
+            groove: GrooveControls {
+                dynamic: 1.0,
+                distortion: 1.0,
+                ..GrooveControls::CLEAN
+            },
+            ..RecordControls::CLEAN
+        };
+        let other = RecordControls {
+            era: Era::Modern,
+            player: Player::ModernDeck,
+            groove: GrooveControls::CLEAN,
+            ..RecordControls::CLEAN
+        };
+        let mut record = Record::new(RATE, 1);
+        record.set_controls(loud);
+        record.snap();
+        for i in 0..24_000 {
+            let x = (0.9 * (TAU * 220.0 * i as f64 / RATE).sin()) as f32;
+            record.process([x, x], 0.0, 0.0);
+        }
+        record.set_controls(other);
+        record.snap();
+        for _ in 0..24_000 {
+            record.process([0.0, 0.0], 0.0, 0.0);
+        }
+        record.set_controls(loud);
+        record.snap();
+        let back = (0..4_800)
+            .map(|_| record.process([0.0, 0.0], 0.0, 0.0)[0].abs())
+            .fold(0.0f32, f32::max);
+        assert!(back < 1e-6, "{back}");
+    }
+
+    /// **A moved level ramps**: hum and surface noise turned up go there over the smoothing time,
+    /// not in one sample.
+    #[test]
+    fn a_moved_record_level_ramps() {
+        let quiet = RecordControls {
+            mains: Mains::Fifty,
+            hum_db: -60.0,
+            ..RecordControls::CLEAN
+        };
+        let loud = RecordControls {
+            hum_db: MAX_HUM_DB,
+            ..quiet
+        };
+        let mut record = Record::new(RATE, 1);
+        record.set_controls(quiet);
+        record.snap();
+        record.set_controls(loud);
+        record.process([0.0, 0.0], 1.0, 0.0);
+        let (_, first) = record.mains();
+        assert!(
+            first < 0.1 * f64::from(crate::db_to_gain(MAX_HUM_DB)),
+            "{first}"
+        );
+        record.advance(RATE as u32);
+        let (_, settled) = record.mains();
+        assert_eq!(settled, f64::from(crate::db_to_gain(MAX_HUM_DB)));
     }
 
     #[test]
@@ -864,11 +1098,9 @@ mod tests {
     fn hum_is_its_mains_at_about_its_level() {
         let mut hum = Hum::default();
         let n = 48_000;
-        let samples: Vec<f64> = (0..n)
-            .map(|_| hum.next(Mains::Fifty, -40.0, RATE))
-            .collect();
+        let samples: Vec<f64> = (0..n).map(|_| hum.next(Mains::Fifty, 0.01, RATE)).collect();
         let rms = (samples.iter().map(|v| v * v).sum::<f64>() / n as f64).sqrt();
         assert!((20.0 * rms.log10() + 40.0).abs() < 1.0);
-        assert_eq!(hum.next(Mains::Off, -40.0, RATE), 0.0);
+        assert_eq!(hum.next(Mains::Off, 0.01, RATE), 0.0);
     }
 }

@@ -497,6 +497,26 @@ impl Transport {
         (self.stop.lag + n * (1.0 - self.stop.speed) + pace * n * (n + 1.0) / 2.0).max(0.0)
     }
 
+    /// The stop moves on `samples` while nothing is read or written (the chain quiet): its speed
+    /// and phase as if they went by, but no lag builds up, since no tape went by the head either.
+    /// At rest, nothing to do.
+    pub fn idle_stop(&mut self, samples: u32) {
+        for _ in 0..samples {
+            let at_rest = match self.stop.phase {
+                Phase::Running => !self.held,
+                Phase::Stopped => self.held,
+                _ => false,
+            };
+            if at_rest {
+                break;
+            }
+            self.step_stop();
+        }
+        if let Phase::Stopping { .. } = self.stop.phase {
+            self.stop.lag = 0.0;
+        }
+    }
+
     /// One sample of the tape stop: the speed's and the read's lag's next step.
     fn step_stop(&mut self) {
         let start = self.base.max(1.0);
