@@ -1,0 +1,270 @@
+{
+  "schema_version": 1,
+  "plugin": "dk.mxm.mxm-fx-oldify",
+  "name": "Overdriven tape",
+  "category": "fx",
+  "_comment": "`v` is the value and is authoritative. `text` is this plugin's own formatting of it, kept so the file can be read, and is never loaded.",
+  "params": {
+    "age": {
+      "v": 0.3,
+      "text": "30 %"
+    },
+    "azimuth": {
+      "v": 0.0,
+      "text": "0.0′"
+    },
+    "character": {
+      "v": 1.0,
+      "text": "Hard"
+    },
+    "clicks": {
+      "v": 0.25079763,
+      "text": "1.0/s"
+    },
+    "crackle": {
+      "v": 0.41617915,
+      "text": "60/s"
+    },
+    "crackle_level": {
+      "v": 0.5,
+      "text": "0.0 dB"
+    },
+    "cracks": {
+      "v": 0.0,
+      "text": "0"
+    },
+    "crosstalk": {
+      "v": 0.6625744,
+      "text": "-45.0 dB"
+    },
+    "cut_curve": {
+      "v": 0.0,
+      "text": "Follow era"
+    },
+    "disc": {
+      "v": 0.0,
+      "text": "LP 33⅓"
+    },
+    "drive": {
+      "v": 0.710343,
+      "text": "12.0 dB"
+    },
+    "dropout_intensity": {
+      "v": 0.25,
+      "text": "25 %"
+    },
+    "dropout_width": {
+      "v": 0.25,
+      "text": "25 %"
+    },
+    "dropouts": {
+      "v": 0.0,
+      "text": "0 %"
+    },
+    "dynamic_wear": {
+      "v": 0.0,
+      "text": "0 %"
+    },
+    "eccentricity": {
+      "v": 0.2,
+      "text": "0.20 mm"
+    },
+    "era": {
+      "v": 1.0,
+      "text": "Modern"
+    },
+    "flange": {
+      "v": 0.0,
+      "text": "0 %"
+    },
+    "flutter": {
+      "v": 0.018,
+      "text": "2 %"
+    },
+    "flutter_rate": {
+      "v": 0.35372236,
+      "text": "7.60 Hz"
+    },
+    "flutter_shape": {
+      "v": 1.0,
+      "text": "Random"
+    },
+    "flutter_sync": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "follow": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "generations": {
+      "v": 0.0,
+      "text": "1"
+    },
+    "grade": {
+      "v": 0.33333334,
+      "text": "Standard"
+    },
+    "groove_distortion": {
+      "v": 0.5,
+      "text": "100 %"
+    },
+    "groove_echo": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "hiss": {
+      "v": 0.5107815,
+      "text": "-62.0 dB"
+    },
+    "horn": {
+      "v": 0.0,
+      "text": "0 %"
+    },
+    "horn_size": {
+      "v": 0.3548387,
+      "text": "0.90 m"
+    },
+    "hum": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "hum_level": {
+      "v": 0.5,
+      "text": "-50.0 dB"
+    },
+    "noise_follows": {
+      "v": 0.3,
+      "text": "30 %"
+    },
+    "noise_stops": {
+      "v": 1.0,
+      "text": "On"
+    },
+    "nr": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "nr_amount": {
+      "v": 0.5,
+      "text": "50 %"
+    },
+    "nr_brightness": {
+      "v": 0.5,
+      "text": "50 %"
+    },
+    "nr_decode": {
+      "v": 1.0,
+      "text": "On"
+    },
+    "nr_level_error": {
+      "v": 0.5,
+      "text": "0.0 dB"
+    },
+    "player": {
+      "v": 1.0,
+      "text": "Modern deck"
+    },
+    "print_through": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "record_on": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "replay_curve": {
+      "v": 0.0,
+      "text": "Follow player"
+    },
+    "rumble": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "saturation": {
+      "v": 0.85,
+      "text": "85 %"
+    },
+    "scratches": {
+      "v": 0.0,
+      "text": "0"
+    },
+    "side": {
+      "v": 0.25,
+      "text": "25 %"
+    },
+    "skips": {
+      "v": 0.0,
+      "text": "0.00 %"
+    },
+    "stop_sync": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "stop_time": {
+      "v": 0.611851,
+      "text": "1.50 s"
+    },
+    "stuck_groove": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "surface_noise": {
+      "v": 0.29066217,
+      "text": "-70.0 dB"
+    },
+    "tape": {
+      "v": 0.0,
+      "text": "Type I"
+    },
+    "tape_on": {
+      "v": 1.0,
+      "text": "On"
+    },
+    "tape_stop": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "tape_tone": {
+      "v": 1.0,
+      "text": "100 %"
+    },
+    "variation": {
+      "v": 0.0,
+      "text": "0"
+    },
+    "warp": {
+      "v": 0.0,
+      "text": "0 %"
+    },
+    "wear": {
+      "v": 0.2,
+      "text": "20 %"
+    },
+    "width": {
+      "v": 0.5,
+      "text": "100 %"
+    },
+    "wow": {
+      "v": 0.1,
+      "text": "10 %"
+    },
+    "wow_rate": {
+      "v": 0.43533558,
+      "text": "0.500 Hz"
+    },
+    "wow_shape": {
+      "v": 0.33333334,
+      "text": "Random"
+    },
+    "wow_sync": {
+      "v": 0.0,
+      "text": "Off"
+    },
+    "wrong_eq": {
+      "v": 0.0,
+      "text": "Off"
+    }
+  },
+  "state": null
+}

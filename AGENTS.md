@@ -109,7 +109,7 @@ disc's surface, hum) and the cassette
 flutter with Flange, a tape stop, hiss that follows or stops with the input, dropouts, the deck's faults and the
 age's spacing loss); a Vinyl and a Tape switch put each in the chain, and both on tape the record. The plugin syncs the wobble rates to
 the host's tempo and reports the latency and the chain's tail to the host, and the plugin ships a
-factory bank of twenty-one sounds across both media, and a Quality switch whose High works the
+factory bank of fifty sounds across both media and past them, and a Quality switch whose High works the
 tape's saturation and the moving read harder. The §14 brief is [`docs/briefs/mxm-fx-oldify.md`](docs/briefs/mxm-fx-oldify.md).
 
 It is one of the MXM products, each in its own repository under

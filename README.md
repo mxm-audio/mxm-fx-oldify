@@ -9,8 +9,8 @@ the loud passages, if you like) and distortion, an off-centre hole, a warp, skip
 cracks, surface noise, rumble, hum and the groove's echo of the music a turn later.
 The cassette: tape type and grade, saturation, generations of copies, wow and flutter
 (tempo-synced if you like, with flange), a tape stop, hiss and noise reduction, print-through, dropouts, a
-misaligned deck and age. Drive, width and mix sit around them, and twenty-one factory sounds start from
-both media, and a High quality that saturates the tape at four times the rate and reads the moving
+misaligned deck and age. Drive, width and mix sit around them, fifty factory sounds start from
+both media and go past them, and a High quality that saturates the tape at four times the rate and reads the moving
 tape and record more finely. The effect has a fixed latency of about 41 ms,
 which it reports to the host.
 

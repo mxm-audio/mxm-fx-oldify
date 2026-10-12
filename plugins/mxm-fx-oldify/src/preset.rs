@@ -1,6 +1,7 @@
 //! The shared preset-system seam, and the factory bank.
 //!
-//! **Twenty-one sounds across both media and the chain of them**, designed as overrides on Init in
+//! **Fifty sounds across both media, the chain of them and past what either really does**, and Init
+//! beside them (the owner, 2026-10-12: "50 presets + the init"), designed as overrides on Init in
 //! `preset_designs.rs`, the bank's one readable statement, and generated to `presets/` by
 //! `examples/fx_oldify_build_presets.rs`. The files are compiled in; the tests below hold them to
 //! what the generator emits today, so a design edited without regenerating fails here.
@@ -128,6 +129,10 @@ pub const PRESERVED: [&str; 2] = ["mix", "quality"];
 /// `preset_designs.rs`.
 pub const FACTORY_FILES: &[(&str, &str)] = &[
     (
+        "1928-electrical-78-on-a-gramophone",
+        include_str!("../presets/1928-electrical-78-on-a-gramophone.json"),
+    ),
+    (
         "1942-dance-band-on-a-radiogram",
         include_str!("../presets/1942-dance-band-on-a-radiogram.json"),
     ),
@@ -141,12 +146,29 @@ pub const FACTORY_FILES: &[(&str, &str)] = &[
         include_str!("../presets/1955-lp-on-mono-hi-fi.json"),
     ),
     (
+        "1958-jukebox-45",
+        include_str!("../presets/1958-jukebox-45.json"),
+    ),
+    (
+        "78s-dubbed-to-cassette",
+        include_str!("../presets/78s-dubbed-to-cassette.json"),
+    ),
+    (
         "acoustic-78-on-a-wind-up",
         include_str!("../presets/acoustic-78-on-a-wind-up.json"),
     ),
     (
+        "answering-machine",
+        include_str!("../presets/answering-machine.json"),
+    ),
+    (
         "breathing-hiss",
         include_str!("../presets/breathing-hiss.json"),
+    ),
+    ("car-stereo", include_str!("../presets/car-stereo.json")),
+    (
+        "chrome-on-the-ferric-setting",
+        include_str!("../presets/chrome-on-the-ferric-setting.json"),
     ),
     (
         "chrome-studio-deck",
@@ -156,6 +178,11 @@ pub const FACTORY_FILES: &[(&str, &str)] = &[
         "cracked-shellac",
         include_str!("../presets/cracked-shellac.json"),
     ),
+    ("crackle-bed", include_str!("../presets/crackle-bed.json")),
+    (
+        "disintegrating-tape",
+        include_str!("../presets/disintegrating-tape.json"),
+    ),
     (
         "early-lp-wrong-curve",
         include_str!("../presets/early-lp-wrong-curve.json"),
@@ -164,21 +191,76 @@ pub const FACTORY_FILES: &[(&str, &str)] = &[
         "encoded-never-decoded",
         include_str!("../presets/encoded-never-decoded.json"),
     ),
+    ("flutter-fuzz", include_str!("../presets/flutter-fuzz.json")),
+    (
+        "four-track-bounce",
+        include_str!("../presets/four-track-bounce.json"),
+    ),
+    (
+        "funhouse-warp",
+        include_str!("../presets/funhouse-warp.json"),
+    ),
+    (
+        "ghost-in-the-groove",
+        include_str!("../presets/ghost-in-the-groove.json"),
+    ),
+    (
+        "haunted-gramophone",
+        include_str!("../presets/haunted-gramophone.json"),
+    ),
     ("home-deck", include_str!("../presets/home-deck.json")),
+    (
+        "late-78-on-a-radiogram",
+        include_str!("../presets/late-78-on-a-radiogram.json"),
+    ),
+    (
+        "lo-fi-beat-tape",
+        include_str!("../presets/lo-fi-beat-tape.json"),
+    ),
+    ("melting-tape", include_str!("../presets/melting-tape.json")),
+    (
+        "metal-tape-recorded-hot",
+        include_str!("../presets/metal-tape-recorded-hot.json"),
+    ),
+    ("mix-bus-tape", include_str!("../presets/mix-bus-tape.json")),
     (
         "mixtape-from-vinyl",
         include_str!("../presets/mixtape-from-vinyl.json"),
+    ),
+    (
+        "overdriven-tape",
+        include_str!("../presets/overdriven-tape.json"),
+    ),
+    (
+        "phase-smeared-tape",
+        include_str!("../presets/phase-smeared-tape.json"),
     ),
     (
         "pocket-player",
         include_str!("../presets/pocket-player.json"),
     ),
     (
+        "radio-transcription-disc",
+        include_str!("../presets/radio-transcription-disc.json"),
+    ),
+    (
         "record-on-1940s-radio",
         include_str!("../presets/record-on-1940s-radio.json"),
     ),
+    ("sawtooth-wow", include_str!("../presets/sawtooth-wow.json")),
     ("seasick-tape", include_str!("../presets/seasick-tape.json")),
+    ("skipping-45", include_str!("../presets/skipping-45.json")),
+    (
+        "small-horn-gramophone",
+        include_str!("../presets/small-horn-gramophone.json"),
+    ),
+    (
+        "stored-for-thirty-years",
+        include_str!("../presets/stored-for-thirty-years.json"),
+    ),
+    ("stuck-78", include_str!("../presets/stuck-78.json")),
     ("tape-flanger", include_str!("../presets/tape-flanger.json")),
+    ("tape-vibrato", include_str!("../presets/tape-vibrato.json")),
     (
         "taped-off-the-radio",
         include_str!("../presets/taped-off-the-radio.json"),
@@ -186,6 +268,14 @@ pub const FACTORY_FILES: &[(&str, &str)] = &[
     (
         "third-generation-dub",
         include_str!("../presets/third-generation-dub.json"),
+    ),
+    (
+        "thrift-store-lp",
+        include_str!("../presets/thrift-store-lp.json"),
+    ),
+    (
+        "ungrounded-turntable",
+        include_str!("../presets/ungrounded-turntable.json"),
     ),
     (
         "wartime-uk-78",

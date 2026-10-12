@@ -136,9 +136,10 @@ takes a switch or a count as it comes ([NOTES.md § Smoothing](NOTES.md#smoothin
 
 ## Presets
 
-Through `mxm-preset` (`src/preset.rs`). **Twenty-one factory sounds**, category Fx, designed in
-`src/preset_designs.rs` as overrides on Init and written to `presets/` by
-`examples/fx_oldify_build_presets.rs`. **A recipe leaves out Mix and Quality**
+Through `mxm-preset` (`src/preset.rs`). **Fifty factory sounds and Init** (the owner, 2026-10-12),
+category Fx, ten of them past the real thing, designed in `src/preset_designs.rs` as overrides on
+Init and written to `presets/` by `examples/fx_oldify_build_presets.rs`. **A recipe leaves out Mix
+and Quality**
 (`preset::PRESERVED`, `is_factory_preserved`): Mix as mxm-fx-delay's do, Quality because it is the
 player's machine's to say, so loading a sound keeps both
 (`loading_a_factory_sound_keeps_the_players_mix`). Held by

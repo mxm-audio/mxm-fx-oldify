@@ -41,8 +41,9 @@ off is dimmed but can still be set up.
 
 The chain has one fixed latency (about 41 ms), reported to the host,
 and a tail after which silence in is exact silence out, unless the noise is set to play on.
-Twenty-one factory sounds cover cassettes, records and records taped to cassette, from a home deck
-to an acoustic 78 on a wind-up gramophone.
+Fifty factory sounds cover cassettes, records and records taped to cassette, from a home deck
+to an acoustic 78 on a wind-up gramophone, and go past them: melting tape, a saw-shaped wow, a
+record warped twice as far as any real one.
 
 ```bash
 cargo xtask bundle mxm-fx-oldify --release

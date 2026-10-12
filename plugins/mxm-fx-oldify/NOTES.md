@@ -27,7 +27,12 @@ error is a gain too, stored the same way (`params::level_error_db`).
 
 ## The factory bank
 
-Twenty-one sounds: nine cassettes, ten records, two records taped to cassette. The design table
+Fifty sounds and Init (the owner, 2026-10-12: "please make so there is 50 presets + the init"):
+sixteen cassettes, twenty records, four records taped to cassette, and ten past the real thing,
+the controls taken where no deck or record goes (melting tape, a saw-shaped or vibrato wow, flutter
+at 30 Hz swung by the wow, a 200 % warp, a crackle that plays on through silence, a groove echo
+far louder than a groove's): the owner, 2026-10-11, "our plugin should scale into the 'non
+physical' for creative use". The design table
 (`src/preset_designs.rs`) is the bank's one readable statement, each sound as overrides on Init in
 panel units with a sentence saying what it is; a control a design does not name stays at Init. Its
 `generate` writes every parameter but Mix and Quality: Mix is factory-preserved, as in

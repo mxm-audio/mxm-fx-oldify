@@ -23,6 +23,7 @@ const ON: f32 = 1.0;
 // Tape and grade.
 const TYPE_I: f32 = 0.0;
 const TYPE_II: f32 = 1.0;
+const TYPE_IV: f32 = 2.0;
 const ECONOMY: f32 = 0.0;
 const STANDARD: f32 = 1.0;
 const HIGH: f32 = 2.0;
@@ -33,6 +34,7 @@ const HARD: f32 = 1.0;
 // Shapes: wow's four, flutter's first two.
 const SINE: f32 = 0.0;
 const RANDOM: f32 = 1.0;
+const SAW: f32 = 2.0;
 // Noise reduction.
 const NR_OFF: f32 = 0.0;
 const SINGLE_BAND: f32 = 1.0;
@@ -43,8 +45,10 @@ const SINGLE: f32 = 1.0;
 const SHELLAC: f32 = 2.0;
 // Era.
 const ACOUSTIC: f32 = 0.0;
+const EARLY_ELECTRICAL: f32 = 1.0;
 const US_78: f32 = 2.0;
 const UK_78: f32 = 3.0;
+const LATE_78: f32 = 4.0;
 const EARLY_SINGLE: f32 = 5.0;
 const EARLY_LP: f32 = 6.0;
 const MONO_LP: f32 = 7.0;
@@ -57,6 +61,10 @@ const PORTABLE: f32 = 3.0;
 const MONO_HI_FI: f32 = 4.0;
 const ON_THE_RADIO: f32 = 5.0;
 const MODERN_DECK: f32 = 6.0;
+// Cutting and replay curves: a follow first, then Flat, the 78s', Early LP, Early 45, ...
+const TRANSCRIPTION: f32 = 7.0;
+// Hum.
+const HUM_50: f32 = 1.0;
 
 /// A cassette alone: the tape on, the record off.
 const ON_CASSETTE: Part = &[("tape_on", ON), ("record_on", OFF)];
@@ -288,6 +296,168 @@ pub const DESIGNS: &[Design] = &[
             ],
         ],
     ),
+    (
+        "Metal tape, recorded hot",
+        Category::Fx,
+        "A metal tape on a studio deck, recorded hot without noise reduction: dense, bright and clean.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("tape", TYPE_IV),
+                ("grade", REFERENCE),
+                ("saturation", 0.6),
+                ("character", HARD),
+                ("wow", 0.051),
+                ("wow_rate", 0.5),
+                ("wow_shape", RANDOM),
+                ("flutter", 0.004),
+                ("flutter_shape", SINE),
+                ("hiss", -66.0),
+                ("dropouts", 0.0),
+                ("age", 0.0),
+                ("azimuth", 1.0),
+                ("crosstalk", -60.0),
+            ],
+        ],
+    ),
+    (
+        "Car stereo",
+        Category::Fx,
+        "A ferric tape left on a hot dashboard, played on the car's deck: wobbly, dull and narrow.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("tape", TYPE_I),
+                ("grade", ECONOMY),
+                ("tape_tone", 0.6),
+                ("saturation", 0.4),
+                ("wow", 0.45),
+                ("wow_rate", 1.2),
+                ("wow_shape", RANDOM),
+                ("flutter", 0.09),
+                ("flutter_rate", 11.0),
+                ("flutter_shape", RANDOM),
+                ("hiss", -54.0),
+                ("dropouts", 0.2),
+                ("dropout_intensity", 0.35),
+                ("dropout_width", 0.3),
+                ("age", 0.6),
+                ("azimuth", 22.0),
+                ("crosstalk", -35.0),
+                ("width", 0.7),
+            ],
+        ],
+    ),
+    (
+        "Answering machine",
+        Category::Fx,
+        "A message on a worn little answering-machine tape: mono, muffled, hissy and wavering.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("tape", TYPE_I),
+                ("grade", ECONOMY),
+                ("tape_tone", 0.15),
+                ("saturation", 0.6),
+                ("character", HARD),
+                ("wow", 0.5),
+                ("wow_rate", 2.0),
+                ("wow_shape", RANDOM),
+                ("flutter", 0.2),
+                ("flutter_rate", 14.0),
+                ("flutter_shape", RANDOM),
+                ("hiss", -44.0),
+                ("dropouts", 0.3),
+                ("dropout_intensity", 0.5),
+                ("dropout_width", 0.3),
+                ("age", 1.0),
+                ("width", 0.0),
+            ],
+        ],
+    ),
+    (
+        "Four-track bounce",
+        Category::Fx,
+        "Tracks from a home four-track bounced down onto one: hot, a little crushed, with a second pass of hiss.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("tape", TYPE_II),
+                ("grade", HIGH),
+                ("generations", 2.0),
+                ("saturation", 0.55),
+                ("character", HARD),
+                ("nr", SINGLE_BAND),
+                ("nr_decode", ON),
+                ("wow", 0.15),
+                ("wow_rate", 0.6),
+                ("wow_shape", RANDOM),
+                ("flutter", 0.02),
+                ("hiss", -58.0),
+                ("dropouts", 0.05),
+                ("age", 0.2),
+            ],
+        ],
+    ),
+    (
+        "Mix-bus tape",
+        Category::Fx,
+        "The tape's saturation and response alone, for a mix: no waver, no hiss and no dropouts.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("tape", TYPE_I),
+                ("grade", HIGH),
+                ("saturation", 0.5),
+                ("character", SOFT),
+                ("wow", 0.0),
+                ("flutter", 0.0),
+                ("hiss", -96.0),
+                ("dropouts", 0.0),
+                ("age", 0.0),
+                ("crosstalk", -80.0),
+            ],
+        ],
+    ),
+    (
+        "Stored for thirty years",
+        Category::Fx,
+        "A tape left in a drawer for decades: each layer printed onto the next, the top gone soft.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("tape", TYPE_I),
+                ("grade", STANDARD),
+                ("print_through", -38.0),
+                ("age", 0.7),
+                ("saturation", 0.25),
+                ("wow", 0.25),
+                ("wow_rate", 0.5),
+                ("wow_shape", RANDOM),
+                ("hiss", -58.0),
+                ("dropouts", 0.25),
+                ("dropout_intensity", 0.3),
+                ("dropout_width", 0.2),
+            ],
+        ],
+    ),
+    (
+        "Chrome on the ferric setting",
+        Category::Fx,
+        "A chrome tape played back with a ferric tape's EQ: brighter and hissier than it was made.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("tape", TYPE_II),
+                ("grade", STANDARD),
+                ("wrong_eq", ON),
+                ("hiss", -60.0),
+                ("wow", 0.15),
+                ("flutter", 0.015),
+                ("age", 0.1),
+            ],
+        ],
+    ),
     // ---- Record ----
     (
         "Acoustic 78 on a wind-up",
@@ -469,6 +639,199 @@ pub const DESIGNS: &[Design] = &[
             ],
         ],
     ),
+    (
+        "1928 electrical 78 on a gramophone",
+        Category::Fx,
+        "An early electrical 78 of the late 1920s on a wind-up gramophone: fuller than a horn recording, still crackling.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", SHELLAC),
+                ("era", EARLY_ELECTRICAL),
+                ("player", WIND_UP),
+                ("surface_noise", -46.0),
+                ("crackle", 700.0),
+                ("clicks", 6.0),
+                ("wear", 0.35),
+                ("side", 0.5),
+                ("eccentricity", 0.5),
+            ],
+        ],
+    ),
+    (
+        "Late 78 on a radiogram",
+        Category::Fx,
+        "One of the last 78s, from the mid-1950s, on a valve radiogram: quieter shellac and a wider band.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", SHELLAC),
+                ("era", LATE_78),
+                ("player", RADIOGRAM),
+                ("surface_noise", -52.0),
+                ("crackle", 400.0),
+                ("clicks", 3.0),
+                ("wear", 0.2),
+                ("side", 0.35),
+                ("eccentricity", 0.3),
+            ],
+        ],
+    ),
+    (
+        "Radio transcription disc",
+        Category::Fx,
+        "A 1940s broadcast transcription disc, cut and played on its own curve, heard on a table radio.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", LP),
+                ("era", US_78),
+                ("player", ON_THE_RADIO),
+                ("cut_curve", TRANSCRIPTION),
+                ("replay_curve", TRANSCRIPTION),
+                ("surface_noise", -58.0),
+                ("crackle", 150.0),
+                ("clicks", 1.5),
+                ("wear", 0.2),
+            ],
+        ],
+    ),
+    (
+        "Skipping 45",
+        Category::Fx,
+        "A scratched 45 on a portable player that now and then jumps back a groove.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", SINGLE),
+                ("era", EARLY_SINGLE),
+                ("player", PORTABLE),
+                ("scratches", 2.0),
+                ("skips", 0.04),
+                ("surface_noise", -55.0),
+                ("crackle", 200.0),
+                ("clicks", 3.0),
+                ("wear", 0.45),
+                ("eccentricity", 0.4),
+            ],
+        ],
+    ),
+    (
+        "Stuck 78",
+        Category::Fx,
+        "A 78 that soon sticks in its groove and goes round one turn for as long as Stuck groove is on.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", SHELLAC),
+                ("era", US_78),
+                ("player", JUKEBOX),
+                ("skips", 0.5),
+                ("stuck_groove", ON),
+                ("surface_noise", -48.0),
+                ("crackle", 600.0),
+                ("clicks", 4.0),
+                ("wear", 0.3),
+            ],
+        ],
+    ),
+    (
+        "Thrift-store LP",
+        Category::Fx,
+        "A battered bargain-bin LP near its label, on a modern deck: dust, clicks, scratches and a slight warp.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", LP),
+                ("era", MODERN),
+                ("player", MODERN_DECK),
+                ("surface_noise", -60.0),
+                ("crackle", 450.0),
+                ("clicks", 9.0),
+                ("scratches", 3.0),
+                ("wear", 0.55),
+                ("side", 0.85),
+                ("warp", 0.3),
+                ("eccentricity", 0.6),
+                ("rumble", -55.0),
+            ],
+        ],
+    ),
+    (
+        "Ungrounded turntable",
+        Category::Fx,
+        "A clean LP on a deck whose ground wire has come loose: a steady mains hum under the music.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", LP),
+                ("era", MODERN),
+                ("player", MODERN_DECK),
+                ("hum", HUM_50),
+                ("hum_level", -42.0),
+                ("rumble", -58.0),
+            ],
+        ],
+    ),
+    (
+        "1958 jukebox 45",
+        Category::Fx,
+        "A rock-and-roll 45 worn hard on a diner jukebox: loud, bright and fraying on the peaks.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", SINGLE),
+                ("era", EARLY_SINGLE),
+                ("player", JUKEBOX),
+                ("wear", 0.55),
+                ("dynamic_wear", 0.6),
+                ("groove_distortion", 1.3),
+                ("surface_noise", -54.0),
+                ("crackle", 250.0),
+                ("clicks", 5.0),
+                ("side", 0.5),
+                ("eccentricity", 0.3),
+            ],
+        ],
+    ),
+    (
+        "Small-horn gramophone",
+        Category::Fx,
+        "A horn recording on a portable gramophone with the shortest horn: nasal, small and boxy.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", SHELLAC),
+                ("era", ACOUSTIC),
+                ("player", WIND_UP),
+                ("horn", 1.0),
+                ("horn_size", 0.57),
+                ("surface_noise", -46.0),
+                ("crackle", 800.0),
+                ("clicks", 7.0),
+                ("wear", 0.45),
+                ("side", 0.5),
+            ],
+        ],
+    ),
+    (
+        "Ghost in the groove",
+        Category::Fx,
+        "A loud mono LP cut with its grooves too close: each turn bleeds faintly into the next.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", LP),
+                ("era", MONO_LP),
+                ("player", MONO_HI_FI),
+                ("groove_echo", -32.0),
+                ("surface_noise", -66.0),
+                ("crackle", 80.0),
+                ("clicks", 1.0),
+                ("wear", 0.2),
+            ],
+        ],
+    ),
     // ---- Record then cassette ----
     (
         "Mixtape from vinyl",
@@ -481,6 +844,250 @@ pub const DESIGNS: &[Design] = &[
         Category::Fx,
         "A 78 on the 1940s radio, taped on a pocket player: narrow, distant and wobbly.",
         &[CHAINED, ON_1940S_RADIO, POCKET_PLAYER],
+    ),
+    (
+        "78s dubbed to cassette",
+        Category::Fx,
+        "A family's British 78s copied onto a home cassette: crackle under hiss, the tape's waver over the record's.",
+        &[
+            CHAINED,
+            &[
+                ("disc", SHELLAC),
+                ("era", UK_78),
+                ("player", RADIOGRAM),
+                ("surface_noise", -47.0),
+                ("crackle", 650.0),
+                ("clicks", 4.0),
+                ("wear", 0.35),
+                ("side", 0.4),
+                ("eccentricity", 0.5),
+            ],
+            HOME_DECK,
+        ],
+    ),
+    (
+        "Lo-fi beat tape",
+        Category::Fx,
+        "A dusty LP sampled onto a worn cassette: crackle, a lazy waver and a soft top, under a beat.",
+        &[
+            CHAINED,
+            &[
+                ("disc", LP),
+                ("era", MODERN),
+                ("player", MODERN_DECK),
+                ("surface_noise", -62.0),
+                ("crackle", 350.0),
+                ("clicks", 2.0),
+                ("wear", 0.35),
+                ("tape", TYPE_I),
+                ("grade", STANDARD),
+                ("tape_tone", 0.55),
+                ("saturation", 0.45),
+                ("wow", 0.35),
+                ("wow_rate", 0.6),
+                ("wow_shape", RANDOM),
+                ("flutter", 0.05),
+                ("flutter_rate", 7.0),
+                ("flutter_shape", RANDOM),
+                ("hiss", -60.0),
+                ("dropouts", 0.08),
+                ("age", 0.5),
+                ("width", 0.8),
+            ],
+        ],
+    ),
+    // ---- Past the real thing: the controls taken where no deck or record goes, for effect ----
+    (
+        "Melting tape",
+        Category::Fx,
+        "Tape stretched past any use: the pitch slumps and slides, the top washes out and the sound keeps falling away.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("wow", 1.0),
+                ("wow_rate", 0.2),
+                ("wow_shape", RANDOM),
+                ("flutter", 0.4),
+                ("flutter_rate", 6.0),
+                ("flutter_shape", RANDOM),
+                ("tape_tone", 0.5),
+                ("saturation", 0.4),
+                ("age", 1.0),
+                ("hiss", -55.0),
+                ("dropouts", 0.5),
+                ("dropout_intensity", 0.6),
+                ("dropout_width", 0.6),
+            ],
+        ],
+    ),
+    (
+        "Sawtooth wow",
+        Category::Fx,
+        "A saw-shaped wow three times a second: the pitch sags slowly and springs back fast, as no real transport moves.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("wow", 0.5),
+                ("wow_rate", 3.0),
+                ("wow_shape", SAW),
+                ("flutter", 0.0),
+                ("hiss", -70.0),
+                ("dropouts", 0.0),
+                ("age", 0.1),
+            ],
+        ],
+    ),
+    (
+        "Tape vibrato",
+        Category::Fx,
+        "An even sine wow five times a second: a steady vibrato, too regular for any real deck.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("wow", 0.6),
+                ("wow_rate", 5.0),
+                ("wow_shape", SINE),
+                ("flutter", 0.0),
+                ("hiss", -72.0),
+                ("dropouts", 0.0),
+                ("age", 0.05),
+            ],
+        ],
+    ),
+    (
+        "Flutter fuzz",
+        Category::Fx,
+        "Flutter at its fastest and deepest, its rate swung by the wow: a warbling, grainy buzz on every note.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("flutter", 1.0),
+                ("flutter_rate", 30.0),
+                ("flutter_shape", SINE),
+                ("follow", ON),
+                ("wow", 0.6),
+                ("wow_rate", 0.4),
+                ("wow_shape", SINE),
+                ("saturation", 0.4),
+                ("hiss", -64.0),
+                ("dropouts", 0.0),
+            ],
+        ],
+    ),
+    (
+        "Disintegrating tape",
+        Category::Fx,
+        "A tape falling apart as it plays: crushed, buried in hiss and dropping out every moment.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("tape", TYPE_I),
+                ("grade", ECONOMY),
+                ("generations", 4.0),
+                ("saturation", 0.9),
+                ("character", HARD),
+                ("wow", 0.5),
+                ("wow_rate", 1.0),
+                ("wow_shape", RANDOM),
+                ("flutter", 0.15),
+                ("flutter_rate", 10.0),
+                ("hiss", -42.0),
+                ("dropouts", 0.85),
+                ("dropout_intensity", 0.9),
+                ("dropout_width", 0.7),
+                ("age", 1.0),
+                ("azimuth", 45.0),
+                ("crosstalk", -32.0),
+            ],
+        ],
+    ),
+    (
+        "Overdriven tape",
+        Category::Fx,
+        "Driven twelve decibels into the tape and brought back down after: thick, squared off and rich in harmonics.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("drive", 12.0),
+                ("saturation", 0.85),
+                ("character", HARD),
+                ("wow", 0.1),
+                ("hiss", -62.0),
+                ("dropouts", 0.0),
+            ],
+        ],
+    ),
+    (
+        "Phase-smeared tape",
+        Category::Fx,
+        "A head a whole degree out of line and the image widened: the stereo smears, and in mono the top cancels.",
+        &[
+            ON_CASSETTE,
+            &[
+                ("azimuth", 60.0),
+                ("crosstalk", -36.0),
+                ("width", 1.6),
+                ("wow", 0.2),
+                ("hiss", -60.0),
+            ],
+        ],
+    ),
+    (
+        "Funhouse warp",
+        Category::Fx,
+        "An LP warped twice as far as any real record, and off its centre too: the pitch heaves every turn.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", LP),
+                ("era", MODERN),
+                ("player", MODERN_DECK),
+                ("warp", 2.0),
+                ("eccentricity", 2.0),
+                ("wear", 0.2),
+            ],
+        ],
+    ),
+    (
+        "Crackle bed",
+        Category::Fx,
+        "Heavy crackle over an otherwise clean record, playing on through the silences between the music.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", LP),
+                ("era", MODERN),
+                ("player", MODERN_DECK),
+                ("wear", 0.0),
+                ("crackle", 1200.0),
+                ("crackle_level", 4.0),
+                ("clicks", 4.0),
+                ("surface_noise", -58.0),
+                ("noise_follows", 0.0),
+                ("noise_stops", OFF),
+            ],
+        ],
+    ),
+    (
+        "Haunted gramophone",
+        Category::Fx,
+        "A horn record through the longest horn, each turn echoing back far louder than any groove could.",
+        &[
+            ON_RECORD,
+            &[
+                ("disc", SHELLAC),
+                ("era", ACOUSTIC),
+                ("player", WIND_UP),
+                ("horn", 1.0),
+                ("horn_size", 1.5),
+                ("groove_echo", -14.0),
+                ("surface_noise", -44.0),
+                ("crackle", 1000.0),
+                ("clicks", 6.0),
+                ("wear", 0.5),
+                ("side", 0.6),
+            ],
+        ],
     ),
 ];
 
