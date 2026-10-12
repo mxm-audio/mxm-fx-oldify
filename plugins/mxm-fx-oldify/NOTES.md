@@ -39,9 +39,9 @@ panel units with a sentence saying what it is; a control a design does not name 
 mxm-fx-delay, so browsing keeps the player's Mix (the coordinator, 2026-10-09: the collection's
 convention wins; "unlisted controls stay at Init" meant the sound controls, not Mix), and Quality
 too (2026-10-11), being how hard the player's machine works rather than part of a sound. The example only writes what `generate`
-returns, so the stale-file test can hold the committed files to a fresh generation. The values are
-first estimates, to be tuned by ear (2026-10-09). The shared browser shows no text per preset, so a
-sound's sentence lives in the design table.
+returns, so the stale-file test can hold the committed files to a fresh generation. The owner
+listened to the whole bank and approved it (2026-10-12: "presets are good"). The shared browser
+shows no text per preset, so a sound's sentence lives in the design table.
 
 **Surface noise sits 12 dB under the research's levels** (the owner, 2026-10-11: "The surface noise
 was far to loud in the presets"). The research gives a record's noise against full modulation, and

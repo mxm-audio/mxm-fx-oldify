@@ -101,7 +101,8 @@ Child DOX Index
 **mxm-fx-oldify** is an MXM effect that makes sound old: cassette tape and old records (vinyl and
 shellac), from a new deck to a battered 78 on a radiogram.
 
-**Pre-alpha. Both engines are in.** The DSP crate holds the chain — Drive, the record and the tape, Width
+**Pre-alpha, and done barring bugs** (the owner, 2026-10-12: "I considder oldify for done. Barring
+any bugs"): what comes next here is bug fixes. Both engines are in. The DSP crate holds the chain — Drive, the record and the tape, Width
 and Mix against the dry input delayed by the chain's fixed latency — and both media: the
 record (era, player, cutting and replay curves, groove, groove echo, skips and a stuck groove, the
 disc's surface, hum) and the cassette

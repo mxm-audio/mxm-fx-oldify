@@ -5,8 +5,8 @@
 //! keeps from the player (`is_factory_preserved`); `examples/fx_oldify_build_presets.rs` writes them
 //! to `presets/`, and the bank's tests hold the committed files to what it emits today.
 //!
-//! The values are first estimates, to be tuned by ear (the design's own notes are private,
-//! `ops:notes/oldify/`).
+//! The owner listened to the bank and approved it (2026-10-12: "presets are good"); the design's
+//! own notes are private, `ops:notes/oldify/`.
 
 use mxm_preset::Category;
 
