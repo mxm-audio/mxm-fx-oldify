@@ -36,6 +36,8 @@ use mxm_fx_oldify_dsp::skip::MAX_SKIPS;
 use mxm_fx_oldify_dsp::tape::{Grade, Tape};
 use mxm_fx_oldify_dsp::transport::Shape;
 use mxm_fx_oldify_dsp::{Controls, MAX_GAIN_DB, MAX_WIDTH, MIN_GAIN_DB, Quality, db_to_gain};
+use mxm_params::text;
+use mxm_params::text::{StringToValue, ValueToString};
 use mxm_preset::PresetIdentity;
 use mxm_tempo::{Direction, Division, Ladder, Span};
 use nice_plug::prelude::*;
@@ -475,24 +477,6 @@ impl FlutterShapeChoice {
     }
 }
 
-type ValueToString = Arc<dyn Fn(f32) -> String + Send + Sync>;
-type StringToValue = Arc<dyn Fn(&str) -> Option<f32> + Send + Sync>;
-
-fn percent_to_string() -> ValueToString {
-    Arc::new(|value| format!("{:.0} %", value * 100.0))
-}
-
-fn string_to_percent() -> StringToValue {
-    Arc::new(|text| {
-        text.trim()
-            .trim_end_matches('%')
-            .trim()
-            .parse::<f32>()
-            .ok()
-            .map(|value| value / 100.0)
-    })
-}
-
 /// A rate in hertz: to a thousandth under 1 Hz, a hundredth from it. The precision is chosen from
 /// the reading rounded to the finer of the two, so the host's text round trip is idempotent at the
 /// switch: 0.9946 reads 0.995 Hz and reads back the same.
@@ -514,19 +498,6 @@ fn string_to_rate() -> StringToValue {
             .trim()
             .parse::<f32>()
             .ok()
-    })
-}
-
-/// A time: milliseconds under a second, seconds from it. The unit is chosen from the rounded
-/// reading, so the host's text round trip is idempotent at the switch (`time_text_checks`).
-fn time_to_string() -> ValueToString {
-    Arc::new(|seconds| {
-        let milliseconds = seconds * 1_000.0;
-        if milliseconds.round() >= 1_000.0 {
-            format!("{seconds:.2} s")
-        } else {
-            format!("{milliseconds:.0} ms")
-        }
     })
 }
 
@@ -667,8 +638,8 @@ fn gain_within(name: &'static str, default: f32, min_db: f32, max_db: f32) -> Fl
 
 fn percent(name: &'static str, default: f32, max: f32) -> FloatParam {
     FloatParam::new(name, default, FloatRange::Linear { min: 0.0, max })
-        .with_value_to_string(percent_to_string())
-        .with_string_to_value(string_to_percent())
+        .with_value_to_string(text::percent())
+        .with_string_to_value(text::parse_percent())
 }
 
 /// The skew that puts a range's geometric mean at the middle of the travel: a rate's octaves are
@@ -1007,8 +978,8 @@ impl Default for MxmFxOldifyParams {
                     factor: FloatRange::skew_factor(-1.0),
                 },
             )
-            .with_value_to_string(percent_to_string())
-            .with_string_to_value(string_to_percent()),
+            .with_value_to_string(text::percent())
+            .with_string_to_value(text::parse_percent()),
             // Skewed so a real record's few in a hundred turns get the first half of the travel.
             skips: FloatParam::new(
                 "Skips",
@@ -1020,7 +991,7 @@ impl Default for MxmFxOldifyParams {
                 },
             )
             .with_value_to_string(chance_to_string())
-            .with_string_to_value(string_to_percent()),
+            .with_string_to_value(text::parse_percent()),
             stuck_groove: BoolParam::new("Stuck groove", record.stuck),
 
             crackle: per_second("Crackle", record.disc.crackle, MAX_CRACKLE_HZ, -2.0),
@@ -1094,7 +1065,7 @@ impl Default for MxmFxOldifyParams {
                     factor: geometric_skew((MIN_STOP_S, MAX_STOP_S)),
                 },
             )
-            .with_value_to_string(time_to_string())
+            .with_value_to_string(text::milliseconds_then_seconds())
             .with_string_to_value(string_to_time()),
             stop_sync: sync("Stop sync"),
 
