@@ -24,7 +24,7 @@ impl mxm_preset::Instrument for MxmFxOldifyParams {
         crate::CLAP_ID
     }
 
-    fn parameters(&self) -> Vec<(&'static str, &dyn mxm_preset::ErasedParam)> {
+    fn parameters(&self) -> Vec<(&'static str, &dyn mxm_params::ErasedParam)> {
         vec![
             ("record_on", &self.record_on),
             ("disc", &self.disc),
@@ -296,6 +296,19 @@ mod tests {
     use super::*;
     use mxm_preset::Instrument;
     use nice_plug::prelude::Params;
+
+    /// **Every stored `text` is this plugin's own formatting of the `v` beside it**
+    /// (`mxm_preset::stale_factory_texts`).
+    #[test]
+    fn every_factory_text_is_this_plugins_formatting_of_its_value() {
+        let stale = mxm_preset::stale_factory_texts(&MxmFxOldifyParams::default());
+        assert!(
+            stale.is_empty(),
+            "{} stale texts — regenerate the files:\n{}",
+            stale.len(),
+            stale.join("\n")
+        );
+    }
 
     #[test]
     fn every_parameter_is_declared_once_in_the_preset_seam() {

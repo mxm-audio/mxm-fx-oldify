@@ -1534,61 +1534,17 @@ mod tests {
         );
     }
 
+    /// **Every parameter's text survives the host's round trip**, with the unit on, across the
+    /// collection's grids and switch points (`mxm_plugin_test::text_checks`).
     #[test]
-    fn parameter_text_is_idempotent_through_the_host_conversion() {
+    fn every_parameter_text_survives_the_hosts_round_trip() {
+        mxm_plugin_test::text_checks::every_text_round_trips(&MxmFxOldifyParams::default(), &[]);
+    }
+
+    /// Azimuth reads a typed arc-minute either way, `15'` or `15 arcmin`.
+    #[test]
+    fn azimuth_reads_either_spelling_of_an_arc_minute() {
         let params = MxmFxOldifyParams::default();
-        let continuous: [&FloatParam; 39] = [
-            &params.horn,
-            &params.horn_size,
-            &params.age,
-            &params.print_through,
-            &params.tape_tone,
-            &params.saturation,
-            &params.wow,
-            &params.wow_rate,
-            &params.flutter,
-            &params.flutter_rate,
-            &params.flange,
-            &params.stop_time,
-            &params.hiss,
-            &params.wear,
-            &params.dynamic_wear,
-            &params.side,
-            &params.groove_distortion,
-            &params.eccentricity,
-            &params.warp,
-            &params.skips,
-            &params.crackle,
-            &params.crackle_level,
-            &params.clicks,
-            &params.surface_noise,
-            &params.rumble,
-            &params.hum_level,
-            &params.groove_echo,
-            &params.nr_amount,
-            &params.nr_brightness,
-            &params.nr_level_error,
-            &params.dropouts,
-            &params.dropout_intensity,
-            &params.dropout_width,
-            &params.azimuth,
-            &params.crosstalk,
-            &params.drive,
-            &params.width,
-            &params.mix,
-            &params.noise_follows,
-        ];
-        for param in continuous {
-            for step in 0..=1000 {
-                let normalized = step as f32 / 1000.0;
-                let first = param.normalized_value_to_string(normalized, true);
-                let reparsed = param
-                    .string_to_normalized_value(&first)
-                    .unwrap_or_else(|| panic!("{} rejected {first:?}", param.name()));
-                let second = param.normalized_value_to_string(reparsed, true);
-                assert_eq!(first, second, "{} at {normalized}", param.name());
-            }
-        }
         assert_eq!(
             params.azimuth.string_to_normalized_value("15'"),
             params.azimuth.string_to_normalized_value("15 arcmin")
