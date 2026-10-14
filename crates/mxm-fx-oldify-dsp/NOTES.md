@@ -330,6 +330,12 @@ older reads as silence. The print-through's line forgets the same way.
 
 ## Quality
 
+**The transport keeps its own ring.** The groove echo, print-through, skip and dry lines store their
+samples in `mxm-dsp`'s `AgeLine` (the audit's O2, each proved bit-identical to the ring it replaced).
+The transport's does not: the windowed sinc reads 32 contiguous taps of the raw buffer by index, and
+its reset zeroes only the tail a read can reach instead of counting history. Through the line's age
+read both would be redesigned, so the storage stays with the reader that needs it.
+
 **Why these two stages.** The tape's saturation is the chain's hardest curve and runs on full-band
 music; the moving read is the only stage every sound passes between samples. Hermite's read dulls
 the top octave where it falls halfway between samples (1 dB at 12 kHz, 8 dB at 20 kHz at 48 kHz),

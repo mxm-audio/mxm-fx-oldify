@@ -26,6 +26,7 @@ repository = "https://github.com/mxm-audio/mxm-fx-oldify"
 # Pinned exactly, as in every MXM repository; Cargo.lock is committed. Own crates by path, the
 # kit's and the player's from their repositories' `main`, locked to a commit.
 egui = "=0.36.1"
+mxm-dsp = { git = "https://github.com/mxm-audio/mxm-kit", branch = "main" }
 mxm-fx-oldify-dsp = { path = "crates/mxm-fx-oldify-dsp" }
 mxm-player = { git = "https://github.com/mxm-audio/mxm-player", branch = "main" }
 mxm-player-harness = { git = "https://github.com/mxm-audio/mxm-player", branch = "main" }

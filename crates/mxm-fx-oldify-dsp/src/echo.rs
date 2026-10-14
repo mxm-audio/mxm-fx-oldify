@@ -21,6 +21,7 @@
 
 use crate::biquad::{Biquad, Kind, Section};
 use crate::disc::Speed;
+use mxm_dsp::delay::AgeLine;
 
 /// The loudest groove echo, dB under the music: about 23 dB past the loudest a lacquer gives, for
 /// effect (the owner, 2026-10-11: "our plugin should scale into the 'non physical' for creative
@@ -33,11 +34,10 @@ pub const ECHO_TOP_HZ: f64 = 1_000.0;
 #[derive(Clone, Debug)]
 pub struct GrooveEcho {
     rate: f64,
-    line: [Vec<f32>; 2],
-    head: usize,
-    /// Samples written since the last clear, up to the line's length: anything older reads as
-    /// silence, so a clear costs nothing however long the line.
-    filled: usize,
+    /// One `mxm_dsp::delay::AgeLine` a channel, read before it is written: anything older than what
+    /// was written since the last clear reads as silence, so a clear costs nothing however long the
+    /// line.
+    line: [AgeLine; 2],
     low: [Biquad; 2],
     top_hz: f64,
     /// Whether the echo sounded last sample: one coming back starts from an empty low-pass.
@@ -50,9 +50,7 @@ impl GrooveEcho {
         let length = turn_samples(Speed::Lp33, sample_rate);
         Self {
             rate: sample_rate,
-            line: [vec![0.0; length], vec![0.0; length]],
-            head: 0,
-            filled: 0,
+            line: [AgeLine::new(length), AgeLine::new(length)],
             low: Default::default(),
             top_hz: 0.0,
             on: false,
@@ -61,7 +59,7 @@ impl GrooveEcho {
 
     /// Empties the line and the low-pass.
     pub fn clear(&mut self) {
-        self.filled = 0;
+        self.line.iter_mut().for_each(AgeLine::clear);
         self.low.iter_mut().for_each(Biquad::reset);
     }
 
@@ -79,7 +77,7 @@ impl GrooveEcho {
     /// the line whatever the gain, so the echo is there the moment it is turned up.
     #[inline]
     pub fn process(&mut self, x: [f64; 2], gain: f64, speed: Speed) -> [f64; 2] {
-        let length = self.line[0].len();
+        let length = self.line[0].capacity();
         let turn = turn_samples(speed, self.rate).min(length);
         let mut out = x;
         if gain > 0.0 && !self.on {
@@ -87,22 +85,15 @@ impl GrooveEcho {
         }
         self.on = gain > 0.0;
         if gain > 0.0 {
-            // Read before writing, so a turn of the whole line reads the slot about to be written.
-            let at = (self.head + length - turn) % length;
+            // Read before writing, so a turn of the whole line reads the oldest sample held.
             for ((out, line), low) in out.iter_mut().zip(&self.line).zip(&mut self.low) {
-                let then = if self.filled >= turn {
-                    f64::from(line[at])
-                } else {
-                    0.0
-                };
+                let then = f64::from(line.read(turn));
                 *out += gain * low.process(then);
             }
         }
         for (line, x) in self.line.iter_mut().zip(x) {
-            line[self.head] = x as f32;
+            line.push(x as f32);
         }
-        self.head = (self.head + 1) % length;
-        self.filled = (self.filled + 1).min(length);
         out
     }
 }

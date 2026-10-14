@@ -9,5 +9,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+# The delay lines' storage; dependency-free at this floor.
+mxm-dsp.workspace = true
 # The random sources' generator; dependency-free at this floor.
 mxm-rng.workspace = true

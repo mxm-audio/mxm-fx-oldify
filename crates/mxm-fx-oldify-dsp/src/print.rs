@@ -21,6 +21,7 @@
 
 use crate::biquad::{Biquad, Coefficients, Kind, Section};
 use crate::cassette::SPEED_M_S;
+use mxm_dsp::delay::AgeLine;
 use std::f64::consts::PI;
 
 /// Print-through at or below this is off.
@@ -102,11 +103,10 @@ impl Band {
 /// One wrap's line, written with the recorded tape and read a wrap behind.
 #[derive(Clone, Debug)]
 pub struct PrintThrough {
-    line: [Vec<f32>; 2],
-    head: usize,
-    /// Samples written since the last clear, up to the line's length: anything older reads as
-    /// silence, so a clear costs nothing however long the line.
-    filled: usize,
+    /// One `mxm_dsp::delay::AgeLine` a channel, read before it is written: anything older than what
+    /// was written since the last clear reads as silence, so a clear costs nothing however long the
+    /// line.
+    line: [AgeLine; 2],
     band: [Band; 2],
 }
 
@@ -115,16 +115,14 @@ impl PrintThrough {
     pub fn new(sample_rate: f64) -> Self {
         let length = wrap_samples(sample_rate);
         Self {
-            line: [vec![0.0; length], vec![0.0; length]],
-            head: 0,
-            filled: 0,
+            line: [AgeLine::new(length), AgeLine::new(length)],
             band: [Band::new(sample_rate), Band::new(sample_rate)],
         }
     }
 
     /// Empties the line and the band.
     pub fn clear(&mut self) {
-        self.filled = 0;
+        self.line.iter_mut().for_each(AgeLine::clear);
         self.band.iter_mut().for_each(Band::reset);
     }
 
@@ -132,24 +130,18 @@ impl PrintThrough {
     /// the line whatever the gain, so the copy is there the moment it is turned up.
     #[inline]
     pub fn process(&mut self, x: [f32; 2], gain: f32) -> [f32; 2] {
-        let length = self.line[0].len();
+        let length = self.line[0].capacity();
         let mut out = x;
         if gain > 0.0 {
             // The slot about to be written holds the sample a whole wrap ago.
             for ((out, line), band) in out.iter_mut().zip(&self.line).zip(&mut self.band) {
-                let then = if self.filled >= length {
-                    f64::from(line[self.head])
-                } else {
-                    0.0
-                };
+                let then = f64::from(line.read(length));
                 *out += gain * band.process(then) as f32;
             }
         }
         for (line, x) in self.line.iter_mut().zip(x) {
-            line[self.head] = x;
+            line.push(x);
         }
-        self.head = (self.head + 1) % length;
-        self.filled = (self.filled + 1).min(length);
         out
     }
 }

@@ -28,6 +28,7 @@
 //! step count, so how a host cuts its blocks never changes a sample.
 
 use core::fmt;
+use mxm_dsp::delay::AgeLine;
 
 pub mod biquad;
 pub mod cassette;
@@ -267,29 +268,29 @@ impl Ramp {
 /// The dry input, delayed by the chain's latency.
 #[derive(Debug, Clone)]
 struct DryLine {
-    line: [Vec<f32>; 2],
-    head: usize,
+    /// One `mxm_dsp::delay::AgeLine` a channel, as long as the latency: the sample leaving is the
+    /// oldest held, read before the new one is pushed.
+    line: [AgeLine; 2],
 }
 
 impl DryLine {
     fn new(length: usize) -> Self {
         Self {
-            line: [vec![0.0; length.max(1)], vec![0.0; length.max(1)]],
-            head: 0,
+            line: [AgeLine::new(length), AgeLine::new(length)],
         }
     }
 
+    /// Silence until the line has filled again, in constant time.
     fn clear(&mut self) {
-        self.line.iter_mut().for_each(|l| l.fill(0.0));
+        self.line.iter_mut().for_each(AgeLine::clear);
     }
 
-    /// Writes this frame and returns the one from the line's length ago.
     #[inline]
     fn exchange(&mut self, frame: [f32; 2]) -> [f32; 2] {
-        let out = [self.line[0][self.head], self.line[1][self.head]];
-        self.line[0][self.head] = frame[0];
-        self.line[1][self.head] = frame[1];
-        self.head = (self.head + 1) % self.line[0].len();
+        let length = self.line[0].capacity();
+        let out = [self.line[0].read(length), self.line[1].read(length)];
+        self.line[0].push(frame[0]);
+        self.line[1].push(frame[1]);
         out
     }
 }

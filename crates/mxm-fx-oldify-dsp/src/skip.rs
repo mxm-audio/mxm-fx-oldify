@@ -22,6 +22,7 @@
 use crate::disc::{Burst, Speed, Voice};
 use crate::echo::turn_samples;
 use crate::transport::Rng;
+use mxm_dsp::delay::AgeLine;
 
 /// The most Skips: one a turn, on average, far past a real record's few in a hundred, for effect
 /// (the owner, 2026-10-11: "our plugin should scale into the 'non physical' for creative use").
@@ -58,11 +59,10 @@ fn unit(rng: &mut Rng) -> f64 {
 #[derive(Clone, Debug)]
 pub struct Skips {
     rate: f64,
-    line: [Vec<f32>; 2],
-    head: usize,
-    /// Samples written since the last clear, up to the line's length: anything older reads as
-    /// silence, so a clear costs nothing however long the line.
-    filled: usize,
+    /// One `mxm_dsp::delay::AgeLine` a channel, read before it is written: anything older than what
+    /// was written since the last clear reads as silence, so a clear costs nothing however long the
+    /// line.
+    line: [AgeLine; 2],
     rng: Rng,
     seed: u32,
     state: State,
@@ -82,9 +82,7 @@ impl Skips {
         let length = turn_samples(Speed::Lp33, sample_rate);
         let mut skips = Self {
             rate: sample_rate,
-            line: [vec![0.0; length], vec![0.0; length]],
-            head: 0,
-            filled: 0,
+            line: [AgeLine::new(length), AgeLine::new(length)],
             rng: Rng::new(seed),
             seed,
             state: State::Playing,
@@ -107,7 +105,7 @@ impl Skips {
 
     /// Back in the music with an empty line and the seed's first draw.
     pub fn clear(&mut self) {
-        self.filled = 0;
+        self.line.iter_mut().for_each(AgeLine::clear);
         self.rng = Rng::new(self.seed ^ 0x5C1F_0001);
         self.state = State::Playing;
         self.share = 0.0;
@@ -153,7 +151,7 @@ impl Skips {
         speed: Speed,
         playing: bool,
     ) -> [f64; 2] {
-        let length = self.line[0].len();
+        let length = self.line[0].capacity();
         let turn = turn_samples(speed, self.rate).min(length);
         if self.state == State::Playing && self.share == 0.0 {
             self.reading = turn;
@@ -162,7 +160,7 @@ impl Skips {
         match self.state {
             // Only a whole turn played can be gone back to.
             // Only a whole turn played can be gone back to, and only once the last jump on is done.
-            State::Playing if self.filled >= turn && self.share == 0.0 => {
+            State::Playing if self.line[0].written() >= turn && self.share == 0.0 => {
                 let until = if held {
                     Some(None)
                 } else if chance > 0.0
@@ -212,14 +210,9 @@ impl Skips {
         } else {
             0.0
         };
-        let at = (self.head + length - turn) % length;
         let mut out = x;
         for ((out, line), x) in out.iter_mut().zip(&self.line).zip(x) {
-            let looped = if self.filled >= turn {
-                f64::from(line[at])
-            } else {
-                0.0
-            };
+            let looped = f64::from(line.read(turn));
             *out = if self.share == 0.0 {
                 x
             } else if self.share == 1.0 {
@@ -232,10 +225,8 @@ impl Skips {
             }
         }
         for (line, out) in self.line.iter_mut().zip(out) {
-            line[self.head] = out as f32;
+            line.push(out as f32);
         }
-        self.head = (self.head + 1) % length;
-        self.filled = (self.filled + 1).min(length);
         if let State::Looping { since, until } = self.state {
             self.state = State::Looping {
                 since: since + 1,

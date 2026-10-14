@@ -242,9 +242,10 @@ dulling and top filters, which follow while off). `reset` ends every ramp and cl
 
 ## Realtime and numeric rules
 
-- Rust MSRV is 1.87 (no let chains); the one dependency is `mxm-rng`, dependency-free at that floor, and
+- Rust MSRV is 1.87 (no let chains); the dependencies are `mxm-rng` and `mxm-dsp`, dependency-free at that floor, and
   there are no build or dev dependencies.
-- `Oldify::new` allocates the delay lines; nothing allocates after it, and every other method is
+- `Oldify::new` allocates the delay lines (`mxm_dsp::delay::AgeLine`, the transport's apart:
+  [NOTES.md § Quality](NOTES.md#quality)); nothing allocates after it, and every other method is
   allocation-, lock-, log- and I/O-free.
 - Accepted sample rates are `MIN_SAMPLE_RATE`–`MAX_SAMPLE_RATE`; others, and non-numbers, are
   refused with `UnsupportedRate`.
