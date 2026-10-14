@@ -152,7 +152,7 @@ owner, 2026-10-06); during the work only Windows is checked, and Linux and macOS
 
 | Crate | MSRV | Why |
 |---|---|---|
-| `crates/mxm-fx-oldify-dsp` | **1.87** | No dependencies at all: the chain, both engines and their building blocks. **Verified on 1.87**, library and tests |
+| `crates/mxm-fx-oldify-dsp` | **1.87** | One dependency, the dependency-free `mxm-rng` (its random sources' generator): the chain, both engines and their building blocks. **Verified on 1.87**, library and tests |
 | `plugins/mxm-fx-oldify` | **1.95** | Its dynamically paged editor pulls in egui; depends on `mxm-fx-oldify-dsp`, which stays at 1.87 |
 
 ## Licensing

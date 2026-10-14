@@ -86,16 +86,11 @@ fn the_record_switch_plays_the_record() {
     );
 }
 
-/// Deterministic noise in −`level`..`level` (a 32-bit LCG): broadband, so a change anywhere in
-/// the spectrum shows.
+/// Deterministic noise in −`level`..`level` (`mxm-rng`'s 32-bit LCG): broadband, so a change
+/// anywhere in the spectrum shows.
 fn noise(frames: usize, seed: u32, level: f32) -> Vec<f32> {
-    let mut state = seed;
-    (0..frames)
-        .map(|_| {
-            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            level * ((state >> 8) as f32 / (1u32 << 23) as f32 - 1.0)
-        })
-        .collect()
+    let mut rng = mxm_rng::Lcg32::new(seed);
+    (0..frames).map(|_| level * rng.bipolar_f32()).collect()
 }
 
 /// A parameter moved by id, as a normalised value.

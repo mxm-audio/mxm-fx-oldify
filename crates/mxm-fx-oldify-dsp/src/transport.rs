@@ -51,6 +51,7 @@
 //! wobble's points, so a render with the same seed is the same at any block size.
 
 use crate::oversample::bessel_i0;
+use mxm_rng::Xorshift32;
 use std::f64::consts::{PI, TAU};
 
 /// How a wobble moves the read over one cycle.
@@ -98,9 +99,10 @@ pub fn random_rms_share() -> f64 {
     POINTS_PER_CYCLE * (2.0f64 / 3.0).sqrt() / TAU
 }
 
-/// A xorshift32 generator (George Marsaglia, "Xorshift RNGs", 2003): small, fast, seeded.
+/// The random sources' generator: `mxm-rng`'s xorshift32 (George Marsaglia, "Xorshift RNGs", 2003),
+/// with this effect's own seeding rule and its f64 law over the whole word.
 #[derive(Clone, Copy, Debug)]
-pub struct Rng(u32);
+pub struct Rng(Xorshift32);
 
 impl Default for Rng {
     fn default() -> Self {
@@ -111,18 +113,15 @@ impl Default for Rng {
 impl Rng {
     pub fn new(seed: u32) -> Self {
         // Zero is xorshift's one fixed point; multiplying by an odd number keeps seeds distinct.
-        Self(seed.wrapping_mul(2_654_435_761).max(1))
+        Self(Xorshift32::from_state(
+            seed.wrapping_mul(2_654_435_761).max(1),
+        ))
     }
 
     /// A uniform value in -1..1.
     #[inline]
     pub fn bipolar(&mut self) -> f64 {
-        let mut x = self.0;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.0 = x;
-        f64::from(x) / f64::from(u32::MAX) * 2.0 - 1.0
+        f64::from(self.0.next_u32()) / f64::from(u32::MAX) * 2.0 - 1.0
     }
 }
 

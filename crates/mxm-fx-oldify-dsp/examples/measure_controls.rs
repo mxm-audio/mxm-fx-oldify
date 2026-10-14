@@ -111,13 +111,8 @@ fn bands(spec: &[f64]) -> Vec<f64> {
 
 /// Pink noise at `level_db` RMS, the same in both channels (Paul Kellet's filter).
 fn noise(level_db: f32) -> Vec<[f32; 2]> {
-    let mut seed = 0x1234_5678u32;
-    let mut white = || {
-        seed ^= seed << 13;
-        seed ^= seed >> 17;
-        seed ^= seed << 5;
-        (seed as f64 / u32::MAX as f64) * 2.0 - 1.0
-    };
+    let mut rng = mxm_rng::Xorshift32::from_state(0x1234_5678);
+    let mut white = || (f64::from(rng.next_u32()) / f64::from(u32::MAX)) * 2.0 - 1.0;
     let n = (SECONDS * f64::from(RATE)) as usize;
     let (mut b0, mut b1, mut b2) = (0.0, 0.0, 0.0);
     let gain = f64::from(db_to_gain(level_db)) * 3.0;
