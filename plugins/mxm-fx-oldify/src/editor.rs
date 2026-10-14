@@ -11,7 +11,6 @@ use mxm_ui::space::SPACE_5;
 use mxm_ui::theme::Tokens;
 use nice_plug::context::gui::GuiContext;
 use nice_plug::prelude::*;
-use nice_plug_egui::{EguiEditorState, NiceEguiApp, create_egui_editor};
 
 use crate::params::MxmFxOldifyParams;
 use crate::telemetry::Telemetry;
@@ -24,30 +23,17 @@ const REFERENCE: (u32, u32) = (1765, 1067);
 // `every_dynamic_page_fits_and_every_card_is_reachable` and `the_app_bar_holds_in_the_minimum_window`.
 const MINIMUM: (u32, u32) = (387, 610);
 
-pub type MxmFxOldifyEditor = nice_plug_egui::EguiEditor<MxmFxOldifyApp>;
+pub type MxmFxOldifyEditor = mxm_editor::Editor<MxmFxOldifyApp>;
 pub use mxm_preset::PresetUi;
 
 pub fn create(
     params: Arc<MxmFxOldifyParams>,
     telemetry: Arc<Telemetry>,
 ) -> Option<MxmFxOldifyEditor> {
-    let state = EguiEditorState::from_size(
-        nice_plug::editor::dpi::LogicalSize::new(REFERENCE.0, REFERENCE.1),
-        1.0,
-    );
-    create_egui_editor(
-        state,
-        nice_plug_egui::RepaintNotifier::new(),
-        nice_plug_egui::EguiNiceSettings {
-            title: crate::NAME.to_owned(),
-            resize_hint: ResizeHint {
-                size_constraints: nice_plug::editor::SizeConstraints::min_logical_size(
-                    nice_plug::editor::dpi::LogicalSize::new(MINIMUM.0 as f32, MINIMUM.1 as f32),
-                ),
-                ..ResizeHint::RESIZABLE
-            },
-            ..Default::default()
-        },
+    mxm_editor::create(
+        crate::NAME,
+        REFERENCE,
+        MINIMUM,
         MxmFxOldifyApp::new(params, telemetry),
     )
 }
@@ -55,7 +41,6 @@ pub fn create(
 pub struct MxmFxOldifyApp {
     params: Arc<MxmFxOldifyParams>,
     telemetry: Arc<Telemetry>,
-    gui_context: Option<GuiContext>,
     text_entry: HashMap<&'static str, Option<String>>,
     presets: PresetUi,
     nav: mxm_ui::navigation::State,
@@ -67,7 +52,6 @@ impl MxmFxOldifyApp {
         Self {
             params,
             telemetry,
-            gui_context: None,
             text_entry: HashMap::new(),
             presets,
             nav: mxm_ui::navigation::State::default(),
@@ -75,22 +59,8 @@ impl MxmFxOldifyApp {
     }
 }
 
-impl NiceEguiApp for MxmFxOldifyApp {
-    fn build(
-        &mut self,
-        context: egui::Context,
-        gui_context: GuiContext,
-        _frame: &mut nice_plug_egui::Frame,
-    ) -> Result<(), nice_plug_egui::baseview::HandlerError> {
-        mxm_ui::shell::install(&context);
-        self.gui_context = Some(gui_context);
-        Ok(())
-    }
-
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut nice_plug_egui::Frame) {
-        let Some(context) = self.gui_context.clone() else {
-            return;
-        };
+impl mxm_editor::Panel for MxmFxOldifyApp {
+    fn ui(&mut self, ui: &mut Ui, context: &GuiContext) {
         panel(
             ui,
             &self.params,
@@ -100,10 +70,6 @@ impl NiceEguiApp for MxmFxOldifyApp {
             &mut self.presets,
             &mut self.nav,
         );
-    }
-
-    fn editor_closed(&mut self) {
-        self.gui_context = None;
     }
 }
 
