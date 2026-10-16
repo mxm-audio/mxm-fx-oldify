@@ -247,7 +247,36 @@ impl ClapPlugin for MxmFxOldify {
     ];
 }
 
+impl Vst3Plugin for MxmFxOldify {
+    /// Permanent, as `CLAP_ID` is: the CLAP id's hash written out, held to it by
+    /// `identity::the_vst3_class_id_is_the_clap_ids_hash`.
+    const VST3_CLASS_ID: [u8; 16] = [
+        0xcc, 0x95, 0x5c, 0xd3, 0x7a, 0x52, 0x7e, 0x72, 0xb4, 0x91, 0x45, 0xb9, 0xfc, 0x2a, 0x37,
+        0x21,
+    ];
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
+        &[Vst3SubCategory::Fx, Vst3SubCategory::Distortion];
+}
+
 nice_export_clap!(MxmFxOldify);
+nice_export_vst3!(MxmFxOldify);
+
+/// The plugin's identity in each format.
+#[cfg(test)]
+mod identity {
+    use super::MxmFxOldify;
+    use mxm_plugin_test::formats;
+
+    #[test]
+    fn the_vst3_class_id_is_the_clap_ids_hash() {
+        formats::the_vst3_class_id_is_the_clap_ids_hash::<MxmFxOldify>();
+    }
+
+    #[test]
+    fn the_vst3_categories_follow_the_clap_features() {
+        formats::the_vst3_categories_follow_the_clap_features::<MxmFxOldify>();
+    }
+}
 
 #[cfg(test)]
 mod tests {
