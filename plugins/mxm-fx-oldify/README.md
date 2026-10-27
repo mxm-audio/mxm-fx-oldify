@@ -49,7 +49,8 @@ record warped twice as far as any real one.
 cargo xtask bundle mxm-fx-oldify --release
 ```
 
-The bundle is written to `target/bundled/mxm-fx-oldify.clap` with its control map beside it.
+The bundle is written to `target/bundled/mxm-fx-oldify.clap` with its control map and factory
+presets beside it.
 
 ## Licence
 

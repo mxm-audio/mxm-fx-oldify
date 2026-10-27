@@ -85,7 +85,7 @@ fn render(plugin: &mut MxmFxOldify, input: &[f32]) -> Vec<f32> {
 #[test]
 fn every_shipped_recipe_loads_renders_finite_without_clipping_and_is_heard() {
     let input = programme();
-    for (slug, text) in preset::FACTORY_FILES {
+    for (slug, text) in preset::FACTORY_FILES.iter() {
         let parsed = preset::Preset::parse(text, mxm_fx_oldify::CLAP_ID)
             .unwrap_or_else(|refused| panic!("{slug}: {refused:?}"));
         let mut plugin = MxmFxOldify::default();
@@ -110,7 +110,7 @@ fn every_shipped_recipe_loads_renders_finite_without_clipping_and_is_heard() {
 /// Mix, so it reads unmodified until Mix itself moves.
 #[test]
 fn loading_a_factory_sound_keeps_the_players_mix() {
-    for (slug, text) in preset::FACTORY_FILES {
+    for (slug, text) in preset::FACTORY_FILES.iter() {
         let plugin = MxmFxOldify::default();
         unsafe {
             let _ = plugin
